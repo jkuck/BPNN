@@ -11,11 +11,13 @@ from message_passing_no_double_counting import MessagePassing_NoDoubleCounting
 from collections import defaultdict
 
 import mrftools
-
+import itertools
 # $ cd /atlas/u/jkuck/virtual_environments/pytorch_geometric
 # $ source bin/activate
 # # cd /atlas/u/jkuck/pytorch_geometric/jdk_examples
 
+#if true set messages to 
+INITIALIZE_MESSAGES_RANDOMLY = False
 
 class LoopyBP(MessagePassing_NoDoubleCounting):
     def __init__(self, in_channels, out_channels):
@@ -74,8 +76,8 @@ class LoopyBP_ForSAT(MessagePassing_NoDoubleCounting):
         # x_j has shape [E, X.shape] (double check)
         # prv_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
         # edge_var_indices has shape [2, E]. 
-        #   [0, i] indicates the index (0 to var_degree_origin - 1) of the edge among all edges originating at the node edge i begins at
-        #   [1, i] indicates the index (0 to var_degree_end - 1) of the edge among all edges ending at the node edge i ends at
+        #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
+        #   [1, i] indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
 
         # b = torch.tensor([[[2, -np.inf], [-np.inf, -np.inf]], [[4, -np.inf], [-np.inf, -np.inf]]])
         # var_idx = 0
@@ -83,11 +85,17 @@ class LoopyBP_ForSAT(MessagePassing_NoDoubleCounting):
 
         # marginalized_states = torch.logsumexp(x_j[node_idx], dim=tuple([i for i in range(len(b.shape)) if i != var_idx]))
 
+        # print("torch.exp(x_j):", torch.exp(x_j))
+        # print("prv_messages:", prv_messages)
+        # print("edge_var_indices:", edge_var_indices)
+        # print("state_dimensions:", state_dimensions)
+
         # tensor with dimensions [edges, 2] for binary variables
         marginalized_states = torch.stack([
             torch.logsumexp(node_state, dim=tuple([i for i in range(len(node_state.shape)) if i != edge_var_indices[0, edge_idx]])) for edge_idx, node_state in enumerate(torch.unbind(x_j, dim=0))
                                           ], dim=0)
 
+        # print("torch.exp(marginalized_states):", torch.exp(marginalized_states))
 
         expansion_list = [2 for i in range(state_dimensions - 1)] + [-1,]
 
@@ -107,6 +115,9 @@ class LoopyBP_ForSAT(MessagePassing_NoDoubleCounting):
             message_state.expand(expansion_list).transpose(edge_var_indices[1, message_idx], state_dimensions-1) for message_idx, message_state in enumerate(torch.unbind(marginalized_states, dim=0))
                                           ], dim=0)
 
+        # print("torch.exp(expanded_states):", torch.exp(expanded_states))
+        # print("prv_messages:", prv_messages)
+        # print("torch.exp(prv_messages):", torch.exp(prv_messages))
 
         # divide previous messages to avoid double counting
         # might have dimensions mismatch !!
@@ -126,8 +137,10 @@ class LoopyBP_ForSAT(MessagePassing_NoDoubleCounting):
                                           ], dim=0)
         #to avoid dividing by zero messages use: (could assert that corresponding states are -infinity too)
         destination_to_source_messages_sourceVarOrder[destination_to_source_messages_sourceVarOrder == -np.inf] = 0
+        # print("torch.exp(destination_to_source_messages_sourceVarOrder):", torch.exp(destination_to_source_messages_sourceVarOrder))
 
         messages = expanded_states - destination_to_source_messages_sourceVarOrder
+        # print("torch.exp(messages):", torch.exp(messages))
 
 #        print("expanded_states:", torch.exp(expanded_states))
 #        print("destination_to_source_messages_sourceVarOrder:", torch.exp(destination_to_source_messages_sourceVarOrder))
@@ -436,16 +449,20 @@ def build_graph_from_SAT_problem(clauses):
     print("state_dimensions:", state_dimensions)
 
     edge_count = edge_var_indices.shape[1]
+
     edge_attr = torch.stack([torch.ones([2 for i in range(state_dimensions)]) for j in range(edge_count)], dim=0)
-    edge_attr = torch.rand_like(edge_attr)
+    if INITIALIZE_MESSAGES_RANDOMLY:
+        edge_attr = torch.rand_like(edge_attr)
 
     data = Data(x=torch.log(x), edge_index=edge_index.t().contiguous(), edge_attr=torch.log(edge_attr))
 
     return data, x_base, edge_var_indices, state_dimensions
 
 def test_LoopyBP_ForSAT_automatedGraphConstruction():
+    # clauses = [[1, -2], [-2, 3], [1, 3]] # count=4
+    clauses = [[1, -2], [-1, 2]] # count=2
     # clauses = [[1, -2, 3], [-2, 4], [3]] # count=6
-    clauses = [[1, -2], [-2, 4], [3]] # count=5
+    # clauses = [[1, -2], [-2, 4], [3]] # count=5
     # clauses = [[1, 2], [-2, 3]] # count=4
     # clauses = [[1, 2]] # count=3
 
@@ -459,7 +476,7 @@ def test_LoopyBP_ForSAT_automatedGraphConstruction():
     print()
 
 
-    for itr in range(10):
+    for itr in range(3):
         data.x, data.edge_attr = conv(x=data.x, x_base=torch.log(x_base), edge_index=data.edge_index, prv_messages=data.edge_attr,\
                                          edge_var_indices=edge_var_indices, state_dimensions=state_dimensions)        
         print('data.x:', torch.exp(data.x))
@@ -529,10 +546,13 @@ def run_LoopyBP_ForSAT_onCNF(filename):
 
 
 def calculate_partition_function_exact():
+    # clauses = [[1, -2], [-2, 3], [1, 3]] # count=4
+    # clauses = [[1, -2], [-1, 2], [-1]] # count=4
+
     # clauses = [[1, -2, 3], [-2, 4], [3]] # count=6
     # clauses = [[1, -2], [-2, 4], [3]] # count=5
     # clauses = [[1, 2], [-2, 3]] # count=4
-    clauses = [[1, 2]] # count=3
+    clauses = [[1, 2], [1,-2], [-1,2], [-1,-2]] # count=3
 
     sat_FactorGraph = mrftools.MarkovNet()
 
@@ -559,11 +579,53 @@ def calculate_partition_function_exact():
             clause_state = np.log(build_clause_node_state(clause=clause, state_dimensions=len(clause)).numpy())
             print("vars_in_clause:", vars_in_clause)
             print("clause_state.shape:", clause_state.shape)
+            print("clause_state:", clause_state)
             sat_FactorGraph.set_edge_factor(tuple(vars_in_clause), clause_state)
 
     sat_FactorGraph.create_matrices()
 
     bf = mrftools.BruteForce(sat_FactorGraph)
+
+    #FOUND ISSUE: we can only set one factor over a single set of variables, so we get
+    #the wrong number of satisfying solutions when multiple clauses contain the exact
+    #same variables
+    EXPLICIT_BRUTE_FORCE = True
+    if EXPLICIT_BRUTE_FORCE:
+        z = 0.0
+
+        variables = list(sat_FactorGraph.variables)
+
+        num_states = [sat_FactorGraph.num_states[var] for var in variables]
+
+        arg_list = [range(s) for s in num_states]
+
+        for state_list in itertools.product(*arg_list):
+            states = dict()
+            for i in range(len(variables)):
+                states[variables[i]] = state_list[i]
+
+            print()
+            print("state:", states)
+
+            energy = 0.0
+            for var in sat_FactorGraph.variables:
+                print("var:", var)
+                energy += sat_FactorGraph.unary_potentials[var][states[var]]
+
+                for neighbor in sat_FactorGraph.neighbors[var]:
+                    if var < neighbor:
+                        energy += sat_FactorGraph.get_potential((var, neighbor))[states[var], states[neighbor]]
+                        print("neighbor:", neighbor, "joint cur_potential:",  sat_FactorGraph.get_potential((var, neighbor))[states[var], states[neighbor]])
+                print("cur_potential:", sat_FactorGraph.get_potential((var, neighbor))[states[var], states[neighbor]])
+
+            print("energy:", energy)
+            print("state value:", np.exp(sat_FactorGraph.evaluate_state(states)))
+            z += np.exp(sat_FactorGraph.evaluate_state(states))
+
+        print("z =", z)
+        sleep(temp1)
+
+
     exact_z = bf.compute_z()
     print('Exact partition sum:', exact_z)
 

@@ -113,12 +113,12 @@ class MessagePassing_NoDoubleCounting(torch.nn.Module):
         update_args = [kwargs[arg] for arg in self.__update_args__]
 
         cur_messages = self.message(*message_args)
-        print("cur_messages.shape:", cur_messages.shape)
+        # print("cur_messages.shape:", cur_messages.shape)
         aggregated_messages = scatter_(self.aggr, cur_messages, edge_index[i], dim_size=size[i])
-        print("edge_index.shape:", edge_index.shape)
-        print("edge_index[i].shape:", edge_index[i].shape)
-        print("aggregated_messages.shape:", aggregated_messages.shape)
-        sleep(temp)
+        # print("edge_index.shape:", edge_index.shape)
+        # print("edge_index[i].shape:", edge_index[i].shape)
+        # print("aggregated_messages.shape:", aggregated_messages.shape)
+        # sleep(temp)
         new_state = self.update(aggregated_messages, *update_args)
 
 #        print("cur_messages:", cur_messages)
