@@ -56,38 +56,13 @@ class MessagePassing_factorGraph(torch.nn.Module):
     See `here <https://rusty1s.github.io/pytorch_geometric/build/html/notes/
     create_gnn.html>`__ for the accompanying tutorial.
 
-    Args:
-        aggr (string, optional): The aggregation scheme to use
-            (:obj:`"add"`, :obj:`"mean"` or :obj:`"max"`).
-            (default: :obj:`"add"`)
+
     """
 
-    def __init__(self, aggr='add'):
+    def __init__(self):
         super(MessagePassing_factorGraph, self).__init__()
 
-        self.aggr = aggr
-        assert self.aggr in ['add', 'mean', 'max']
 
-
-        self.__message_args_factorToVar__ = inspect.getfullargspec(self.message_factorToVar)[0][2:]
-        self.__message_args_varToFactor__ = inspect.getfullargspec(self.message_varToFactor)[0][2:]
-
-        for i, arg in enumerate(self.__message_args_factorToVar__):
-            if arg in special_args:
-                assert(False), "haven't dealt with special args!"
-        for i, arg in enumerate(self.__message_args_varToFactor__):
-            if arg in special_args:
-                assert(False), "haven't dealt with special args!"
-
-        # self.__special_args__ = [(i, arg)
-        #                          for i, arg in enumerate(self.__message_args_factorToVar__)
-        #                          if arg in special_args]
-        # self.__message_args_factorToVar__ = [
-        #     arg for arg in self.__message_args_factorToVar__ if arg not in special_args
-        # ]
-        # self.__message_args_varToFactor__ = [
-        #     arg for arg in self.__message_args_varToFactor__ if arg not in special_args
-        # ]      
 
     #FIX ME, copied from old code/loopy_BP.py
     def forward(self, x, x_base, edge_index, prv_messages, edge_var_indices, state_dimensions):
@@ -101,7 +76,8 @@ class MessagePassing_factorGraph(torch.nn.Module):
                               edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, x_base=x_base)
 
 
-    def propagate(self, factorToVar_edge_index, numVars, numFactors, factor_potentials, **kwargs):
+    def propagate(self, factor_beliefs, prv_varToFactor_messages, factorToVar_edge_index, numVars,\
+                  numFactors, factor_potentials, edge_var_indices, state_dimensions):
         r"""The initial call to start propagating messages.
 
         Args:
@@ -117,15 +93,13 @@ class MessagePassing_factorGraph(torch.nn.Module):
 
         #update variable beliefs
         mapped_factor_beliefs = map_beliefs(factor_beliefs, 'factor', factorToVar_edge_index, size=[numFactors, numVars])
-        factorToVar_message_args = [kwargs[arg] for arg in self.__message_args_factorToVar__] #extract args, except for factor_beliefs_j
-        factorToVar_messages = self.message_factorToVar(mapped_factor_beliefs, factorToVar_message_args)
+        factorToVar_messages = self.message_factorToVar(mapped_factor_beliefs, prv_varToFactor_messages, edge_var_indices, state_dimensions)
         new_var_beliefs = scatter_('add', factorToVar_messages, factorToVar_edge_index[1], dim_size=numVars)
 
 
         #update factor beliefs
         mapped_var_beliefs = map_beliefs(new_var_beliefs, 'var', factorToVar_edge_index, size=[numFactors, numVars])
-        varToFactor_message_args = [kwargs[arg] for arg in self.__message_args_varToFactor__] #extract args, except for var_beliefs_j
-        varToFactor_messages = self.message_varToFactor(mapped_var_beliefs, varToFactor_message_args)
+        varToFactor_messages = self.message_varToFactor(mapped_var_beliefs, factorToVar_messages, edge_var_indices, state_dimensions)
         expansion_list = [2 for i in range(kwargs['state_dimensions'] - 1)] + [-1,] #messages have states for one variable, add dummy dimensions for the other variables in factors
         varToFactor_expandedMessages = torch.stack([
             message_state.expand(expansion_list).transpose(kwargs['edge_var_indices'][1, message_idx], kwargs['state_dimensions']-1) for message_idx, message_state in enumerate(torch.unbind(varToFactor_messages, dim=0))
@@ -134,9 +108,9 @@ class MessagePassing_factorGraph(torch.nn.Module):
         new_factor_beliefs = scatter_('add', varToFactor_expandedMessages, factorToVar_edge_index[0], dim_size=numFactors)
         new_factor_beliefs += factor_potentials #factor_potentials previously x_base
 
-        return new_var_beliefs, factorToVar_messages, new_factor_beliefs, varToFactor_messages
+        return new_var_beliefs, new_factor_beliefs, varToFactor_messages
 
-    def message_factorToVar(self, factor_beliefs_j, prv_varToFactor_messages, edge_var_indices, state_dimensions):
+    def message_factorToVar(self, factor_beliefs, prv_varToFactor_messages, edge_var_indices, state_dimensions):
         # factor_beliefs has shape [E, X.shape] (double check)
         # prv_varToFactor_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
         # edge_var_indices has shape [2, E]. 
@@ -167,8 +141,8 @@ class MessagePassing_factorGraph(torch.nn.Module):
 #        print("messages:", torch.exp(messages))
         return messages
 
-    def message_varToFactor(self, var_beliefs_j, prv_factorToVar_messages, edge_var_indices, state_dimensions):
-        # var_beliefs_j has shape [E, X.shape] (double check)
+    def message_varToFactor(self, var_beliefs, prv_factorToVar_messages, edge_var_indices, state_dimensions):
+        # var_beliefs has shape [E, X.shape] (double check)
         # prv_factorToVar_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
         # edge_var_indices has shape [2, E]. 
         #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
@@ -184,7 +158,7 @@ class MessagePassing_factorGraph(torch.nn.Module):
         destination_to_source_messages_sourceVarOrder[destination_to_source_messages_sourceVarOrder == -np.inf] = 0
         # print("torch.exp(destination_to_source_messages_sourceVarOrder):", torch.exp(destination_to_source_messages_sourceVarOrder))
 
-        messages = var_beliefs_j - destination_to_source_messages_sourceVarOrder
+        messages = var_beliefs - destination_to_source_messages_sourceVarOrder
         # print("torch.exp(messages):", torch.exp(messages))
 #        print("expanded_states:", torch.exp(expanded_states))
 #        print("destination_to_source_messages_sourceVarOrder:", torch.exp(destination_to_source_messages_sourceVarOrder))
