@@ -634,11 +634,13 @@ def run_LoopyBP_ForSAT_onCNF(filename):
 def calculate_partition_function_exact():
     # clauses = [[1, -2], [-2, 3], [1, 3]] # count=4
     # clauses = [[1, -2], [-1, 2], [-1]] # count=4
+    clauses = [[1, -2], [-1, 2]] # count=2
+
 
     # clauses = [[1, -2, 3], [-2, 4], [3]] # count=6
     # clauses = [[1, -2], [-2, 4], [3]] # count=5
     # clauses = [[1, 2], [-2, 3]] # count=4
-    clauses = [[1, 2], [1,-2], [-1,2], [-1,-2]] # count=3
+    # clauses = [[1, 2], [1,-2], [-1,2], [-1,-2]] # count=3
 
     sat_FactorGraph = mrftools.MarkovNet()
 
@@ -709,7 +711,7 @@ def calculate_partition_function_exact():
             z += np.exp(sat_FactorGraph.evaluate_state(states))
 
         print("z =", z)
-        sleep(temp1)
+        # sleep(temp1)
 
 
     exact_z = bf.compute_z()
@@ -726,8 +728,8 @@ def calculate_partition_function_exact():
 
 
 if __name__ == "__main__":
-    # calculate_partition_function_exact()
-    # sleep(BruteForce)
+    calculate_partition_function_exact()
+    sleep(BruteForce)
 
     # test_LoopyBP_ForSAT2()
     test_LoopyBP_ForSAT_automatedGraphConstruction()

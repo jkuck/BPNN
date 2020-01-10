@@ -1,10 +1,14 @@
+import torch
+import numpy as np
+from collections import defaultdict
+
 class FactorGraph():
     '''
     Representation of a factor graph
     '''
     def __init__(self, factor_potentials, factorToVar_edge_index, numVars, numFactors, 
                  edge_var_indices, state_dimensions, factor_beliefs, var_beliefs,
-                 prv_varToFactor_messages, prv_factorToVar_messages,):
+                 prv_varToFactor_messages, prv_factorToVar_messages):
         #potentials defining the factor graph
         self.factor_potentials = factor_potentials 
 
@@ -25,21 +29,6 @@ class FactorGraph():
         self.var_beliefs = var_beliefs # initially junk
         self.prv_varToFactor_messages = prv_varToFactor_messages # initially junk
         self.prv_factorToVar_messages = prv_factorToVar_messages # initially junk
-
-        self.aggr = aggr
-        assert self.aggr in ['add', 'mean', 'max']
-
-        self.flow = flow
-        assert self.flow in ['source_to_target', 'target_to_source']
-
-        self.__message_args__ = inspect.getfullargspec(self.message)[0][1:]
-        self.__special_args__ = [(i, arg)
-                                 for i, arg in enumerate(self.__message_args__)
-                                 if arg in special_args]
-        self.__message_args__ = [
-            arg for arg in self.__message_args__ if arg not in special_args
-        ]
-        self.__update_args__ = inspect.getfullargspec(self.update)[0][2:]
 
 
 def build_factorPotential_fromClause(clause, state_dimensions):
@@ -98,15 +87,17 @@ def test_build_edge_var_indices():
     print(edge_var_indices)
     print(expected_edge_var_indices)
 
-def build_factorgraph_from_SATproblem(clauses):
+def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False):
     '''
     Take a SAT problem in CNF form (specified by clauses) and return a factor graph representation
     whose partition function is the number of satisfying solutions
 
     Inputs:
     - clauses: (list of list of ints) variables should be numbered 1 to N with no gaps
+    - initialize_randomly: (bool) if true randomly initialize beliefs and previous messages
+        if false initialize to 1
     '''
-    num_clauses = len(clauses)
+    num_factors = len(clauses)
     factorToVar_edge_index_list = []
     dictionary_of_vars = defaultdict(int)
     for clause_idx, clause in enumerate(clauses):
@@ -117,7 +108,7 @@ def build_factorgraph_from_SATproblem(clauses):
 
     print("a")
 
-    # check variables are numbered 1 to N with no gaps
+    # check largest variable name equals the number of variables
     N = -1 #number of variables
     max_var_degree = -1
     for var_name, var_degree in dictionary_of_vars.items():
@@ -164,15 +155,21 @@ def build_factorgraph_from_SATproblem(clauses):
 
     edge_count = edge_var_indices.shape[1]
 
-    edge_attr = torch.stack([torch.ones([2 for i in range(state_dimensions)]) for j in range(edge_count)], dim=0)
-    if INITIALIZE_MESSAGES_RANDOMLY:
-        edge_attr = torch.rand_like(edge_attr)
+    prv_varToFactor_messages = torch.log(torch.stack([torch.ones([2]) for j in range(edge_count)], dim=0))
+    prv_factorToVar_messages = torch.log(torch.stack([torch.ones([2]) for j in range(edge_count)], dim=0))
+    # factor_beliefs = torch.log(torch.stack([torch.ones([2 for i in range(state_dimensions)]) for j in range(num_factors)], dim=0))
+    factor_beliefs = torch.log(factor_potentials.clone())
+    var_beliefs = torch.log(torch.stack([torch.ones([2]) for j in range(N)], dim=0))
+    if initialize_randomly:
+        prv_varToFactor_messages = torch.rand_like(prv_varToFactor_messages)
+        prv_factorToVar_messages = torch.rand_like(prv_factorToVar_messages)
+        factor_beliefs = torch.rand_like(factor_beliefs)
+        var_beliefs = torch.rand_like(var_beliefs)
 
-    factor_graph = {'factor_log_potentials': torch.log(factor_potentials),
-                    'factorToVar_edge_index': factorToVar_edge_index.t().contiguous(),
-                    }
+    factor_graph = FactorGraph(factor_potentials=torch.log(factor_potentials), 
+                 factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=N, numFactors=num_factors, 
+                 edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, 
+                 factor_beliefs=factor_beliefs, var_beliefs=var_beliefs,
+                 prv_varToFactor_messages=prv_varToFactor_messages, prv_factorToVar_messages=prv_factorToVar_messages)
 
-    data = Data(factor_potentials=torch.log(factor_potentials), factorToVar_edge_index=factorToVar_edge_index.t().contiguous(),\
-                edge_attr=torch.log(edge_attr))
-
-    return data, x_base, edge_var_indices, state_dimensions
+    return factor_graph
