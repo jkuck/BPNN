@@ -66,7 +66,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         self.propagate(factor_graph)
 
 
-    def propagate(self, factor_graph):
+    def propagate(self, factor_graph, debug=False):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
 
@@ -91,21 +91,37 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         varToFactor_messages = self.message_varToFactor(factor_graph)
         expansion_list = [2 for i in range(factor_graph.state_dimensions - 1)] + [-1,] #messages have states for one variable, add dummy dimensions for the other variables in factors
         varToFactor_expandedMessages = torch.stack([
-            message_state.expand(expansion_list).transpose(factor_graph.edge_var_indices[1, message_idx], factor_graph.state_dimensions-1) for message_idx, message_state in enumerate(torch.unbind(varToFactor_messages, dim=0))
+            # message_state.expand(expansion_list).transpose(factor_graph.edge_var_indices[0, message_idx], factor_graph.edge_var_indices[0, message_idx]) for message_idx, message_state in enumerate(torch.unbind(varToFactor_messages, dim=0))
+            message_state.expand(expansion_list).transpose(factor_graph.edge_var_indices[0, message_idx], factor_graph.state_dimensions-1) for message_idx, message_state in enumerate(torch.unbind(varToFactor_messages, dim=0))
                                           ], dim=0)
 
+
         #debug
-        print("varToFactor_expandedMessages:", torch.exp(varToFactor_expandedMessages))
+        if debug:
+            print("factor_graph.edge_var_indices[0]", factor_graph.edge_var_indices[0])
+            for message_idx, message_state in enumerate(torch.unbind(varToFactor_messages, dim=0)):
+                print("###")
+                print("message_idx:", message_idx)
+                print("factor_graph.edge_var_indices[0, message_idx]:", factor_graph.edge_var_indices[0, message_idx])
+                print("factor_graph.state_dimensions-1:", factor_graph.state_dimensions-1)
+                print("factor_graph.edge_var_indices[0, message_idx]:", factor_graph.edge_var_indices[0, message_idx])
+                print("factor_graph.edge_var_indices[1, message_idx]:", factor_graph.edge_var_indices[1, message_idx])
+                print("message_state.expand(expansion_list):", torch.exp(message_state.expand(expansion_list)))
+                print(torch.exp(message_state.expand(expansion_list).transpose(factor_graph.edge_var_indices[1, message_idx], factor_graph.edge_var_indices[0, message_idx])))
+                print
+            print("varToFactor_expandedMessages:", torch.exp(varToFactor_expandedMessages))
         #end debug
 
         factor_graph.factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.factorToVar_edge_index[0], dim_size=factor_graph.numFactors)
-        print("1 factor_graph.factor_beliefs:", torch.exp(factor_graph.factor_beliefs))
+        if debug:
+            print("1 factor_graph.factor_beliefs:", torch.exp(factor_graph.factor_beliefs))
         
         factor_graph.factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
-        print("3 factor_graph.factor_beliefs:", torch.exp(factor_graph.factor_beliefs))
-        print("factor_graph.factorToVar_edge_index[0]:", factor_graph.factorToVar_edge_index[0])
-        print("factor_graph.factorToVar_edge_index:", factor_graph.factorToVar_edge_index)
-        sleep(debug34)
+        if debug:
+            print("3 factor_graph.factor_beliefs:", torch.exp(factor_graph.factor_beliefs))
+            print("factor_graph.factorToVar_edge_index[0]:", factor_graph.factorToVar_edge_index[0])
+            print("factor_graph.factorToVar_edge_index:", factor_graph.factorToVar_edge_index)
+            sleep(debug34)
         
         factor_graph.prv_varToFactor_messages = varToFactor_messages
 
@@ -198,7 +214,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
 def test_LoopyBP_ForSAT_automatedGraphConstruction():
     # clauses = [[1, -2], [-2, 3], [1, 3]] # count=4
-    clauses = [[1, -2], [-1, 2]] # count=2
+    clauses = [[-1, 2], [1, -2]] # count=2
     # clauses = [[1, -2, 3], [-2, 4], [3]] # count=6
     # clauses = [[1, -2], [-2, 4], [3]] # count=5
     # clauses = [[1, 2], [-2, 3]] # count=4
@@ -215,7 +231,7 @@ def test_LoopyBP_ForSAT_automatedGraphConstruction():
     # sleep(temp)
 
 
-    for itr in range(3):
+    for itr in range(30):
         print('variable beliefs:', torch.exp(factor_graph.var_beliefs))
         print('factor beliefs:', torch.exp(factor_graph.factor_beliefs))
         print('prv_factorToVar_messages:', torch.exp(factor_graph.prv_factorToVar_messages))

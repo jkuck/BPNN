@@ -12,15 +12,16 @@ class FactorGraph():
         #potentials defining the factor graph
         self.factor_potentials = factor_potentials 
 
-        #factorToVar_edge_index (Tensor): The indices of a general (sparse) assignment
-        #    matrix with shape :obj:`[N, M]` (can be directed or
-        #    undirected).
+        # - factorToVar_edge_index (Tensor): The indices of a general (sparse) edge
+        #     matrix with shape :obj:`[numFactors, numVars]`
         self.factorToVar_edge_index = factorToVar_edge_index
         self.numVars = numVars
         self.numFactors = numFactors
 
-        # - factorToVar_edge_index (Tensor): The indices of a general (sparse) edge
-        #     matrix with shape :obj:`[numFactors, numVars]`
+
+        # edge_var_indices has shape [2, E]. 
+        #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
+        #   [1, i] indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
         self.edge_var_indices = edge_var_indices
         # (int) the largest node degree
         self.state_dimensions = state_dimensions
@@ -87,7 +88,7 @@ def test_build_edge_var_indices():
     print(edge_var_indices)
     print(expected_edge_var_indices)
 
-def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False):
+def build_factorgraph_from_SATproblem(clauses, initialize_randomly=True):
     '''
     Take a SAT problem in CNF form (specified by clauses) and return a factor graph representation
     whose partition function is the number of satisfying solutions
@@ -159,11 +160,12 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False):
     prv_factorToVar_messages = torch.log(torch.stack([torch.ones([2]) for j in range(edge_count)], dim=0))
     # factor_beliefs = torch.log(torch.stack([torch.ones([2 for i in range(state_dimensions)]) for j in range(num_factors)], dim=0))
     factor_beliefs = torch.log(factor_potentials.clone())
+    factor_beliefs = factor_beliefs/torch.logsumexp(factor_beliefs, [i for i in range(1, len(factor_beliefs.size()))])
     var_beliefs = torch.log(torch.stack([torch.ones([2]) for j in range(N)], dim=0))
     if initialize_randomly:
         prv_varToFactor_messages = torch.rand_like(prv_varToFactor_messages)
         prv_factorToVar_messages = torch.rand_like(prv_factorToVar_messages)
-        factor_beliefs = torch.rand_like(factor_beliefs)
+        # factor_beliefs = torch.rand_like(factor_beliefs)
         var_beliefs = torch.rand_like(var_beliefs)
 
     factor_graph = FactorGraph(factor_potentials=torch.log(factor_potentials), 
