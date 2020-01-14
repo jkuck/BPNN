@@ -632,9 +632,10 @@ def run_LoopyBP_ForSAT_onCNF(filename):
 
 
 def calculate_partition_function_exact():
-    # clauses = [[1, -2], [-2, 3], [1, 3]] # count=4
+    clauses = [[1, -2], [-2, 3], [1, 3]] # count=4
     # clauses = [[1, -2], [-1, 2], [-1]] # count=4
-    clauses = [[1, -2], [-1, 2]] # count=2
+    # clauses = [[1, -2], [-1, 2]] # count=2, will report three because can only have one factor over the same group of variables in mrftools so the first factor is lost
+    # clauses = [[1, -2]] # count=3
 
 
     # clauses = [[1, -2, 3], [-2, 4], [3]] # count=6

@@ -2,6 +2,14 @@ import torch
 import numpy as np
 from collections import defaultdict
 
+def neg_inf_to_zero(tensor):
+    '''
+    return tensor with negative infinity values replaced with zeros
+    '''
+    return_tensor = tensor.clone()
+    return_tensor[return_tensor == -float('inf')] = 0
+    return return_tensor
+
 class FactorGraph():
     '''
     Representation of a factor graph
@@ -15,6 +23,12 @@ class FactorGraph():
         # - factorToVar_edge_index (Tensor): The indices of a general (sparse) edge
         #     matrix with shape :obj:`[numFactors, numVars]`
         self.factorToVar_edge_index = factorToVar_edge_index
+
+        # self.var_degrees[i] stores the number of factors that variables i appears in
+        unique_var_indices, self.var_degrees = torch.unique(factorToVar_edge_index[1,:], sorted=True, return_counts=True)
+        assert((self.var_degrees >= 1).all())
+        assert(unique_var_indices.shape[0] == numVars)
+
         self.numVars = numVars
         self.numFactors = numFactors
 
@@ -30,6 +44,52 @@ class FactorGraph():
         self.var_beliefs = var_beliefs # initially junk
         self.prv_varToFactor_messages = prv_varToFactor_messages # initially junk
         self.prv_factorToVar_messages = prv_factorToVar_messages # initially junk
+
+    def compute_bethe_average_energy(self, debug=True):
+        '''
+        Equation (37) in:
+        https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
+        '''
+        assert(self.factor_potentials.shape == self.factor_beliefs.shape)
+        if debug:
+            print()
+            print('!!!!!!!')
+            print("debugging compute_bethe_average_energy")
+            print("torch.exp(self.factor_beliefs):", torch.exp(self.factor_beliefs))
+            print("neg_inf_to_zero(self.factor_potentials):", neg_inf_to_zero(self.factor_potentials))
+        return -torch.sum(torch.exp(self.factor_beliefs)*neg_inf_to_zero(self.factor_potentials)) #elementwise multiplication, then sum
+
+    def compute_bethe_entropy(self):
+        '''
+        Equation (38) in:
+        https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
+        '''
+        bethe_entropy = -torch.sum(torch.exp(self.factor_beliefs)*neg_inf_to_zero(self.factor_beliefs)) #elementwise multiplication, then sum
+
+        assert(self.var_beliefs.shape == torch.Size([self.numVars, 2])), (self.var_beliefs.shape, [self.numVars, 2])
+        # sum_{x_i} b_i(x_i)*ln(b_i(x_i))
+        inner_sum = torch.einsum('ij,ij->i', [torch.exp(self.var_beliefs), neg_inf_to_zero(self.var_beliefs)])
+        # sum_{i=1}^N (d_i - 1)*inner_sum
+        outer_sum = torch.sum((self.var_degrees - 1) * inner_sum)
+        # outer_sum = torch.einsum('i,i->', [self.var_degrees - 1, inner_sum])
+
+        bethe_entropy += outer_sum
+        return bethe_entropy
+
+    def compute_bethe_free_energy(self):
+        '''
+        Compute the Bethe approximation of the free energy.
+        - free energy = -ln(Z)
+          where Z is the partition function
+        - (Bethe approximation of the free energy) = (Bethe average energy) - (Bethe entropy)
+
+        For more details, see page 11 of:
+        https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf
+        '''
+        print("self.compute_bethe_average_energy():", self.compute_bethe_average_energy())
+        print("self.compute_bethe_entropy():", self.compute_bethe_entropy())
+        return self.compute_bethe_average_energy() - self.compute_bethe_entropy()
+
 
 
 def build_factorPotential_fromClause(clause, state_dimensions):
@@ -88,7 +148,7 @@ def test_build_edge_var_indices():
     print(edge_var_indices)
     print(expected_edge_var_indices)
 
-def build_factorgraph_from_SATproblem(clauses, initialize_randomly=True):
+def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False):
     '''
     Take a SAT problem in CNF form (specified by clauses) and return a factor graph representation
     whose partition function is the number of satisfying solutions
@@ -158,9 +218,9 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=True):
 
     prv_varToFactor_messages = torch.log(torch.stack([torch.ones([2]) for j in range(edge_count)], dim=0))
     prv_factorToVar_messages = torch.log(torch.stack([torch.ones([2]) for j in range(edge_count)], dim=0))
-    # factor_beliefs = torch.log(torch.stack([torch.ones([2 for i in range(state_dimensions)]) for j in range(num_factors)], dim=0))
-    factor_beliefs = torch.log(factor_potentials.clone())
-    factor_beliefs = factor_beliefs/torch.logsumexp(factor_beliefs, [i for i in range(1, len(factor_beliefs.size()))])
+    factor_beliefs = torch.log(torch.stack([torch.ones([2 for i in range(state_dimensions)]) for j in range(num_factors)], dim=0))
+    # factor_beliefs = torch.log(factor_potentials.clone())
+    # factor_beliefs = factor_beliefs/torch.logsumexp(factor_beliefs, [i for i in range(1, len(factor_beliefs.size()))])
     var_beliefs = torch.log(torch.stack([torch.ones([2]) for j in range(N)], dim=0))
     if initialize_randomly:
         prv_varToFactor_messages = torch.rand_like(prv_varToFactor_messages)

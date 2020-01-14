@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from torch_geometric.utils import scatter_
 from models import build_factorgraph_from_SATproblem
+from sat_utils import parse_dimacs
 
 import mrftools
 
@@ -9,6 +10,8 @@ import mrftools
 __size_error_msg__ = ('All tensors which should get mapped to the same source '
                       'or target nodes must be of same size in dimension 0.')
 
+SAT_PROBLEM_DIRECTORY = '/Users/jkuck/research/learn_BP/SAT_problems/'
+# SAT_PROBLEM_DIRECTORY = '/atlas/u/jkuck/pytorch_geometric/jdk_examples/SAT_problems/'
 
 def map_beliefs(factor_graph, map_type):
     '''
@@ -44,7 +47,47 @@ def map_beliefs(factor_graph, map_type):
     mapped_beliefs = torch.index_select(mapped_beliefs, 0, factor_graph.factorToVar_edge_index[idx])
     return mapped_beliefs
 
+def max_multipleDim(input, axes, keepdim=False):
+    '''
+    modified from https://github.com/pytorch/pytorch/issues/2006
+    Take the maximum across multiple axes.  For example, say the input has dimensions [a,b,c,d] and
+    axes = [0,2].  The output (with keepdim=False) will have dimensions [b,d] and output[i,j] will
+    be the maximum value of input[:, i, :, j]
+    '''
+    # probably some check for uniqueness of axes
+    if keepdim:
+        for ax in axes:
+            input = input.max(ax, keepdim=True)[0]
+    else:
+        for ax in sorted(axes, reverse=True):
+            input = input.max(ax)[0]
+    return input
 
+def logsumexp_multipleDim(tensor, dim=None):
+    """
+    Compute log(sum(exp(tensor), dim)) in a numerically stable way.
+
+    Inputs:
+    - tensor (tensor): input tensor
+    - dim (int): the only dimension to keep in the output.  i.e. for a 4d input tensor with dim=2 (0-indexed):
+        return_tensor[i] = logsumexp(tensor[:,:,i,:])
+
+    Outputs:
+    - return_tensor (1d tensor): logsumexp of input tensor along specified dimension
+
+    """
+    tensor_dimensions = len(tensor.shape)
+    assert(dim < tensor_dimensions and dim >= 0)
+    aggregate_dimensions = [i for i in range(tensor_dimensions) if i != dim]
+    # print("aggregate_dimensions:", aggregate_dimensions)
+    # print("tensor:", tensor)
+    max_values = max_multipleDim(tensor, axes=aggregate_dimensions, keepdim=True)
+    # print("max_values:", max_values)
+    # print("tensor - max_values", tensor - max_values)
+    # print("torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)):", torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)))
+    return_tensor = torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)) + max_values.squeeze()
+    # print("return_tensor:", return_tensor)
+    return return_tensor
 
 class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     r"""Perform message passing in factor graphs without 'double counting'
@@ -85,6 +128,13 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         #update variable beliefs
         factorToVar_messages = self.message_factorToVar(factor_graph)
         factor_graph.var_beliefs = scatter_('add', factorToVar_messages, factor_graph.factorToVar_edge_index[1], dim_size=factor_graph.numVars)
+        if debug:
+            print("factor_graph.var_beliefs pre norm:", torch.exp(factor_graph.var_beliefs))
+        assert(len(factor_graph.var_beliefs.shape) == 2)
+        factor_graph.var_beliefs = factor_graph.var_beliefs - logsumexp_multipleDim(factor_graph.var_beliefs, dim=0).view(-1,1)#normalize variable beliefs
+        if debug:
+            print("factor_graph.var_beliefs post norm:", torch.exp(factor_graph.var_beliefs))
+        # sleep(check_norm)
         factor_graph.prv_factorToVar_messages = factorToVar_messages
 
         #update factor beliefs
@@ -117,6 +167,19 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             print("1 factor_graph.factor_beliefs:", torch.exp(factor_graph.factor_beliefs))
         
         factor_graph.factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
+
+        if debug:
+            print()
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            print("factor_graph.factor_beliefs pre norm:", torch.exp(factor_graph.factor_beliefs))
+        normalization_view = [1 for i in range(len(factor_graph.factor_beliefs.shape))]
+        normalization_view[0] = -1
+        factor_graph.factor_beliefs = factor_graph.factor_beliefs - logsumexp_multipleDim(factor_graph.factor_beliefs, dim=0).view(normalization_view)#normalize variable beliefs
+        if debug:
+            print("factor_graph.factor_beliefs post norm:", torch.exp(factor_graph.factor_beliefs))
+            print("torch.sum(factor_graph.factor_beliefs) post norm:", torch.sum(torch.exp(factor_graph.factor_beliefs)))
+            sleep(check_norms2)
+
         if debug:
             print("3 factor_graph.factor_beliefs:", torch.exp(factor_graph.factor_beliefs))
             print("factor_graph.factorToVar_edge_index[0]:", factor_graph.factorToVar_edge_index[0])
@@ -212,13 +275,17 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #        print("messages:", torch.exp(messages))
         return messages
 
-def test_LoopyBP_ForSAT_automatedGraphConstruction():
-    # clauses = [[1, -2], [-2, 3], [1, 3]] # count=4
-    clauses = [[-1, 2], [1, -2]] # count=2
-    # clauses = [[1, -2, 3], [-2, 4], [3]] # count=6
-    # clauses = [[1, -2], [-2, 4], [3]] # count=5
-    # clauses = [[1, 2], [-2, 3]] # count=4
-    # clauses = [[1, 2]] # count=3
+def test_LoopyBP_ForSAT_automatedGraphConstruction(filename=None):
+    if filename is None:
+        clauses = [[1, -2], [-2, 3], [1, 3]] # count=4
+        # clauses = [[-1, 2], [1, -2]] # count=2
+        # clauses = [[-1, 2]] # count=3
+        # clauses = [[1, -2, 3], [-2, 4], [3]] # count=6
+        # clauses = [[1, -2], [-2, 4], [3]] # count=5
+        # clauses = [[1, 2], [-2, 3]] # count=4
+        # clauses = [[1, 2]] # count=3
+    else:
+        n_vars, clauses = parse_dimacs(filename)
 
     factor_graph = build_factorgraph_from_SATproblem(clauses)
 
@@ -231,7 +298,7 @@ def test_LoopyBP_ForSAT_automatedGraphConstruction():
     # sleep(temp)
 
 
-    for itr in range(30):
+    for itr in range(300):
         print('variable beliefs:', torch.exp(factor_graph.var_beliefs))
         print('factor beliefs:', torch.exp(factor_graph.factor_beliefs))
         print('prv_factorToVar_messages:', torch.exp(factor_graph.prv_factorToVar_messages))
@@ -246,16 +313,17 @@ def test_LoopyBP_ForSAT_automatedGraphConstruction():
         print('log(Z):', log_Z_est, 'Z:', torch.exp(log_Z_est))
     print('-'*80)
     print()
+    bethe_free_energy = factor_graph.compute_bethe_free_energy()
+    print("Bethe free energy =", bethe_free_energy)
+    z_estimate_bethe = torch.exp(-bethe_free_energy)
+    print("Partition function estimate from Bethe free energy =", z_estimate_bethe)
+
+
 
 if __name__ == "__main__":
-    # calculate_partition_function_exact()
-    # sleep(BruteForce)
-
-    # test_LoopyBP_ForSAT2()
     test_LoopyBP_ForSAT_automatedGraphConstruction()
-    sleep(temp)
-    # sleep(34)
+    sleep(temp34)
     # SAT_filename = "/atlas/u/jkuck/approxmc/counting2/s641_3_2.cnf.gz.no_w.cnf"
     # SAT_filename = '/atlas/u/jkuck/low_density_parity_checks/SAT_problems_cnf/tire-1.cnf'
-    SAT_filename = '/atlas/u/jkuck/pytorch_geometric/jdk_examples/SAT_problems/test3.cnf'
-    run_LoopyBP_ForSAT_onCNF(filename=SAT_filename)
+    SAT_filename = SAT_PROBLEM_DIRECTORY + 'test4.cnf'
+    test_LoopyBP_ForSAT_automatedGraphConstruction(filename=SAT_filename)
