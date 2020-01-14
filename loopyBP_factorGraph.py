@@ -1,4 +1,5 @@
 import torch
+from torch.nn import Sequential as Seq, Linear, ReLU
 import numpy as np
 from torch_geometric.utils import scatter_
 from models import build_factorgraph_from_SATproblem
@@ -92,12 +93,30 @@ def logsumexp_multipleDim(tensor, dim=None):
 class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     r"""Perform message passing in factor graphs without 'double counting'
     i.e. divide by previously sent messages as in loopy belief propagation
+
+    Inputs:
+    - learn_BP (bool): if False run standard looph belief propagation, if True
+        insert a neural network into message aggregation for learning
     """
 
-    def __init__(self):
+    def __init__(self, learn_BP=True, factor_state_space=None):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
 
+        self.learn_BP = learn_BP
+        if learn_BP:
+            assert(factor_state_space is not None)
+            linear1 = Linear(factor_state_space, factor_state_space)
+            linear2 = Linear(factor_state_space, factor_state_space)
+            linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+            linear1.bias = torch.nn.Parameter(torch.zeros(linear1.bias.shape))
+            linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+            linear2.bias = torch.nn.Parameter(torch.zeros(linear2.bias.shape))
 
+            self.mlp = Seq(linear1, ReLU(), linear2)
+
+            # self.mlp = Seq(Linear(factor_state_space, factor_state_space),
+            #                ReLU(),
+            #                Linear(factor_state_space, factor_state_space))
 
     def forward(self, factor_graph):
         '''
@@ -166,6 +185,12 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         if debug:
             print("1 factor_graph.factor_beliefs:", torch.exp(factor_graph.factor_beliefs))
         
+        if self.learn_BP:
+            print("factor_graph.factor_beliefs.shape:", factor_graph.factor_beliefs.shape)
+            factor_beliefs_shape = factor_graph.factor_beliefs.shape
+            factor_graph.factor_beliefs = self.mlp(factor_graph.factor_beliefs.view(factor_beliefs_shape[0], -1))
+            factor_graph.factor_beliefs = factor_graph.factor_beliefs.view(factor_beliefs_shape)
+
         factor_graph.factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
 
         if debug:
@@ -275,7 +300,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #        print("messages:", torch.exp(messages))
         return messages
 
-def test_LoopyBP_ForSAT_automatedGraphConstruction(filename=None):
+def test_LoopyBP_ForSAT_automatedGraphConstruction(filename=None, learn_BP=True):
     if filename is None:
         clauses = [[1, -2], [-2, 3], [1, 3]] # count=4
         # clauses = [[-1, 2], [1, -2]] # count=2
@@ -289,7 +314,7 @@ def test_LoopyBP_ForSAT_automatedGraphConstruction(filename=None):
 
     factor_graph = build_factorgraph_from_SATproblem(clauses)
 
-    msg_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting()
+    msg_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=learn_BP, factor_state_space=2**factor_graph.state_dimensions)
 
     # print('data.x:', torch.exp(data.x))
     # print('data.edge_attr:', torch.exp(data.edge_attr))
@@ -326,4 +351,4 @@ if __name__ == "__main__":
     # SAT_filename = "/atlas/u/jkuck/approxmc/counting2/s641_3_2.cnf.gz.no_w.cnf"
     # SAT_filename = '/atlas/u/jkuck/low_density_parity_checks/SAT_problems_cnf/tire-1.cnf'
     SAT_filename = SAT_PROBLEM_DIRECTORY + 'test4.cnf'
-    test_LoopyBP_ForSAT_automatedGraphConstruction(filename=SAT_filename)
+    test_LoopyBP_ForSAT_automatedGraphConstruction(filename=SAT_filename, learn_BP=False)
