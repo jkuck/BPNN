@@ -10,9 +10,16 @@ def neg_inf_to_zero(tensor):
     return_tensor[return_tensor == -float('inf')] = 0
     return return_tensor
 
-class FactorGraph():
+class dotdict(dict):
+    """dot.notation access to dictionary attributes"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+class FactorGraph(dotdict):
     '''
     Representation of a factor graph
+    Inherit from dictionary class for pytorch dataloader
     '''
     def __init__(self, factor_potentials, factorToVar_edge_index, numVars, numFactors, 
                  edge_var_indices, state_dimensions, factor_beliefs, var_beliefs,

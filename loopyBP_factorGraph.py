@@ -1,9 +1,10 @@
 import torch
 from torch.nn import Sequential as Seq, Linear, ReLU
 import numpy as np
+from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
 from models import build_factorgraph_from_SATproblem
-from sat_utils import parse_dimacs
+from sat_utils import parse_dimacs, SatProblems
 
 import mrftools
 
@@ -314,38 +315,51 @@ def test_LoopyBP_ForSAT_automatedGraphConstruction(filename=None, learn_BP=True)
 
     factor_graph = build_factorgraph_from_SATproblem(clauses)
 
+    run_loopy_bp(factor_graph, iters, learn_BP)
+
+def run_loopy_bp(factor_graph, iters, learn_BP, verbose=False):
+    print("factor_graph:", factor_graph)
     msg_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=learn_BP, factor_state_space=2**factor_graph.state_dimensions)
 
-    # print('data.x:', torch.exp(data.x))
-    # print('data.edge_attr:', torch.exp(data.edge_attr))
-    # print('-'*80)
-    # print()
-    # sleep(temp)
-
-
-    for itr in range(300):
-        print('variable beliefs:', torch.exp(factor_graph.var_beliefs))
-        print('factor beliefs:', torch.exp(factor_graph.factor_beliefs))
-        print('prv_factorToVar_messages:', torch.exp(factor_graph.prv_factorToVar_messages))
-        print('prv_varToFactor_messages:', torch.exp(factor_graph.prv_varToFactor_messages))
-
+    for itr in range(iters):
+        if verbose:
+            print('variable beliefs:', torch.exp(factor_graph.var_beliefs))
+            print('factor beliefs:', torch.exp(factor_graph.factor_beliefs))
+            print('prv_factorToVar_messages:', torch.exp(factor_graph.prv_factorToVar_messages))
+            print('prv_varToFactor_messages:', torch.exp(factor_graph.prv_varToFactor_messages))
         msg_passing_layer(factor_graph)        
 
-        # print("partition function estimates:")
-        print("#"*10)
-    for state in factor_graph.var_beliefs:
-        log_Z_est = torch.logsumexp(state, dim=tuple(range(len(state.shape))))
-        print('log(Z):', log_Z_est, 'Z:', torch.exp(log_Z_est))
-    print('-'*80)
-    print()
     bethe_free_energy = factor_graph.compute_bethe_free_energy()
-    print("Bethe free energy =", bethe_free_energy)
     z_estimate_bethe = torch.exp(-bethe_free_energy)
-    print("Partition function estimate from Bethe free energy =", z_estimate_bethe)
 
+    if verbose:
+        print()
+        print('-'*80)
+        print("Bethe free energy =", bethe_free_energy)
+        print("Partition function estimate from Bethe free energy =", z_estimate_bethe)    
+    return bethe_free_energy, z_estimate_bethe
+
+def plot_lbp_vs_exactCount(dataset_size=10):
+    sat_data = SatProblems(counts_dir_name="/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved_counts",
+               problems_dir_name="/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved",
+               dataset_size=dataset_size)
+    data_loader = DataLoader(sat_data)
+
+    exact_solution_counts = []
+    lbp_estimated_counts = []
+    for sat_problem, log_solution_count in data_loader:
+        exact_solution_counts.append(log_solution_count)
+        print("log_solution_count:", log_solution_count)
+        print("sat_problem:", sat_problem)
+
+        bethe_free_energy, z_estimate_bethe = run_loopy_bp(factor_graph=sat_problem, iters=10, learn_BP=False)
+        lbp_estimated_counts.append(-bethe_free_energy)
 
 
 if __name__ == "__main__":
+    plot_lbp_vs_exactCount()
+    sleep(check_data_loader)
+
     test_LoopyBP_ForSAT_automatedGraphConstruction()
     sleep(temp34)
     # SAT_filename = "/atlas/u/jkuck/approxmc/counting2/s641_3_2.cnf.gz.no_w.cnf"
