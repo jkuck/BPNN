@@ -3,9 +3,11 @@ from torch.nn import Sequential as Seq, Linear, ReLU
 import numpy as np
 from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
-from models import build_factorgraph_from_SATproblem
-from sat_utils import parse_dimacs, SatProblems
-
+from factor_graph import build_factorgraph_from_SATproblem, FactorGraph
+from sat_data import parse_dimacs, SatProblems
+from utils import dotdict
+import matplotlib.pyplot as plt
+import matplotlib
 import mrftools
 
 
@@ -20,7 +22,7 @@ def map_beliefs(factor_graph, map_type):
     Utility function for propogate().  Maps factor or variable beliefs to edges 
     See https://pytorch-geometric.readthedocs.io/en/latest/notes/create_gnn.html
     Inputs:
-    - factor_graph: (FactorGraph, defined in models.py) the factor graph whose beliefs we are mapping
+    - factor_graph: (FactorGraph, defined in factor_graph.py) the factor graph whose beliefs we are mapping
     - map_type: (string) 'factor' or 'var' denotes mapping factor or variable beliefs respectively
     '''
     if map_type == 'factor':
@@ -44,6 +46,12 @@ def map_beliefs(factor_graph, map_type):
         mapped_beliefs = beliefs.clone()
 
     if size is not None and size[idx] != mapped_beliefs.size(0):
+        # print("factor_graph:", factor_graph)
+        # print("beliefs:", beliefs)
+        # print("beliefs.shape:", beliefs.shape)
+        # print("size:", size)
+        # print("idx:", idx)
+        # print("mapped_beliefs.size(0):", mapped_beliefs.size(0))
         raise ValueError(__size_error_msg__)
 
     mapped_beliefs = torch.index_select(mapped_beliefs, 0, factor_graph.factorToVar_edge_index[idx])
@@ -122,7 +130,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     def forward(self, factor_graph):
         '''
         Inputs:
-        - factor_graph: (FactorGraph, defined in models.py) the factor graph we will perform one
+        - factor_graph: (FactorGraph, defined in factor_graph.py) the factor graph we will perform one
             iteration of message passing on.
         '''
         # Step 3-5: Start propagating messages.
@@ -134,7 +142,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         from variables to factors.
 
         Inputs:
-        - factor_graph: (FactorGraph, defined in models.py) the factor graph we will perform one
+        - factor_graph: (FactorGraph, defined in factor_graph.py) the factor graph we will perform one
             iteration of message passing on.
 
         Outputs:
@@ -318,7 +326,9 @@ def test_LoopyBP_ForSAT_automatedGraphConstruction(filename=None, learn_BP=True)
     run_loopy_bp(factor_graph, iters, learn_BP)
 
 def run_loopy_bp(factor_graph, iters, learn_BP, verbose=False):
-    print("factor_graph:", factor_graph)
+    # print("factor_graph:", factor_graph)
+    # print("factor_graph['state_dimensions']:", factor_graph['state_dimensions'])
+    # print("factor_graph.state_dimensions:", factor_graph.state_dimensions)
     msg_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=learn_BP, factor_state_space=2**factor_graph.state_dimensions)
 
     for itr in range(iters):
@@ -339,21 +349,54 @@ def run_loopy_bp(factor_graph, iters, learn_BP, verbose=False):
         print("Partition function estimate from Bethe free energy =", z_estimate_bethe)    
     return bethe_free_energy, z_estimate_bethe
 
-def plot_lbp_vs_exactCount(dataset_size=10):
+def plot_lbp_vs_exactCount(dataset_size=100, verbose=True, lbp_iters=1):
     sat_data = SatProblems(counts_dir_name="/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved_counts",
                problems_dir_name="/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved",
                dataset_size=dataset_size)
-    data_loader = DataLoader(sat_data)
+    data_loader = DataLoader(sat_data, batch_size=1)
 
     exact_solution_counts = []
     lbp_estimated_counts = []
     for sat_problem, log_solution_count in data_loader:
+        # sat_problem.compute_bethe_free_energy()
+        sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
+        assert(sat_problem.state_dimensions == 5)
         exact_solution_counts.append(log_solution_count)
-        print("log_solution_count:", log_solution_count)
-        print("sat_problem:", sat_problem)
 
-        bethe_free_energy, z_estimate_bethe = run_loopy_bp(factor_graph=sat_problem, iters=10, learn_BP=False)
+
+        bethe_free_energy, z_estimate_bethe = run_loopy_bp(factor_graph=sat_problem, iters=lbp_iters, learn_BP=False)
         lbp_estimated_counts.append(-bethe_free_energy)
+
+        if verbose:
+            print("exact log_solution_count:", log_solution_count)
+            print("bethe estimate log_solution_count:", -bethe_free_energy)
+            # print("sat_problem:", sat_problem)
+            print("sat_problem.factor_potentials.shape:", sat_problem.factor_potentials.shape)
+            print("sat_problem.numVars.shape:", sat_problem.numVars.shape)
+            print("sat_problem.numFactors.shape:", sat_problem.numFactors.shape)
+            print("sat_problem.factor_beliefs.shape:", sat_problem.factor_beliefs.shape)
+            print("sat_problem.var_beliefs.shape:", sat_problem.var_beliefs.shape)
+            print()  
+
+    plt.plot(exact_solution_counts, lbp_estimated_counts, 'x', c='b', label='Negative Bethe Free Energy, %d iters' % lbp_iters)
+    plt.plot([min(exact_solution_counts), max(exact_solution_counts)], [min(exact_solution_counts), max(exact_solution_counts)], '-', c='g', label='Exact Estimate')
+
+    # plt.axhline(y=math.log(2)*log_2_Z[PROBLEM_NAME], color='y', label='Ground Truth ln(Set Size)') 
+    plt.xlabel('ln(Exact Model Count)', fontsize=14)
+    plt.ylabel('ln(Estimated Model Count)', fontsize=14)
+    plt.title('Exact Model Count vs. Bethe Estimate', fontsize=20)
+    plt.legend(fontsize=12)    
+    #make the font bigger
+    matplotlib.rcParams.update({'font.size': 10})        
+
+    plt.grid(True)
+    # Shrink current axis's height by 10% on the bottom
+    #box = ax.get_position()
+    #ax.set_position([box.x0, box.y0 + box.height * 0.1,
+    #                 box.width, box.height * 0.9])
+    #fig.savefig('/Users/jkuck/Downloads/temp.png', bbox_extra_artists=(lgd,), bbox_inches='tight')    
+
+    plt.show()
 
 
 if __name__ == "__main__":
