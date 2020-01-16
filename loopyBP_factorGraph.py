@@ -17,20 +17,16 @@ __size_error_msg__ = ('All tensors which should get mapped to the same source '
 SAT_PROBLEM_DIRECTORY = '/Users/jkuck/research/learn_BP/SAT_problems/'
 # SAT_PROBLEM_DIRECTORY = '/atlas/u/jkuck/pytorch_geometric/jdk_examples/SAT_problems/'
 
-def map_beliefs(factor_graph, map_type):
+def map_beliefs(beliefs, factor_graph, map_type):
     '''
     Utility function for propogate().  Maps factor or variable beliefs to edges 
     See https://pytorch-geometric.readthedocs.io/en/latest/notes/create_gnn.html
     Inputs:
+    - beliefs (tensor): factor_beliefs or var_beliefs, matching map_type
     - factor_graph: (FactorGraph, defined in factor_graph.py) the factor graph whose beliefs we are mapping
     - map_type: (string) 'factor' or 'var' denotes mapping factor or variable beliefs respectively
     '''
-    if map_type == 'factor':
-        beliefs = factor_graph.factor_beliefs
-    elif map_type == 'var':
-        beliefs = factor_graph.var_beliefs
-    else:
-        assert(False), "Error, incorrect map_type"
+
     size = [factor_graph.numFactors, factor_graph.numVars]
 
 
@@ -127,46 +123,45 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             #                ReLU(),
             #                Linear(factor_state_space, factor_state_space))
 
-    def forward(self, factor_graph):
+    def forward(self, factor_graph, prv_varToFactor_messages, prv_factor_beliefs):
         '''
         Inputs:
         - factor_graph: (FactorGraph, defined in factor_graph.py) the factor graph we will perform one
             iteration of message passing on.
         '''
         # Step 3-5: Start propagating messages.
-        self.propagate(factor_graph)
+        return self.propagate(factor_graph, prv_varToFactor_messages, prv_factor_beliefs)
 
 
-    def propagate(self, factor_graph, debug=False):
+    def propagate(self, factor_graph, prv_varToFactor_messages, prv_factor_beliefs, debug=False):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
 
         Inputs:
         - factor_graph: (FactorGraph, defined in factor_graph.py) the factor graph we will perform one
             iteration of message passing on.
+        - prv_varToFactor_messages (tensor): varToFactor_messages from the last message passing iteration
+        - prv_factor_beliefs (tensor): factor beliefs from the last message passing iteration
 
         Outputs:
-        - none, but the state of the factor graph will be updated, specifically the following will be changed:
-            factor_graph.prv_varToFactor_messages
-            factor_graph.prv_factorToVar_messages
-            factor_graph.factor_beliefs
-            factor_graph.var_beliefs
+        - varToFactor_messages (tensor): varToFactor_messages in this message passing iteration 
+        - factorToVar_messages (tensor): factorToVar_messages in this message passing iteration 
+        - factor_beliefs (tensor): updated factor_beliefs 
+        - var_beliefs (tensor): updated var_beliefs 
         """
 
         #update variable beliefs
-        factorToVar_messages = self.message_factorToVar(factor_graph)
-        factor_graph.var_beliefs = scatter_('add', factorToVar_messages, factor_graph.factorToVar_edge_index[1], dim_size=factor_graph.numVars)
+        factorToVar_messages = self.message_factorToVar(prv_factor_beliefs, factor_graph, prv_varToFactor_messages)
+        var_beliefs = scatter_('add', factorToVar_messages, factor_graph.factorToVar_edge_index[1], dim_size=factor_graph.numVars)
         if debug:
-            print("factor_graph.var_beliefs pre norm:", torch.exp(factor_graph.var_beliefs))
-        assert(len(factor_graph.var_beliefs.shape) == 2)
-        factor_graph.var_beliefs = factor_graph.var_beliefs - logsumexp_multipleDim(factor_graph.var_beliefs, dim=0).view(-1,1)#normalize variable beliefs
+            print("var_beliefs pre norm:", torch.exp(var_beliefs))
+        assert(len(var_beliefs.shape) == 2)
+        var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim=0).view(-1,1)#normalize variable beliefs
         if debug:
-            print("factor_graph.var_beliefs post norm:", torch.exp(factor_graph.var_beliefs))
-        # sleep(check_norm)
-        factor_graph.prv_factorToVar_messages = factorToVar_messages
+            print("var_beliefs post norm:", torch.exp(var_beliefs))
 
         #update factor beliefs
-        varToFactor_messages = self.message_varToFactor(factor_graph)
+        varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages) 
         expansion_list = [2 for i in range(factor_graph.state_dimensions - 1)] + [-1,] #messages have states for one variable, add dummy dimensions for the other variables in factors
         varToFactor_expandedMessages = torch.stack([
             # message_state.expand(expansion_list).transpose(factor_graph.edge_var_indices[0, message_idx], factor_graph.edge_var_indices[0, message_idx]) for message_idx, message_state in enumerate(torch.unbind(varToFactor_messages, dim=0))
@@ -190,123 +185,73 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             print("varToFactor_expandedMessages:", torch.exp(varToFactor_expandedMessages))
         #end debug
 
-        factor_graph.factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.factorToVar_edge_index[0], dim_size=factor_graph.numFactors)
+        factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.factorToVar_edge_index[0], dim_size=factor_graph.numFactors)
         if debug:
-            print("1 factor_graph.factor_beliefs:", torch.exp(factor_graph.factor_beliefs))
+            print("1 factor_beliefs:", torch.exp(factor_beliefs))
         
         if self.learn_BP:
-            print("factor_graph.factor_beliefs.shape:", factor_graph.factor_beliefs.shape)
-            factor_beliefs_shape = factor_graph.factor_beliefs.shape
-            factor_graph.factor_beliefs = self.mlp(factor_graph.factor_beliefs.view(factor_beliefs_shape[0], -1))
-            factor_graph.factor_beliefs = factor_graph.factor_beliefs.view(factor_beliefs_shape)
+            print("factor_beliefs.shape:", factor_beliefs.shape)
+            factor_beliefs_shape = factor_beliefs.shape
+            factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1))
+            factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
 
-        factor_graph.factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
+        factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
 
         if debug:
             print()
             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            print("factor_graph.factor_beliefs pre norm:", torch.exp(factor_graph.factor_beliefs))
-        normalization_view = [1 for i in range(len(factor_graph.factor_beliefs.shape))]
+            print("factor_beliefs pre norm:", torch.exp(factor_beliefs))
+        normalization_view = [1 for i in range(len(factor_beliefs.shape))]
         normalization_view[0] = -1
-        factor_graph.factor_beliefs = factor_graph.factor_beliefs - logsumexp_multipleDim(factor_graph.factor_beliefs, dim=0).view(normalization_view)#normalize variable beliefs
+        factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim=0).view(normalization_view)#normalize variable beliefs
         if debug:
-            print("factor_graph.factor_beliefs post norm:", torch.exp(factor_graph.factor_beliefs))
-            print("torch.sum(factor_graph.factor_beliefs) post norm:", torch.sum(torch.exp(factor_graph.factor_beliefs)))
+            print("factor_beliefs post norm:", torch.exp(factor_beliefs))
+            print("torch.sum(factor_beliefs) post norm:", torch.sum(torch.exp(factor_beliefs)))
             sleep(check_norms2)
 
         if debug:
-            print("3 factor_graph.factor_beliefs:", torch.exp(factor_graph.factor_beliefs))
+            print("3 factor_beliefs:", torch.exp(factor_beliefs))
             print("factor_graph.factorToVar_edge_index[0]:", factor_graph.factorToVar_edge_index[0])
             print("factor_graph.factorToVar_edge_index:", factor_graph.factorToVar_edge_index)
             sleep(debug34)
         
-        factor_graph.prv_varToFactor_messages = varToFactor_messages
+        return varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs
 
-    def message_factorToVar(self, factor_graph):
-        # factor_graph.factor_beliefs has shape [E, X.shape] (double check)
+    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages):
+        # prv_factor_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_varToFactor_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
         # factor_graph.edge_var_indices has shape [2, E]. 
         #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
         #   [1, i] indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
 
-        mapped_factor_beliefs = map_beliefs(factor_graph, 'factor')
+        mapped_factor_beliefs = map_beliefs(prv_factor_beliefs, factor_graph, 'factor')
 
         # tensor with dimensions [edges, 2] for binary variables
         marginalized_states = torch.stack([
             torch.logsumexp(node_state, dim=tuple([i for i in range(len(node_state.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_state in enumerate(torch.unbind(mapped_factor_beliefs, dim=0))
                                           ], dim=0)
 
-        # #debug!!
-        # print("factor_graph.factor_beliefs:", factor_graph.factor_beliefs)
-        # print("mapped_factor_beliefs:", mapped_factor_beliefs)
-        # for edge_idx, node_state in enumerate(torch.unbind(mapped_factor_beliefs, dim=0)):
-        #     print("-----")
-        #     print("node state:", node_state)
-        #     print("dim:", tuple([i for i in range(len(node_state.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]]))
-        #     print("logsumexp:", torch.logsumexp(node_state, dim=tuple([i for i in range(len(node_state.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])))
-        #     print()
-        # print()
-        # print("factorToVar marginalized_states:", torch.exp(marginalized_states))
+        prv_varToFactor_messages_zeroed = prv_varToFactor_messages.clone()
+        prv_varToFactor_messages_zeroed[prv_varToFactor_messages_zeroed == -np.inf] = 0
+        #avoid double counting
+        messages = marginalized_states - prv_varToFactor_messages_zeroed
 
-        # #end debug!!
-
-        if False:
-            #SHOULDN'T HAVE TO DO THIS WITH 1d messages??
-            #swap axes so that the single variable of interest is on the correct dimension for the sending node rather than the receiving node
-            destination_to_source_messages_sourceVarOrder = torch.stack([
-                message_state.transpose(factor_graph.edge_var_indices[1, message_idx], factor_graph.edge_var_indices[0, message_idx]) for message_idx, message_state in enumerate(torch.unbind(factor_graph.prv_varToFactor_messages, dim=0))
-                                              ], dim=0)
-
-            #to avoid dividing by zero messages use: (could assert that corresponding states are -infinity too)
-            destination_to_source_messages_sourceVarOrder[destination_to_source_messages_sourceVarOrder == -np.inf] = 0
-            # print("torch.exp(destination_to_source_messages_sourceVarOrder):", torch.exp(destination_to_source_messages_sourceVarOrder))
-    
-            #avoid double counting
-            messages = marginalized_states - destination_to_source_messages_sourceVarOrder
-        else:
-            prv_varToFactor_messages = factor_graph.prv_varToFactor_messages.clone()
-            prv_varToFactor_messages[prv_varToFactor_messages == -np.inf] = 0
-            #avoid double counting
-            messages = marginalized_states - prv_varToFactor_messages
-
-        # print("factorToVar messages:", messages)
-        # sleep(debug12)
-        # print("torch.exp(messages):", torch.exp(messages))
-#        print("destination_to_source_messages_sourceVarOrder:", torch.exp(destination_to_source_messages_sourceVarOrder))
-#        print("messages:", torch.exp(messages))
         return messages
 
-    def message_varToFactor(self, factor_graph):
-        # factor_graph.var_beliefs has shape [E, X.shape] (double check)
+    def message_varToFactor(self, var_beliefs, factor_graph, prv_factorToVar_messages):
+        # var_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_factorToVar_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
         # factor_graph.edge_var_indices has shape [2, E]. 
         #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
         #   [1, i] indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
 
-        mapped_var_beliefs = map_beliefs(factor_graph, 'var')
+        mapped_var_beliefs = map_beliefs(var_beliefs, factor_graph, 'var')
 
-        if False:
-            #SHOULDN'T HAVE TO DO THIS WITH 1d messages??
-            #swap axes so that the single variable of interest is on the correct dimension for the sending node rather than the receiving node
-            destination_to_source_messages_sourceVarOrder = torch.stack([
-                message_state.transpose(factor_graph.edge_var_indices[1, message_idx], factor_graph.edge_var_indices[0, message_idx]) for message_idx, message_state in enumerate(torch.unbind(factor_graph.prv_factorToVar_messages, dim=0))
-                                              ], dim=0)
-        
-            #to avoid dividing by zero messages use: (could assert that corresponding states are -infinity too)
-            destination_to_source_messages_sourceVarOrder[destination_to_source_messages_sourceVarOrder == -np.inf] = 0
-            # print("torch.exp(destination_to_source_messages_sourceVarOrder):", torch.exp(destination_to_source_messages_sourceVarOrder))
+        prv_factorToVar_messages_zeroed = prv_factorToVar_messages.clone()
+        prv_factorToVar_messages_zeroed[prv_factorToVar_messages_zeroed == -np.inf] = 0
+        #avoid double counting
+        messages = mapped_var_beliefs - prv_factorToVar_messages_zeroed            
 
-            messages = mapped_var_beliefs - destination_to_source_messages_sourceVarOrder
-        else:
-            prv_factorToVar_messages = factor_graph.prv_factorToVar_messages.clone()
-            prv_factorToVar_messages[prv_factorToVar_messages == -np.inf] = 0
-            #avoid double counting
-            messages = mapped_var_beliefs - prv_factorToVar_messages            
-
-        # print("torch.exp(messages):", torch.exp(messages))
-#        print("expanded_states:", torch.exp(expanded_states))
-#        print("destination_to_source_messages_sourceVarOrder:", torch.exp(destination_to_source_messages_sourceVarOrder))
-#        print("messages:", torch.exp(messages))
         return messages
 
 def test_LoopyBP_ForSAT_automatedGraphConstruction(filename=None, learn_BP=True):
@@ -322,10 +267,10 @@ def test_LoopyBP_ForSAT_automatedGraphConstruction(filename=None, learn_BP=True)
         n_vars, clauses = parse_dimacs(filename)
 
     factor_graph = build_factorgraph_from_SATproblem(clauses)
+    prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages()
+    run_loopy_bp(factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs, iters, learn_BP)
 
-    run_loopy_bp(factor_graph, iters, learn_BP)
-
-def run_loopy_bp(factor_graph, iters, learn_BP, verbose=False):
+def run_loopy_bp(factor_graph, prv_varToFactor_messages, prv_factor_beliefs, iters, learn_BP, verbose=False):
     # print("factor_graph:", factor_graph)
     # print("factor_graph['state_dimensions']:", factor_graph['state_dimensions'])
     # print("factor_graph.state_dimensions:", factor_graph.state_dimensions)
@@ -333,13 +278,12 @@ def run_loopy_bp(factor_graph, iters, learn_BP, verbose=False):
 
     for itr in range(iters):
         if verbose:
-            print('variable beliefs:', torch.exp(factor_graph.var_beliefs))
-            print('factor beliefs:', torch.exp(factor_graph.factor_beliefs))
+            print('variable beliefs:', torch.exp(var_beliefs))
+            print('factor beliefs:', torch.exp(factor_beliefs))
             print('prv_factorToVar_messages:', torch.exp(factor_graph.prv_factorToVar_messages))
             print('prv_varToFactor_messages:', torch.exp(factor_graph.prv_varToFactor_messages))
-        msg_passing_layer(factor_graph)        
-
-    bethe_free_energy = factor_graph.compute_bethe_free_energy()
+        prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs = msg_passing_layer(factor_graph, prv_varToFactor_messages, prv_factor_beliefs)        
+    bethe_free_energy = factor_graph.compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs)
     z_estimate_bethe = torch.exp(-bethe_free_energy)
 
     if verbose:
@@ -349,7 +293,7 @@ def run_loopy_bp(factor_graph, iters, learn_BP, verbose=False):
         print("Partition function estimate from Bethe free energy =", z_estimate_bethe)    
     return bethe_free_energy, z_estimate_bethe
 
-def plot_lbp_vs_exactCount(dataset_size=100, verbose=True, lbp_iters=1):
+def plot_lbp_vs_exactCount(dataset_size=10, verbose=True, lbp_iters=20):
     sat_data = SatProblems(counts_dir_name="/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved_counts",
                problems_dir_name="/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved",
                dataset_size=dataset_size)
@@ -360,11 +304,13 @@ def plot_lbp_vs_exactCount(dataset_size=100, verbose=True, lbp_iters=1):
     for sat_problem, log_solution_count in data_loader:
         # sat_problem.compute_bethe_free_energy()
         sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
+        prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = sat_problem.get_initial_beliefs_and_messages()
         assert(sat_problem.state_dimensions == 5)
         exact_solution_counts.append(log_solution_count)
 
 
-        bethe_free_energy, z_estimate_bethe = run_loopy_bp(factor_graph=sat_problem, iters=lbp_iters, learn_BP=False)
+        bethe_free_energy, z_estimate_bethe = run_loopy_bp(factor_graph=sat_problem, prv_varToFactor_messages=prv_varToFactor_messages, 
+                                                           prv_factor_beliefs=prv_factor_beliefs, iters=lbp_iters, learn_BP=False)
         lbp_estimated_counts.append(-bethe_free_energy)
 
         if verbose:
@@ -374,8 +320,8 @@ def plot_lbp_vs_exactCount(dataset_size=100, verbose=True, lbp_iters=1):
             print("sat_problem.factor_potentials.shape:", sat_problem.factor_potentials.shape)
             print("sat_problem.numVars.shape:", sat_problem.numVars.shape)
             print("sat_problem.numFactors.shape:", sat_problem.numFactors.shape)
-            print("sat_problem.factor_beliefs.shape:", sat_problem.factor_beliefs.shape)
-            print("sat_problem.var_beliefs.shape:", sat_problem.var_beliefs.shape)
+            print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
+            print("prv_var_beliefs.shape:", prv_var_beliefs.shape)
             print()  
 
     plt.plot(exact_solution_counts, lbp_estimated_counts, 'x', c='b', label='Negative Bethe Free Energy, %d iters' % lbp_iters)
