@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
 from factor_graph import build_factorgraph_from_SATproblem, FactorGraph
 from sat_data import parse_dimacs, SatProblems
-from utils import dotdict
+from utils import dotdict, logminusexp
 import matplotlib.pyplot as plt
 import matplotlib
 import mrftools
@@ -104,20 +104,25 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         insert a neural network into message aggregation for learning
     """
 
-    def __init__(self, learn_BP=True, factor_state_space=None):
+    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
 
         self.learn_BP = learn_BP
+        self.avoid_nans = avoid_nans
+        print("learn_BP:", learn_BP)
         if learn_BP:
             assert(factor_state_space is not None)
-            linear1 = Linear(factor_state_space, factor_state_space)
-            linear2 = Linear(factor_state_space, factor_state_space)
-            linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-            linear1.bias = torch.nn.Parameter(torch.zeros(linear1.bias.shape))
-            linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-            linear2.bias = torch.nn.Parameter(torch.zeros(linear2.bias.shape))
+            # print("factor_state_space:", factor_state_space)
+            # sleep(float)
+            self.linear1 = Linear(factor_state_space, factor_state_space)
+            self.linear2 = Linear(factor_state_space, factor_state_space)
+            self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+            self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+            self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+            self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+            self.relu = ReLU()
 
-            self.mlp = Seq(linear1, ReLU(), linear2)
+            self.mlp = Seq(self.linear1, ReLU(), self.linear2, ReLU())
 
             # self.mlp = Seq(Linear(factor_state_space, factor_state_space),
             #                ReLU(),
@@ -190,10 +195,43 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             print("1 factor_beliefs:", torch.exp(factor_beliefs))
         
         if self.learn_BP:
-            print("factor_beliefs.shape:", factor_beliefs.shape)
+            
+            normalization_view = [1 for i in range(len(factor_beliefs.shape))]
+            normalization_view[0] = -1
+            factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim=0).view(normalization_view)#normalize factor beliefs
+            factor_beliefs = torch.exp(factor_beliefs) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+
+            # print("factor_beliefs.shape:", factor_beliefs.shape)
             factor_beliefs_shape = factor_beliefs.shape
-            factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1))
-            factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
+            # print("1 factor_beliefs:", factor_beliefs)
+            # print("factor_beliefs.shape:", factor_beliefs.shape)
+
+            if self.avoid_nans:
+                factor_beliefs_neg_inf_locations = torch.where(factor_beliefs==-np.inf)
+                factor_beliefs_clone = factor_beliefs.clone()
+                factor_beliefs_clone[factor_beliefs_neg_inf_locations] = 0
+                factor_beliefs_temp = self.mlp(factor_beliefs_clone.view(factor_beliefs_shape[0], -1))
+                factor_beliefs = factor_beliefs_temp.clone()
+                factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
+                factor_beliefs[factor_beliefs_neg_inf_locations] = -np.inf
+
+                # factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1)) + .01
+                # factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
+
+            else:
+                factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1))
+                factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
+            # factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1)) + .01
+            # assert((factor_beliefs>=0).all())
+            
+            # factor_beliefs[torch.where(factor_beliefs == 0)] += .000001
+            # print("factor_beliefs:", factor_beliefs)
+            # factor_beliefs[torch.nonzero(factor_beliefs == 0, as_tuple=True)] += .000001
+            # factor_beliefs = self.linear1(factor_beliefs.view(factor_beliefs_shape[0], -1))
+            # print("2 factor_beliefs:", factor_beliefs)
+            # print("factor_beliefs.shape:", factor_beliefs.shape)
+            # sleep(chekc1)
+            factor_beliefs = torch.log(factor_beliefs) #go back to log-space
 
         factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
 
@@ -203,7 +241,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             print("factor_beliefs pre norm:", torch.exp(factor_beliefs))
         normalization_view = [1 for i in range(len(factor_beliefs.shape))]
         normalization_view[0] = -1
-        factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim=0).view(normalization_view)#normalize variable beliefs
+        factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim=0).view(normalization_view)#normalize factor beliefs
         if debug:
             print("factor_beliefs post norm:", torch.exp(factor_beliefs))
             print("torch.sum(factor_beliefs) post norm:", torch.sum(torch.exp(factor_beliefs)))
@@ -217,6 +255,10 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         
         return varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs
 
+
+# def logsumexp(tensor, dim):
+#     tensor_exp = tor
+
     def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages):
         # prv_factor_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_varToFactor_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
@@ -226,10 +268,34 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
         mapped_factor_beliefs = map_beliefs(prv_factor_beliefs, factor_graph, 'factor')
 
-        # tensor with dimensions [edges, 2] for binary variables
-        marginalized_states = torch.stack([
-            torch.logsumexp(node_state, dim=tuple([i for i in range(len(node_state.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_state in enumerate(torch.unbind(mapped_factor_beliefs, dim=0))
-                                          ], dim=0)
+
+        if self.avoid_nans:
+            #best idea: set to say 0, then log sum exp with -# of infinities precomputed tensor to correct
+
+            mapped_factor_beliefs[torch.where(mapped_factor_beliefs==-np.inf)] = -99
+
+            # factor_beliefs_neg_inf_locations = torch.where(mapped_factor_beliefs==-np.inf)
+            # mapped_factor_beliefs[factor_beliefs_neg_inf_locations] = 0
+            # adjustment_tensor = torch.zeros_like(mapped_factor_beliefs)
+            # adjustment_tensor[factor_beliefs_neg_inf_locations] = 1
+
+            # tensor with dimensions [edges, 2] for binary variables
+            marginalized_states = torch.stack([
+                torch.logsumexp(node_state, dim=tuple([i for i in range(len(node_state.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_state in enumerate(torch.unbind(mapped_factor_beliefs, dim=0))
+                                              ], dim=0)
+
+            # marginalized_adjustment_tensor = torch.stack([
+            #     torch.logsumexp(node_adjustment, dim=tuple([i for i in range(len(node_adjustment.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_adjustment in enumerate(torch.unbind(adjustment_tensor, dim=0))
+            #                                   ], dim=0)
+
+            # marginalized_states = logminusexp(marginalized_states, marginalized_adjustment_tensor)
+
+        else:
+            # tensor with dimensions [edges, 2] for binary variables
+            marginalized_states = torch.stack([
+                torch.logsumexp(node_state, dim=tuple([i for i in range(len(node_state.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_state in enumerate(torch.unbind(mapped_factor_beliefs, dim=0))
+                # torch.logsumexp(node_state, dim=tuple([i for i in range(len(node_state.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_state in enumerate(torch.unbind(mapped_factor_beliefs, dim=0))
+                                              ], dim=0)
 
         prv_varToFactor_messages_zeroed = prv_varToFactor_messages.clone()
         prv_varToFactor_messages_zeroed[prv_varToFactor_messages_zeroed == -np.inf] = 0
@@ -274,7 +340,7 @@ def run_loopy_bp(factor_graph, prv_varToFactor_messages, prv_factor_beliefs, ite
     # print("factor_graph:", factor_graph)
     # print("factor_graph['state_dimensions']:", factor_graph['state_dimensions'])
     # print("factor_graph.state_dimensions:", factor_graph.state_dimensions)
-    msg_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=learn_BP, factor_state_space=2**factor_graph.state_dimensions)
+    msg_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=learn_BP, factor_state_space=2**factor_graph.state_dimensions.item())
 
     for itr in range(iters):
         if verbose:
@@ -282,6 +348,7 @@ def run_loopy_bp(factor_graph, prv_varToFactor_messages, prv_factor_beliefs, ite
             print('factor beliefs:', torch.exp(factor_beliefs))
             print('prv_factorToVar_messages:', torch.exp(factor_graph.prv_factorToVar_messages))
             print('prv_varToFactor_messages:', torch.exp(factor_graph.prv_varToFactor_messages))
+        
         prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs = msg_passing_layer(factor_graph, prv_varToFactor_messages, prv_factor_beliefs)        
     bethe_free_energy = factor_graph.compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs)
     z_estimate_bethe = torch.exp(-bethe_free_energy)
@@ -293,7 +360,7 @@ def run_loopy_bp(factor_graph, prv_varToFactor_messages, prv_factor_beliefs, ite
         print("Partition function estimate from Bethe free energy =", z_estimate_bethe)    
     return bethe_free_energy, z_estimate_bethe
 
-def plot_lbp_vs_exactCount(dataset_size=10, verbose=True, lbp_iters=20):
+def plot_lbp_vs_exactCount(dataset_size=10, verbose=True, lbp_iters=4):
     sat_data = SatProblems(counts_dir_name="/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved_counts",
                problems_dir_name="/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved",
                dataset_size=dataset_size)
@@ -310,7 +377,7 @@ def plot_lbp_vs_exactCount(dataset_size=10, verbose=True, lbp_iters=20):
 
 
         bethe_free_energy, z_estimate_bethe = run_loopy_bp(factor_graph=sat_problem, prv_varToFactor_messages=prv_varToFactor_messages, 
-                                                           prv_factor_beliefs=prv_factor_beliefs, iters=lbp_iters, learn_BP=False)
+                                                           prv_factor_beliefs=prv_factor_beliefs, iters=lbp_iters, learn_BP=True)
         lbp_estimated_counts.append(-bethe_free_energy)
 
         if verbose:
