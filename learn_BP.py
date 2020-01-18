@@ -96,13 +96,17 @@ def train(dataset_size, data_dir):
     torch.save(lbp_net.state_dict(), TRAINED_MODELS_DIR + MODEL_NAME)
 
 def test(dataset_size, data_dir):
-    lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
-    lbp_net.train()
+    # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
+    # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "simple_4layer_firstWorking.pth"))
+
+    lbp_net.eval()
 
     sat_data = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
                problems_dir_name=data_dir + "SAT_problems_solved",
                dataset_size=50, begin_idx=0)
+               # dataset_size=100, begin_idx=50)
                # dataset_size=dataset_size)
+
     data_loader = DataLoader(sat_data, batch_size=1)
     loss_func = torch.nn.MSELoss()
 

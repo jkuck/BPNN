@@ -5,7 +5,7 @@ from collections import defaultdict
 from factor_graph import build_factorgraph_from_SATproblem
 from utils import dotdict
 
-def parse_dimacs(filename):
+def parse_dimacs(filename, verbose=False):
     clauses = []
     dictionary_of_vars = defaultdict(int)    
     with open(filename, 'r') as f:    
@@ -23,26 +23,31 @@ def parse_dimacs(filename):
                 clauses.append(cur_clause)
     # assert(n_clauses == len(clauses)), (n_clauses, len(clauses), filename)
     if(n_clauses != len(clauses)):
-        print("actual clause count doesn't match expected clause count!!")
+        if verbose:
+            print("actual clause count doesn't match expected clause count!!")
     #check variables are numbered 1 to n_vars with no gaps        
     num_vars_check = -1
     for var_name, var_degree in dictionary_of_vars.items():
         if var_name > num_vars_check:
             num_vars_check = var_name
-    assert(num_vars_check == n_vars) #make sure largest variable is named n_vars
+
+    # assert(num_vars_check == n_vars) #make sure largest variable is named n_vars
     # assert(len(dictionary_of_vars) == n_vars), (len(dictionary_of_vars), n_vars) #make sure we actually have this many variables
-    if len(dictionary_of_vars) == n_vars:
-        print("variable count check succeeded")
+
+    if (len(dictionary_of_vars) == n_vars) and (num_vars_check == n_vars):
+        if verbose:
+            print("variable count checks succeeded")
         load_successful = True
     else:
-        print("variable count check failed")
+        if verbose:
+            print("variable count check failed")
         load_successful = False
 
     return n_vars, clauses, load_successful
 
 
 class SatProblems(Dataset):
-    def __init__(self, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0):
+    def __init__(self, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0, verbose=False):
         '''
         Inputs:
         - problems_dir_name (string): directory containing problems in cnf form 
@@ -60,6 +65,9 @@ class SatProblems(Dataset):
         # sleep(temp)
         discarded_count = 0
         for count_file in os.listdir(counts_dir_name):
+            if count_file[:5] == 'or-60':
+            # if count_file[:2] == 'or':
+                continue
             if len(self.sat_problems) == dataset_size:
                 break
             if count_file[-4:] != '.txt':
@@ -67,7 +75,8 @@ class SatProblems(Dataset):
                 continue
             problem_file = count_file[:-19] + '.cnf'
             if problem_file not in problems_in_dir:
-                print('no corresponding sat file for', problem_file)
+                if verbose:
+                    print('no corresponding sat file for', problem_file)
                 continue
 
             with open(counts_dir_name + "/" + count_file, 'r') as f_solution_count:
@@ -83,9 +92,10 @@ class SatProblems(Dataset):
             n_vars, clauses, load_successful = parse_dimacs(problems_dir_name + "/" + problem_file)
             if not load_successful:
                 continue
-            factor_graph = build_factorgraph_from_SATproblem(clauses)
             # print("factor_graph:", factor_graph)
             if discarded_count == begin_idx:
+                print('using problem:', problem_file)
+                factor_graph = build_factorgraph_from_SATproblem(clauses)
                 self.sat_problems.append(factor_graph)
                 self.log_solution_counts.append(log_solution_count)
             else:
