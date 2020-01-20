@@ -11,7 +11,7 @@ import numpy as np
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 5 #number of variables in the largest factor -> factor has 2^MAX_FACTOR_STATE_DIMENSIONS states
-MSG_PASSING_ITERS = 2 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 3 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 
 MODEL_NAME = "simple_4layer.pth"
@@ -21,7 +21,7 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 TRAINING_DATA_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/"
 TRAINING_DATA_SIZE = 50
 VALIDATION_DATA_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/"
-VAL_DATA_SIZE = 100
+VAL_DATA_SIZE = 2#100
 
 EPOCH_COUNT = 40
 PRINT_FREQUENCY = 1
@@ -45,8 +45,8 @@ def train(dataset_size, data_dir):
 
     sat_data_val = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
                problems_dir_name=data_dir + "SAT_problems_solved",
-               dataset_size=50, begin_idx=0)
-               # dataset_size=VAL_DATA_SIZE, begin_idx=TRAINING_DATA_SIZE)
+               # dataset_size=50, begin_idx=0)
+               dataset_size=VAL_DATA_SIZE, begin_idx=TRAINING_DATA_SIZE)
     val_data_loader = DataLoader(sat_data_val, batch_size=1)
 
 
@@ -60,9 +60,9 @@ def train(dataset_size, data_dir):
             assert(sat_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
             estimated_ln_partition_function = lbp_net(sat_problem)
 
-            # print("estimated_ln_partition_function:", estimated_ln_partition_function)
+            print("estimated_ln_partition_function:", estimated_ln_partition_function)
             # print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
-            # print("exact_ln_partition_function:", exact_ln_partition_function)
+            print("exact_ln_partition_function:", exact_ln_partition_function)
             # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
             # print("loss:", loss)
@@ -122,7 +122,9 @@ def test(dataset_size, data_dir):
         loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
         losses.append(loss.item())
 
-
+        print("estimated_ln_partition_function:", estimated_ln_partition_function)
+        print("exact_ln_partition_function:", exact_ln_partition_function)
+        print()
 
     plt.plot(exact_solution_counts, lbp_estimated_counts, 'x', c='b', label='Negative Bethe Free Energy, %d iters, RMSE=%.2f' % (MSG_PASSING_ITERS, np.sqrt(np.sum(losses))))
     plt.plot([min(exact_solution_counts), max(exact_solution_counts)], [min(exact_solution_counts), max(exact_solution_counts)], '-', c='g', label='Exact Estimate')
@@ -149,5 +151,5 @@ def test(dataset_size, data_dir):
 
 
 if __name__ == "__main__":
-    # train(dataset_size=TRAINING_DATA_SIZE, data_dir=TRAINING_DATA_DIR)
-    test(dataset_size=TRAINING_DATA_SIZE, data_dir=TRAINING_DATA_DIR)
+    train(dataset_size=TRAINING_DATA_SIZE, data_dir=TRAINING_DATA_DIR)
+    # test(dataset_size=TRAINING_DATA_SIZE, data_dir=TRAINING_DATA_DIR)

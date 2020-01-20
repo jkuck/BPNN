@@ -98,7 +98,9 @@ class FactorGraph(dotdict):
             print("debugging compute_bethe_average_energy")
             print("torch.exp(factor_beliefs):", torch.exp(factor_beliefs))
             print("neg_inf_to_zero(self.factor_potentials):", neg_inf_to_zero(self.factor_potentials))
-        return -torch.sum(torch.exp(factor_beliefs)*neg_inf_to_zero(self.factor_potentials)) #elementwise multiplication, then sum
+        bethe_average_energy = -torch.sum(torch.exp(factor_beliefs)*neg_inf_to_zero(self.factor_potentials)) #elementwise multiplication, then sum
+        print("bethe_average_energy:", bethe_average_energy)
+        return bethe_average_energy
 
     def compute_bethe_entropy(self, factor_beliefs, var_beliefs):
         '''
@@ -115,6 +117,7 @@ class FactorGraph(dotdict):
         # outer_sum = torch.einsum('i,i->', [self.var_degrees - 1, inner_sum])
 
         bethe_entropy += outer_sum
+        print("bethe_entropy:", bethe_entropy)
         return bethe_entropy
 
     def compute_bethe_free_energy(self, factor_beliefs, var_beliefs):
@@ -129,6 +132,12 @@ class FactorGraph(dotdict):
         '''
         # print("self.compute_bethe_average_energy():", self.compute_bethe_average_energy())
         # print("self.compute_bethe_entropy():", self.compute_bethe_entropy())
+        if torch.isnan(factor_beliefs).any():
+            print("values, some should be nan:")
+            for val in factor_beliefs.flatten():
+                print(val)
+        assert(not torch.isnan(factor_beliefs).any()), (factor_beliefs, torch.where(factor_beliefs == torch.tensor(float('nan'))), torch.where(var_beliefs == torch.tensor(float('nan'))))
+        assert(not torch.isnan(var_beliefs).any()), var_beliefs
         return self.compute_bethe_average_energy(factor_beliefs) - self.compute_bethe_entropy(factor_beliefs, var_beliefs)
 
 

@@ -65,9 +65,9 @@ class SatProblems(Dataset):
         # sleep(temp)
         discarded_count = 0
         for count_file in os.listdir(counts_dir_name):
-            if count_file[:5] == 'or-60':
+            # if count_file[:5] == 'or-60':
             # if count_file[:2] == 'or':
-                continue
+                # continue
             if len(self.sat_problems) == dataset_size:
                 break
             if count_file[-4:] != '.txt':
