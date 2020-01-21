@@ -99,7 +99,7 @@ class FactorGraph(dotdict):
             print("torch.exp(factor_beliefs):", torch.exp(factor_beliefs))
             print("neg_inf_to_zero(self.factor_potentials):", neg_inf_to_zero(self.factor_potentials))
         bethe_average_energy = -torch.sum(torch.exp(factor_beliefs)*neg_inf_to_zero(self.factor_potentials)) #elementwise multiplication, then sum
-        print("bethe_average_energy:", bethe_average_energy)
+        # print("bethe_average_energy:", bethe_average_energy)
         return bethe_average_energy
 
     def compute_bethe_entropy(self, factor_beliefs, var_beliefs):
@@ -117,7 +117,7 @@ class FactorGraph(dotdict):
         # outer_sum = torch.einsum('i,i->', [self.var_degrees - 1, inner_sum])
 
         bethe_entropy += outer_sum
-        print("bethe_entropy:", bethe_entropy)
+        # print("bethe_entropy:", bethe_entropy)
         return bethe_entropy
 
     def compute_bethe_free_energy(self, factor_beliefs, var_beliefs):

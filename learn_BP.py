@@ -11,7 +11,7 @@ import numpy as np
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 5 #number of variables in the largest factor -> factor has 2^MAX_FACTOR_STATE_DIMENSIONS states
-MSG_PASSING_ITERS = 3 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 2 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 
 MODEL_NAME = "simple_4layer.pth"
@@ -45,8 +45,8 @@ def train(dataset_size, data_dir):
 
     sat_data_val = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
                problems_dir_name=data_dir + "SAT_problems_solved",
-               # dataset_size=50, begin_idx=0)
-               dataset_size=VAL_DATA_SIZE, begin_idx=TRAINING_DATA_SIZE)
+               dataset_size=50, begin_idx=0)
+               # dataset_size=VAL_DATA_SIZE, begin_idx=TRAINING_DATA_SIZE)
     val_data_loader = DataLoader(sat_data_val, batch_size=1)
 
 
@@ -60,9 +60,9 @@ def train(dataset_size, data_dir):
             assert(sat_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
             estimated_ln_partition_function = lbp_net(sat_problem)
 
-            print("estimated_ln_partition_function:", estimated_ln_partition_function)
+            # print("estimated_ln_partition_function:", estimated_ln_partition_function)
             # print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
-            print("exact_ln_partition_function:", exact_ln_partition_function)
+            # print("exact_ln_partition_function:", exact_ln_partition_function)
             # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
             # print("loss:", loss)
