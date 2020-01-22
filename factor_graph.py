@@ -142,9 +142,11 @@ class FactorGraph(dotdict):
 
 
 
-def build_factorPotential_fromClause(clause, state_dimensions):
+def build_factorPotential_fromClause(clause, state_dimensions, epsilon=np.exp(-99)):
     '''
     The ith variable in a clause corresponds to the ith dimension in the tensor representation of the state.
+    Inputs:
+    - epsilon (float): set states with potential 0 to epsilon for numerical stability
     '''
     #Create a tensor for the 2^state_dimensions states
     state = torch.zeros([2 for i in range(state_dimensions)])
@@ -166,6 +168,8 @@ def build_factorPotential_fromClause(clause, state_dimensions):
                 set_to_1 = True
         if set_to_1:
             state[indices] = 1
+        else:
+            state[indices] = epsilon
     return state
 
 def test_build_factorPotential_fromClause():

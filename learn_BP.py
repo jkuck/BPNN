@@ -19,7 +19,7 @@ ROOT_DIR = "/atlas/u/jkuck/learn_BP/" #file path to the directory cloned from gi
 TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored here
 
 TRAINING_DATA_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/"
-TRAINING_DATA_SIZE = 50
+TRAINING_DATA_SIZE = 10
 VALIDATION_DATA_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/"
 VAL_DATA_SIZE = 2#100
 
@@ -39,14 +39,14 @@ def train(dataset_size, data_dir):
 
     sat_data_train = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
                problems_dir_name=data_dir + "SAT_problems_solved",
-               dataset_size=100, begin_idx=50)
-               # dataset_size=dataset_size)
+               # dataset_size=100, begin_idx=50)
+               dataset_size=dataset_size)
     train_data_loader = DataLoader(sat_data_train, batch_size=1)
 
     sat_data_val = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
                problems_dir_name=data_dir + "SAT_problems_solved",
-               dataset_size=50, begin_idx=0)
-               # dataset_size=VAL_DATA_SIZE, begin_idx=TRAINING_DATA_SIZE)
+               # dataset_size=50, begin_idx=0)
+               dataset_size=VAL_DATA_SIZE, begin_idx=TRAINING_DATA_SIZE)
     val_data_loader = DataLoader(sat_data_val, batch_size=1)
 
 
