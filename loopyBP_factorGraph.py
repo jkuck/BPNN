@@ -361,12 +361,13 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         #   [1, i] indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
 
         mapped_factor_beliefs = map_beliefs(prv_factor_beliefs, factor_graph, 'factor')
-
+        mapped_factor_potentials_masks = map_beliefs(factor_graph.factor_potential_masks, factor_graph, 'factor')
 
         if self.avoid_nans:
             #best idea: set to say 0, then log sum exp with -# of infinities precomputed tensor to correct
 
-            mapped_factor_beliefs[torch.where(mapped_factor_beliefs==-np.inf)] = -99
+            # mapped_factor_beliefs[torch.where(mapped_factor_beliefs==-np.inf)] = -99
+            mapped_factor_beliefs[torch.where((mapped_factor_potentials_masks==0) & (mapped_factor_beliefs==-np.inf))] = -99 #leave invalid beliefs at -inf
 
             # factor_beliefs_neg_inf_locations = torch.where(mapped_factor_beliefs==-np.inf)
             # mapped_factor_beliefs[factor_beliefs_neg_inf_locations] = 0
