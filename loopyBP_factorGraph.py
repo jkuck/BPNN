@@ -130,13 +130,16 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     Inputs:
     - learn_BP (bool): if False run standard looph belief propagation, if True
         insert a neural network into message aggregation for learning
+    - logspace_mlp (bool): if True mlp runs in log space (trouble with good results), 
+        if False we take exponent then run mlp then take log
     """
 
-    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True):
+    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True, logspace_mlp=False):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
 
         self.learn_BP = learn_BP
         self.avoid_nans = avoid_nans
+        self.logspace_mlp = logspace_mlp
         print("learn_BP:", learn_BP)
         if learn_BP:
             assert(factor_state_space is not None)
@@ -148,17 +151,24 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
             self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
             self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
-            self.relu = ReLU()
-            self.shifted_relu = shift_func(ReLU(), shift=-50)
-            # self.shifted_relu = shift_func(ReLU(), shift=np.exp(-99))
 
-            self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2)
+            if self.logspace_mlp:
+                self.shifted_relu = shift_func(ReLU(), shift=-50)
+                # self.shifted_relu = shift_func(ReLU(), shift=np.exp(-99))
+
+                self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2)
+
+            else:
+                self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space                
+                self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
+                # self.mlp = Seq(self.linear1, ReLU(), self.linear2)
+
+            # self.relu = ReLU()                
             # self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
             # self.mlp = self.linear1
             # self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
             # self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
             # self.mlp = Seq(self.linear1, ReLU(), self.linear2, ReLU())
-            # self.mlp = Seq(self.linear1, ReLU(), self.linear2)
 
             # self.mlp = Seq(Linear(factor_state_space, factor_state_space),
             #                ReLU(),
@@ -251,7 +261,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             # print("factor_beliefs.shape:", factor_beliefs.shape)
             assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
             if self.avoid_nans:
-                if True: #another try, stay with logspace
+                if self.logspace_mlp: #another try, stay with logspace
                     # pass
                     # assert((factor_beliefs==-np.inf).any())
                     masked_locations = torch.where(factor_graph.factor_potential_masks==1)
@@ -292,7 +302,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                     # factor_beliefs = torch.log(factor_beliefs) #go back to log-space
 
 
-                    valid_locations = torch.where(factor_graph.factor_potentials!=-np.inf)
+                    valid_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs!=-np.inf))
                     # valid_locations = torch.where((factor_beliefs!=-np.inf) & (factor_beliefs_temp>0))
                     factor_beliefs = -np.inf*torch.ones_like(factor_beliefs)
                     factor_beliefs[valid_locations] = torch.log(factor_beliefs_temp[valid_locations])

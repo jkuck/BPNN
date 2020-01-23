@@ -35,7 +35,7 @@ def train(dataset_size, data_dir):
     lbp_net.train()
 
     # Initialize optimizer
-    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0001)
     loss_func = torch.nn.MSELoss()
 
     sat_data_train = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
