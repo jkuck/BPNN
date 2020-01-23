@@ -12,7 +12,7 @@ class FactorGraph(dotdict):
     Inherit from dictionary class for pytorch dataloader
     '''
     def __init__(self, factor_potentials, factorToVar_edge_index, numVars, numFactors, 
-                 edge_var_indices, state_dimensions):
+                 edge_var_indices, state_dimensions, factor_potential_masks):
         #potentials defining the factor graph
         self.factor_potentials = factor_potentials 
 
@@ -45,6 +45,8 @@ class FactorGraph(dotdict):
         # (int) the largest node degree
         self.state_dimensions = state_dimensions
 
+        #1 signifies an invalid location (e.g. a dummy dimension in a factor), 0 signifies a valid location 
+        self.factor_potential_masks = factor_potential_masks
 
     @classmethod
     def init_from_dictionary(cls, arg_dictionary, squeeze_tensors=False):
@@ -55,7 +57,7 @@ class FactorGraph(dotdict):
         - squeeze_tensors (bool): if True, squeeze all input tensors (helpful for batch size 1 testing)
         '''
         for arg in ["factor_potentials", "factorToVar_edge_index", "numVars", "numFactors", 
-                      "edge_var_indices", "state_dimensions"]:
+                      "edge_var_indices", "state_dimensions", "factor_potential_masks"]:
             assert(arg in arg_dictionary), ("Dictionary missing argument:", arg)
 
         if squeeze_tensors:
@@ -67,7 +69,7 @@ class FactorGraph(dotdict):
  
 
         return cls(arg_dictionary["factor_potentials"], arg_dictionary["factorToVar_edge_index"], arg_dictionary["numVars"], arg_dictionary["numFactors"], 
-                   arg_dictionary["edge_var_indices"], arg_dictionary["state_dimensions"])
+                   arg_dictionary["edge_var_indices"], arg_dictionary["state_dimensions"], arg_dictionary["factor_potential_masks"])
 
     def get_initial_beliefs_and_messages(self, initialize_randomly=False):
         edge_count = self.edge_var_indices.shape[1]
@@ -142,14 +144,19 @@ class FactorGraph(dotdict):
 
 
 
-def build_factorPotential_fromClause(clause, state_dimensions, epsilon=np.exp(-99)):
+def build_factorPotential_fromClause(clause, state_dimensions, epsilon):
     '''
     The ith variable in a clause corresponds to the ith dimension in the tensor representation of the state.
     Inputs:
     - epsilon (float): set states with potential 0 to epsilon for numerical stability
+
+    Outputs:
+    - state (tensor): 1 for variable assignments that satisfy the clause, 0 otherwise
+    - mask (tensor): 1 signifies an invalid location (outside factor's valid variables), 0 signifies a valid location 
     '''
     #Create a tensor for the 2^state_dimensions states
     state = torch.zeros([2 for i in range(state_dimensions)])
+    mask = torch.zeros([2 for i in range(state_dimensions)])
     #Iterate over the 2^state_dimensions variable assignments and set those to 1 that satisfy the clause
     for indices in np.ndindex(state.shape):
         junk_location = False
@@ -157,6 +164,7 @@ def build_factorPotential_fromClause(clause, state_dimensions, epsilon=np.exp(-9
             if indices[dimension] == 1:
                 junk_location = True #this dimension is unused by this clause, set to 0
         if junk_location:
+            mask[indices] = 1
             continue
         set_to_1 = False
         for dimension, index_val in enumerate(indices):
@@ -170,11 +178,11 @@ def build_factorPotential_fromClause(clause, state_dimensions, epsilon=np.exp(-9
             state[indices] = 1
         else:
             state[indices] = epsilon
-    return state
+    return state, mask
 
 def test_build_factorPotential_fromClause():
     for new_dimensions in range(3,7):
-        state = build_factorPotential_fromClause([1, -2, 3], new_dimensions)
+        state, mask = build_factorPotential_fromClause([1, -2, 3], new_dimensions)
         print(state)
         for indices in np.ndindex(state.shape):
             print(tuple(reversed(indices)), state[tuple(reversed(indices))])
@@ -202,7 +210,7 @@ def test_build_edge_var_indices():
     print(edge_var_indices)
     print(expected_edge_var_indices)
 
-def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False):
+def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilon=0):
     '''
     Take a SAT problem in CNF form (specified by clauses) and return a factor graph representation
     whose partition function is the number of satisfying solutions
@@ -211,6 +219,7 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False):
     - clauses: (list of list of ints) variables should be numbered 1 to N with no gaps
     - initialize_randomly: (bool) if true randomly initialize beliefs and previous messages
         if false initialize to 1
+    - epsilon (float): set states with potential 0 to epsilon for numerical stability
     '''
     num_factors = len(clauses)
     factorToVar_edge_index_list = []
@@ -255,8 +264,17 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False):
 ####################
 ####################    clause_node_variable_indices = []
 
+    # factor_potentials = torch.stack([build_factorPotential_fromClause(clause=clause, state_dimensions=state_dimensions, epsilon=epsilon) for clause in clauses], dim=0)
+    states = []
+    masks = []
+    for clause in clauses:
+        state, mask = build_factorPotential_fromClause(clause=clause, state_dimensions=state_dimensions, epsilon=epsilon)
+        states.append(state)
+        masks.append(mask)
+    factor_potentials = torch.stack(states, dim=0)
+    factor_potential_masks = torch.stack(masks, dim=0)
+ 
 
-    factor_potentials = torch.stack([build_factorPotential_fromClause(clause=clause, state_dimensions=state_dimensions) for clause in clauses], dim=0)
 
    
     # print("d")
@@ -272,9 +290,9 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False):
 
 
 
-    factor_graph = FactorGraph(factor_potentials=torch.log(factor_potentials), 
+    factor_graph = FactorGraph(factor_potentials=torch.log(factor_potentials),
                  factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=N, numFactors=num_factors, 
-                 edge_var_indices=edge_var_indices, state_dimensions=state_dimensions)
+                 edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks)
 
     return factor_graph
 

@@ -47,7 +47,7 @@ def parse_dimacs(filename, verbose=False):
 
 
 class SatProblems(Dataset):
-    def __init__(self, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0, verbose=False):
+    def __init__(self, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0, verbose=False, epsilon=0):
         '''
         Inputs:
         - problems_dir_name (string): directory containing problems in cnf form 
@@ -56,6 +56,7 @@ class SatProblems(Dataset):
             File content format: "sharpSAT time_out: False solution_count: 2097152 sharp_sat_time: 0.0"
 
         - begin_idx: (int) discard the first begin_idx problems, e.g. for validation
+        - epsilon (float): set factor states with potential 0 to epsilon for numerical stability
         '''
         # print("HI!!")
         self.sat_problems = []
@@ -95,7 +96,7 @@ class SatProblems(Dataset):
             # print("factor_graph:", factor_graph)
             if discarded_count == begin_idx:
                 print('using problem:', problem_file)
-                factor_graph = build_factorgraph_from_SATproblem(clauses)
+                factor_graph = build_factorgraph_from_SATproblem(clauses, epsilon=epsilon)
                 self.sat_problems.append(factor_graph)
                 self.log_solution_counts.append(log_solution_count)
             else:

@@ -13,6 +13,7 @@ import numpy as np
 MAX_FACTOR_STATE_DIMENSIONS = 5 #number of variables in the largest factor -> factor has 2^MAX_FACTOR_STATE_DIMENSIONS states
 MSG_PASSING_ITERS = 2 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
+EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
 MODEL_NAME = "simple_4layer.pth"
 ROOT_DIR = "/atlas/u/jkuck/learn_BP/" #file path to the directory cloned from github
@@ -34,19 +35,19 @@ def train(dataset_size, data_dir):
     lbp_net.train()
 
     # Initialize optimizer
-    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0001)
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.001)
     loss_func = torch.nn.MSELoss()
 
     sat_data_train = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
                problems_dir_name=data_dir + "SAT_problems_solved",
-               # dataset_size=100, begin_idx=50)
-               dataset_size=dataset_size)
+               dataset_size=100, begin_idx=50, epsilon=EPSILON)
+               # dataset_size=dataset_size, epsilon=EPSILON)
     train_data_loader = DataLoader(sat_data_train, batch_size=1)
 
     sat_data_val = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
                problems_dir_name=data_dir + "SAT_problems_solved",
-               # dataset_size=50, begin_idx=0)
-               dataset_size=VAL_DATA_SIZE, begin_idx=TRAINING_DATA_SIZE)
+               dataset_size=50, begin_idx=0, epsilon=EPSILON)
+               # dataset_size=VAL_DATA_SIZE, begin_idx=TRAINING_DATA_SIZE, epsilon=EPSILON)
     val_data_loader = DataLoader(sat_data_val, batch_size=1)
 
 
@@ -103,9 +104,9 @@ def test(dataset_size, data_dir):
 
     sat_data = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
                problems_dir_name=data_dir + "SAT_problems_solved",
-               dataset_size=50, begin_idx=0)
-               # dataset_size=100, begin_idx=50)
-               # dataset_size=dataset_size)
+               dataset_size=50, begin_idx=0, epsilon=EPSILON)
+               # dataset_size=100, begin_idx=50, epsilon=EPSILON)
+               # dataset_size=dataset_size, epsilon=EPSILON)
 
     data_loader = DataLoader(sat_data, batch_size=1)
     loss_func = torch.nn.MSELoss()
