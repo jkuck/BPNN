@@ -8,10 +8,17 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
+
+##########################
+##### Run me on Atlas
+# $ cd /atlas/u/jkuck/virtual_environments/pytorch_geometric
+# $ source bin/activate
+
+
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 5 #number of variables in the largest factor -> factor has 2^MAX_FACTOR_STATE_DIMENSIONS states
-MSG_PASSING_ITERS = 2 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 4 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -36,6 +43,8 @@ def train(dataset_size, data_dir):
 
     # Initialize optimizer
     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0001)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1) #multiply lr by gamma every step_size epochs    
+
     loss_func = torch.nn.MSELoss()
 
     sat_data_train = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
@@ -72,7 +81,6 @@ def train(dataset_size, data_dir):
             loss.backward()
             # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
             optimizer.step()
-            # scheduler.step()
 
         if e % PRINT_FREQUENCY == 0:
             print("root mean squared training error =", np.sqrt(np.sum(losses)))
@@ -91,6 +99,8 @@ def train(dataset_size, data_dir):
             if not os.path.exists(TRAINED_MODELS_DIR):
                 os.makedirs(TRAINED_MODELS_DIR)
             torch.save(lbp_net.state_dict(), TRAINED_MODELS_DIR + MODEL_NAME)
+
+        # scheduler.step()
 
     if not os.path.exists(TRAINED_MODELS_DIR):
         os.makedirs(TRAINED_MODELS_DIR)
