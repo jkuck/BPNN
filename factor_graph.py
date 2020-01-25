@@ -74,12 +74,12 @@ class FactorGraph(dotdict):
     def get_initial_beliefs_and_messages(self, initialize_randomly=False):
         edge_count = self.edge_var_indices.shape[1]
 
-        prv_varToFactor_messages = torch.log(torch.stack([torch.ones([2]) for j in range(edge_count)], dim=0))
-        prv_factorToVar_messages = torch.log(torch.stack([torch.ones([2]) for j in range(edge_count)], dim=0))
-        prv_factor_beliefs = torch.log(torch.stack([torch.ones([2 for i in range(self.state_dimensions)]) for j in range(self.numFactors)], dim=0))
+        prv_varToFactor_messages = torch.log(torch.stack([torch.ones([2], dtype=torch.double) for j in range(edge_count)], dim=0))
+        prv_factorToVar_messages = torch.log(torch.stack([torch.ones([2], dtype=torch.double) for j in range(edge_count)], dim=0))
+        prv_factor_beliefs = torch.log(torch.stack([torch.ones([2 for i in range(self.state_dimensions)], dtype=torch.double) for j in range(self.numFactors)], dim=0))
         # prv_factor_beliefs = torch.log(factor_potentials.clone())
         # prv_factor_beliefs = prv_factor_beliefs/torch.logsumexp(prv_factor_beliefs, [i for i in range(1, len(prv_factor_beliefs.size()))])
-        prv_var_beliefs = torch.log(torch.stack([torch.ones([2]) for j in range(self.numVars)], dim=0))
+        prv_var_beliefs = torch.log(torch.stack([torch.ones([2], dtype=torch.double) for j in range(self.numVars)], dim=0))
         if initialize_randomly:
             prv_varToFactor_messages = torch.rand_like(prv_varToFactor_messages)
             prv_factorToVar_messages = torch.rand_like(prv_factorToVar_messages)
@@ -210,7 +210,7 @@ def test_build_edge_var_indices():
     print(edge_var_indices)
     print(expected_edge_var_indices)
 
-def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilon=0):
+def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilon=0, max_factor_dimensions=5):
     '''
     Take a SAT problem in CNF form (specified by clauses) and return a factor graph representation
     whose partition function is the number of satisfying solutions
@@ -220,6 +220,11 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilo
     - initialize_randomly: (bool) if true randomly initialize beliefs and previous messages
         if false initialize to 1
     - epsilon (float): set states with potential 0 to epsilon for numerical stability
+    - max_factor_dimensions (int): do not construct a factor graph if the largest factor (clause) contains
+        more than this many variables
+
+    Outputs:
+    - factorgraph (FactorGraph): or None if there is a clause containing more than max_factor_dimensions variables
     '''
     num_factors = len(clauses)
     factorToVar_edge_index_list = []
@@ -240,7 +245,11 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilo
             N = var_name
         if var_degree > max_var_degree:
             max_var_degree = var_degree
-    assert(N == len(dictionary_of_vars))
+    if(N != len(dictionary_of_vars)):
+        for var_idx in range(1, N+1):
+            if var_idx not in dictionary_of_vars:
+                print(var_idx, "missing from dictionary_of_vars")
+    assert(N == len(dictionary_of_vars)), (N, len(dictionary_of_vars))
 
     # print("b")
 
@@ -249,6 +258,8 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilo
     for clause in clauses:
         if len(clause) > max_clause_degree:
             max_clause_degree = len(clause)
+    if max_clause_degree > max_factor_dimensions:
+        return None
     # state_dimensions = max(max_clause_degree, max_var_degree)
     state_dimensions = max_clause_degree
 

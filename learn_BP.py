@@ -18,7 +18,7 @@ import numpy as np
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 5 #number of variables in the largest factor -> factor has 2^MAX_FACTOR_STATE_DIMENSIONS states
-MSG_PASSING_ITERS = 4 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 2 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -26,10 +26,27 @@ MODEL_NAME = "simple_4layer.pth"
 ROOT_DIR = "/atlas/u/jkuck/learn_BP/" #file path to the directory cloned from github
 TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored here
 
-TRAINING_DATA_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/"
+
+#unused now
+# TRAINING_DATA_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/"
+# TRAINING_DATA_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
+# VALIDATION_DATA_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/"
+
+#contains CNF files for training/validation/test problems
+# TRAINING_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/SAT_problems_solved"
+TRAINING_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
+VALIDATION_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/SAT_problems_solved"
+# TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/test_SAT_problems/"
+TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
+
 TRAINING_DATA_SIZE = 10
-VALIDATION_DATA_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/"
 VAL_DATA_SIZE = 2#100
+TEST_DATA_SIZE = 5
+
+#contains .txt files for each sat probolem with solution counts
+SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_counts_uai/"
+# SOLUTION_COUNTS_DIR = TRAINING_DATA_DIR + "SAT_problems_solved"
+
 
 EPOCH_COUNT = 40
 PRINT_FREQUENCY = 1
@@ -37,7 +54,7 @@ SAVE_FREQUENCY = 10
 ##########################
 
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS)
-
+lbp_net.double()
 def train(dataset_size, data_dir):
     lbp_net.train()
 
@@ -47,14 +64,14 @@ def train(dataset_size, data_dir):
 
     loss_func = torch.nn.MSELoss()
 
-    sat_data_train = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
-               problems_dir_name=data_dir + "SAT_problems_solved",
+    sat_data_train = SatProblems(counts_dir_name=SOLUTION_COUNTS_DIR,
+               problems_dir_name=TRAINING_PROBLEMS_DIR,
                dataset_size=100, begin_idx=50, epsilon=EPSILON)
                # dataset_size=dataset_size, epsilon=EPSILON)
     train_data_loader = DataLoader(sat_data_train, batch_size=1)
 
-    sat_data_val = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
-               problems_dir_name=data_dir + "SAT_problems_solved",
+    sat_data_val = SatProblems(counts_dir_name=SOLUTION_COUNTS_DIR,
+               problems_dir_name=TRAINING_PROBLEMS_DIR,
                dataset_size=50, begin_idx=0, epsilon=EPSILON)
                # dataset_size=VAL_DATA_SIZE, begin_idx=TRAINING_DATA_SIZE, epsilon=EPSILON)
     val_data_loader = DataLoader(sat_data_val, batch_size=1)
@@ -106,16 +123,15 @@ def train(dataset_size, data_dir):
         os.makedirs(TRAINED_MODELS_DIR)
     torch.save(lbp_net.state_dict(), TRAINED_MODELS_DIR + MODEL_NAME)
 
-def test(dataset_size, data_dir):
+def test(dataset_size):
     # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
     # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "simple_4layer_firstWorking.pth"))
 
     lbp_net.eval()
 
-    sat_data = SatProblems(counts_dir_name=data_dir + "SAT_problems_solved_counts",
-               problems_dir_name=data_dir + "SAT_problems_solved",
-               dataset_size=50, begin_idx=0, epsilon=EPSILON)
-               # dataset_size=100, begin_idx=50, epsilon=EPSILON)
+    sat_data = SatProblems(counts_dir_name=SOLUTION_COUNTS_DIR,
+               problems_dir_name=TEST_PROBLEMS_DIR,
+               dataset_size=TEST_DATA_SIZE, begin_idx=0, epsilon=EPSILON)
                # dataset_size=dataset_size, epsilon=EPSILON)
 
     data_loader = DataLoader(sat_data, batch_size=1)
@@ -162,5 +178,5 @@ def test(dataset_size, data_dir):
 
 
 if __name__ == "__main__":
-    train(dataset_size=TRAINING_DATA_SIZE, data_dir=TRAINING_DATA_DIR)
-    # test(dataset_size=TRAINING_DATA_SIZE, data_dir=TRAINING_DATA_DIR)
+    # train(dataset_size=TRAINING_DATA_SIZE, data_dir=TRAINING_DATA_DIR)
+    test(dataset_size=TRAINING_DATA_SIZE)

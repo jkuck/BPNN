@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
 from factor_graph import build_factorgraph_from_SATproblem, FactorGraph
 from sat_data import parse_dimacs, SatProblems
-from utils import dotdict, logminusexp
+from utils import dotdict, logminusexp, log_normalize, max_multipleDim, logsumexp_multipleDim, shift_func
 import matplotlib.pyplot as plt
 import matplotlib
 import mrftools
@@ -53,74 +53,6 @@ def map_beliefs(beliefs, factor_graph, map_type):
     mapped_beliefs = torch.index_select(mapped_beliefs, 0, factor_graph.factorToVar_edge_index[idx])
     return mapped_beliefs
 
-def max_multipleDim(input, axes, keepdim=False):
-    '''
-    modified from https://github.com/pytorch/pytorch/issues/2006
-    Take the maximum across multiple axes.  For example, say the input has dimensions [a,b,c,d] and
-    axes = [0,2].  The output (with keepdim=False) will have dimensions [b,d] and output[i,j] will
-    be the maximum value of input[:, i, :, j]
-    '''
-    # probably some check for uniqueness of axes
-    if keepdim:
-        for ax in axes:
-            input = input.max(ax, keepdim=True)[0]
-    else:
-        for ax in sorted(axes, reverse=True):
-            input = input.max(ax)[0]
-    return input
-
-def logsumexp_multipleDim(tensor, dim=None):
-    """
-    Compute log(sum(exp(tensor), dim)) in a numerically stable way.
-
-    Inputs:
-    - tensor (tensor): input tensor
-    - dim (int): the only dimension to keep in the output.  i.e. for a 4d input tensor with dim=2 (0-indexed):
-        return_tensor[i] = logsumexp(tensor[:,:,i,:])
-
-    Outputs:
-    - return_tensor (1d tensor): logsumexp of input tensor along specified dimension
-
-    """
-    assert(not torch.isnan(tensor).any())
-
-    tensor_dimensions = len(tensor.shape)
-    assert(dim < tensor_dimensions and dim >= 0)
-    aggregate_dimensions = [i for i in range(tensor_dimensions) if i != dim]
-    # print("aggregate_dimensions:", aggregate_dimensions)
-    # print("tensor:", tensor)
-    max_values = max_multipleDim(tensor, axes=aggregate_dimensions, keepdim=True)
-    max_values[torch.where(max_values == -np.inf)] = 0
-    assert(not torch.isnan(max_values).any())
-    assert((max_values > -np.inf).any())
-    assert(not torch.isnan(tensor - max_values).any())
-    assert(not torch.isnan(torch.exp(tensor - max_values)).any())
-    assert(not torch.isnan(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)).any())
-    # assert(not (torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions) > 0).all())
-    assert(not torch.isnan(torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions))).any())
-
-    # print("max_values:", max_values)
-    # print("tensor - max_values", tensor - max_values)
-    # print("torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)):", torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)))
-    return_tensor = torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)) + max_values.squeeze()
-    # print("return_tensor:", return_tensor)
-    assert(not torch.isnan(return_tensor).any())
-    return return_tensor
-
-
-
-class shift_func(torch.nn.Module):
-    '''
-    take a function y = f(x) and shift it (in x and y) such that
-    y' = f'(x) = shift + f(x-shift)
-    '''    
-    def __init__(self, func, shift):
-        super().__init__()        
-        self.func = func
-        self.shift = shift
-
-    def forward(self, x):
-        return self.shift + self.func(x - self.shift)
 
 
 class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
@@ -160,8 +92,10 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
             else:
                 self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space                
-                self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
+                # self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
                 # self.mlp = Seq(self.linear1, ReLU(), self.linear2)
+                # self.mlp = Seq(self.linear1, ReLU(), self.linear2)
+                self.mlp = self.linear1
 
             # self.relu = ReLU()                
             # self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
@@ -210,7 +144,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         if debug:
             print("var_beliefs pre norm:", torch.exp(var_beliefs))
         assert(len(var_beliefs.shape) == 2)
-        var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim=0).view(-1,1)#normalize variable beliefs
+        # var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim=0).view(-1,1)#normalize variable beliefs
+        var_beliefs = log_normalize(var_beliefs)
         if debug:
             print("var_beliefs post norm:", torch.exp(var_beliefs))
         assert(not torch.isnan(var_beliefs).any()), var_beliefs
@@ -249,17 +184,14 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             print("1 factor_beliefs:", torch.exp(factor_beliefs))
         
         if self.learn_BP:
-            
-            normalization_view = [1 for i in range(len(factor_beliefs.shape))]
-            normalization_view[0] = -1
-            factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim=0).view(normalization_view)#normalize factor beliefs
-            
+            factor_beliefs = log_normalize(factor_beliefs)
 
             # print("factor_beliefs.shape:", factor_beliefs.shape)
             factor_beliefs_shape = factor_beliefs.shape
             # print("1 factor_beliefs:", factor_beliefs)
             # print("factor_beliefs.shape:", factor_beliefs.shape)
             assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
+            # if self.avoid_nans:
             if self.avoid_nans:
                 if self.logspace_mlp: #another try, stay with logspace
                     # pass
@@ -285,33 +217,51 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                     factor_beliefs[non_inf_belief_potential_locations] = factor_beliefs_temp[non_inf_belief_potential_locations]
 
                 else:
-                    factor_beliefs = torch.exp(factor_beliefs) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
-                    factor_beliefs_clone = factor_beliefs.clone()
-                    
-                    check_factor_beliefs(factor_beliefs) #debugging
-                    factor_beliefs_temp = self.mlp(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
-                    # factor_beliefs = factor_beliefs_temp.clone()
-                    # factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
-                    # factor_beliefs[factor_beliefs_neg_inf_locations] = -np.inf
-                    # assert((factor_beliefs>0).all())
+                    if False: #original, weird stuff going on
+                        check_factor_beliefs(factor_beliefs) #debugging
+                        # pass
+                        valid_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs!=-np.inf))
+                        factor_beliefs_exp = torch.exp(factor_beliefs) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                        factor_beliefs_clone = factor_beliefs_exp.clone()
+                        
+                        factor_beliefs_temp = self.mlp(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
+                        # factor_beliefs = factor_beliefs_temp.clone()
+                        # factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
+                        # factor_beliefs[factor_beliefs_neg_inf_locations] = -np.inf
+                        # assert((factor_beliefs>0).all())
 
-                    # factor_beliefs = torch.zeros(factor_beliefs_shape, dtype=factor_beliefs_temp.dtype, layout=factor_beliefs_temp.layout, device=factor_beliefs_temp.device)
-                    # factor_beliefs = torch.zeros_like(factor_beliefs)
-                    # valid_locations = torch.where((factor_beliefs!=-np.inf) & (factor_beliefs_temp>0))
-                    # factor_beliefs[valid_locations] = factor_beliefs_temp[valid_locations]
-                    # factor_beliefs = torch.log(factor_beliefs) #go back to log-space
+                        # factor_beliefs = torch.zeros(factor_beliefs_shape, dtype=factor_beliefs_temp.dtype, layout=factor_beliefs_temp.layout, device=factor_beliefs_temp.device)
+                        # factor_beliefs = torch.zeros_like(factor_beliefs)
+                        # valid_locations = torch.where((factor_beliefs!=-np.inf) & (factor_beliefs_temp>0))
+                        # factor_beliefs[valid_locations] = factor_beliefs_temp[valid_locations]
+                        # factor_beliefs = torch.log(factor_beliefs) #go back to log-space
 
 
-                    valid_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs!=-np.inf))
-                    # valid_locations = torch.where((factor_beliefs!=-np.inf) & (factor_beliefs_temp>0))
-                    factor_beliefs = -np.inf*torch.ones_like(factor_beliefs)
-                    factor_beliefs[valid_locations] = torch.log(factor_beliefs_temp[valid_locations])
-                    
-                    # check_factor_beliefs(factor_beliefs) #debugging
-                    assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
-                    # factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1)) + .01
-                    # factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
-                    
+                        # valid_locations = torch.where((factor_beliefs!=-np.inf) & (factor_beliefs_temp>0))
+                        factor_beliefs1 = -np.inf*torch.ones_like(factor_beliefs)
+                        factor_beliefs1[valid_locations] = torch.log(factor_beliefs_temp[valid_locations])
+                        assert((factor_beliefs1 == factor_beliefs).all())
+                        # check_factor_beliefs(factor_beliefs) #debugging
+                        assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
+                        # factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1)) + .01
+                        # factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
+                    else:
+                        factor_beliefs = log_normalize(factor_beliefs)
+                        assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
+                        factor_beliefs_exp = torch.exp(factor_beliefs) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this                        
+                        factor_beliefs_temp = self.mlp(factor_beliefs_exp.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
+                        factor_beliefs1 = torch.log(factor_beliefs_temp)
+                        # assert((factor_beliefs1 == factor_beliefs).all()), (factor_beliefs1, factor_beliefs)
+                        # for idx, val in enumerate(factor_beliefs1.flatten()):
+                        #     if val != factor_beliefs.flatten()[idx]:
+                        #         print(val, "!=", factor_beliefs.flatten()[idx])
+                        # assert(torch.allclose(factor_beliefs1, factor_beliefs))
+
+                        # check_factor_beliefs(factor_beliefs) #debugging
+                        assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
+                        # factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1)) + .01
+                        # factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
+
 
             else:
                 factor_beliefs = torch.exp(factor_beliefs) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
@@ -337,13 +287,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             print()
             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             print("factor_beliefs pre norm:", torch.exp(factor_beliefs))
-        normalization_view = [1 for i in range(len(factor_beliefs.shape))]
-        normalization_view[0] = -1
-        log_sum_exp_factor_beliefs = logsumexp_multipleDim(factor_beliefs, dim=0).view(normalization_view)
-        factor_beliefs = factor_beliefs - log_sum_exp_factor_beliefs#normalize factor beliefs
-        assert((log_sum_exp_factor_beliefs != -np.inf).all()) #debugging
-        # for factor_idx in range(factor_beliefs.shape[0]):
-        #     assert((factor_beliefs[factor_idx] != -np.inf).all()), (factor_beliefs[factor_idx], log_sum_exp_factor_beliefs[factor_idx], (factor_beliefs[factor_idx] != -np.inf))
+        factor_beliefs = log_normalize(factor_beliefs)
         check_factor_beliefs(factor_beliefs) #debugging
         assert(not torch.isnan(factor_beliefs).any()), (factor_beliefs, factor_graph.numFactors, factor_graph.numVars)
         if debug:
@@ -363,7 +307,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 # def logsumexp(tensor, dim):
 #     tensor_exp = tor
 
-    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages):
+    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages, normalize_messages=True):
         # prv_factor_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_varToFactor_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
         # factor_graph.edge_var_indices has shape [2, E]. 
@@ -407,9 +351,11 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         #avoid double counting
         messages = marginalized_states - prv_varToFactor_messages_zeroed
 
+        if normalize_messages:
+            messages = log_normalize(messages)
         return messages
 
-    def message_varToFactor(self, var_beliefs, factor_graph, prv_factorToVar_messages):
+    def message_varToFactor(self, var_beliefs, factor_graph, prv_factorToVar_messages, normalize_messages=True):
         # var_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_factorToVar_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
         # factor_graph.edge_var_indices has shape [2, E]. 
@@ -422,6 +368,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         prv_factorToVar_messages_zeroed[prv_factorToVar_messages_zeroed == -np.inf] = 0
         #avoid double counting
         messages = mapped_var_beliefs - prv_factorToVar_messages_zeroed            
+        if normalize_messages:
+            messages = log_normalize(messages)
 
         return messages
 
