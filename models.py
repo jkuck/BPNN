@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-from loopyBP_factorGraph import FactorGraphMsgPassingLayer_NoDoubleCounting
+# from loopyBP_factorGraph import FactorGraphMsgPassingLayer_NoDoubleCounting
+from loopyBP_factorGraph_2layerWorks import FactorGraphMsgPassingLayer_NoDoubleCounting
 
 
 
