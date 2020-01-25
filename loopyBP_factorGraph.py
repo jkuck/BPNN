@@ -217,7 +217,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                     factor_beliefs[non_inf_belief_potential_locations] = factor_beliefs_temp[non_inf_belief_potential_locations]
 
                 else:
-                    if False: #original, weird stuff going on
+                    if True: #original, weird stuff going on
                         check_factor_beliefs(factor_beliefs) #debugging
                         # pass
                         valid_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs!=-np.inf))
@@ -238,9 +238,9 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
 
                         # valid_locations = torch.where((factor_beliefs!=-np.inf) & (factor_beliefs_temp>0))
-                        factor_beliefs1 = -np.inf*torch.ones_like(factor_beliefs)
-                        factor_beliefs1[valid_locations] = torch.log(factor_beliefs_temp[valid_locations])
-                        assert((factor_beliefs1 == factor_beliefs).all())
+                        factor_beliefs = -np.inf*torch.ones_like(factor_beliefs)
+                        factor_beliefs[valid_locations] = torch.log(factor_beliefs_temp[valid_locations])
+                        # assert((factor_beliefs1 == factor_beliefs).all())
                         # check_factor_beliefs(factor_beliefs) #debugging
                         assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
                         # factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1)) + .01
@@ -249,6 +249,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                         factor_beliefs = log_normalize(factor_beliefs)
                         assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
                         factor_beliefs_exp = torch.exp(factor_beliefs) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this                        
+                        print("factor_beliefs.shape", factor_beliefs.shape)
                         factor_beliefs_temp = self.mlp(factor_beliefs_exp.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
                         factor_beliefs1 = torch.log(factor_beliefs_temp)
                         # assert((factor_beliefs1 == factor_beliefs).all()), (factor_beliefs1, factor_beliefs)

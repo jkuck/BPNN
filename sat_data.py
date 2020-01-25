@@ -5,6 +5,7 @@ from collections import defaultdict
 from factor_graph import build_factorgraph_from_SATproblem
 from utils import dotdict
 import numpy as np
+from decimal import Decimal
 
 def parse_dimacs(filename, verbose=False):
     clauses = []
@@ -161,12 +162,12 @@ class SatProblems(Dataset):
                 dsharp_solution_count = None
                 for line in f_solution_count:
                     if line.strip().split(" ")[0] == 'sharpSAT':
-                        sharpSAT_solution_count = float(line.strip().split(" ")[4])
-                        if np.isnan(sharpSAT_solution_count):
-                            sharpSAT_solution_count = None 
+                        sharpSAT_solution_count = Decimal(line.strip().split(" ")[4])
+                        if Decimal.is_nan(sharpSAT_solution_count):
+                            sharpSAT_solution_count = None
                     if line.strip().split(" ")[0] == 'dsharp':
-                        dsharp_solution_count = float(line.strip().split(" ")[4])
-                        if np.isnan(dsharp_solution_count):
+                        dsharp_solution_count = Decimal(line.strip().split(" ")[4])
+                        if Decimal.is_nan(dsharp_solution_count):
                             dsharp_solution_count = None 
 
 
@@ -190,7 +191,7 @@ class SatProblems(Dataset):
             if solution_count == 0:
                 no_solution_count += 1
                 continue
-            log_solution_count = math.log(solution_count)    
+            log_solution_count = float(solution_count.ln())
             n_vars, clauses, load_successful = parse_dimacs(problems_dir_name + "/" + problem_file)
             if not load_successful:
                 load_failure_count += 1
