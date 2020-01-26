@@ -114,9 +114,10 @@ def parse_dimacs(filename, verbose=False):
 
 
 class SatProblems(Dataset):
-    def __init__(self, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0, verbose=True, epsilon=0, max_factor_dimensions=5):
+    def __init__(self, problems_to_load, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0, verbose=True, epsilon=0, max_factor_dimensions=5):
         '''
         Inputs:
+        - problems_to_load (list of strings): problems to load
         - problems_dir_name (string): directory containing problems in cnf form 
         - counts_dir_name (string): directory containing .txt files with model counts for problems
             File name format: problem1.txt
@@ -130,9 +131,6 @@ class SatProblems(Dataset):
         # print("HI!!")
         self.sat_problems = []
         self.log_solution_counts = []
-        problems_in_dir = os.listdir(problems_dir_name)
-        # print("problems_in_dir:", problems_in_dir)
-        # sleep(temp)
         discarded_count = 0
 
         load_failure_count = 0 # the number of SAT problems we failed to load properly
@@ -141,21 +139,25 @@ class SatProblems(Dataset):
         factors_to_large_count = 0 # the number of SAT problems with more than max_factor_dimensions variables in a clause
         dsharp_sharpsat_disagree = 0 # the number of SAT problems where dsharp and sharpsat disagree on the number of satisfying solutions
 
-        for count_file in os.listdir(counts_dir_name):
-            # if count_file[:5] == 'or-60':
-            # if count_file[:2] == 'or':
-                # continue
+        problems_in_cnf_dir = os.listdir(problems_dir_name)
+        # print("problems_in_cnf_dir:", problems_in_cnf_dir)
+        problems_in_counts_dir = os.listdir(counts_dir_name)
+
+
+        for problem_name in problems_to_load:
             if len(self.sat_problems) == dataset_size:
                 break
-            if count_file[-4:] != '.txt':
-                print('not a text file')
-                continue
-            # problem_file = count_file[:-19] + '.cnf'
-            problem_file = count_file[:-4] + '.cnf.gz.no_w.cnf'
-            if problem_file not in problems_in_dir:
+            # problem_file = problem_name[:-19] + '.cnf'
+            problem_file = problem_name + '.cnf.gz.no_w.cnf'
+            if problem_file not in problems_in_cnf_dir:
                 if verbose:
-                    print('no corresponding sat file for', problem_file, "count_file:", count_file)
+                    print('no corresponding cnf file for', problem_file, "problem_name:", problem_name)
                 continue
+            count_file = problem_name + '.txt'
+            if count_file not in problems_in_counts_dir:
+                if verbose:
+                    print('no corresponding sat count file for', count_file, "problem_name:", problem_name)
+                continue            
 
             with open(counts_dir_name + "/" + count_file, 'r') as f_solution_count:
                 sharpSAT_solution_count = None
@@ -205,6 +207,7 @@ class SatProblems(Dataset):
                     continue
                 self.sat_problems.append(factor_graph)
                 self.log_solution_counts.append(log_solution_count)
+                print("successfully loaded:", problem_name)
             else:
                 discarded_count += 1
             assert(discarded_count <= begin_idx)

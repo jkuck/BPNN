@@ -474,7 +474,10 @@ def run_loopy_bp(factor_graph, prv_varToFactor_messages, prv_factor_beliefs, ite
     return bethe_free_energy, z_estimate_bethe
 
 def plot_lbp_vs_exactCount(dataset_size=10, verbose=True, lbp_iters=4):
-    sat_data = SatProblems(counts_dir_name="/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved_counts",
+    #fix problems to load!!
+    problems_to_load = ["01A-1","01B-1","01B-2","01B-3"]
+    sat_data = SatProblems(problems_to_load=problems_to_load,
+               counts_dir_name="/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved_counts",
                problems_dir_name="/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved",
                dataset_size=dataset_size)
     data_loader = DataLoader(sat_data, batch_size=1)
