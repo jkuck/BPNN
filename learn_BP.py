@@ -150,10 +150,12 @@ def train():
 def test():
     # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
     # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "simple_4layer_firstWorking.pth"))
+    # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "trained39non90_2layer.pth"))
+
 
     lbp_net.eval()
 
-    sat_data = SatProblems(problems_to_load=TRAINING_PROBLEMS_not90,
+    sat_data = SatProblems(problems_to_load=TRAINING_PROBLEMS_90,
                counts_dir_name=SOLUTION_COUNTS_DIR,
                problems_dir_name=TEST_PROBLEMS_DIR,
                dataset_size=TEST_DATA_SIZE, begin_idx=0, epsilon=EPSILON)
@@ -202,5 +204,5 @@ def test():
 
 
 if __name__ == "__main__":
-    train()
-    # test()
+    # train()
+    test()
