@@ -18,7 +18,7 @@ import numpy as np
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 5 #number of variables in the largest factor -> factor has 2^MAX_FACTOR_STATE_DIMENSIONS states
-MSG_PASSING_ITERS = 2 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 20 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -155,7 +155,7 @@ def test():
 
     lbp_net.eval()
 
-    sat_data = SatProblems(problems_to_load=TRAINING_PROBLEMS_90,
+    sat_data = SatProblems(problems_to_load=TRAINING_PROBLEMS_not90,
                counts_dir_name=SOLUTION_COUNTS_DIR,
                problems_dir_name=TEST_PROBLEMS_DIR,
                dataset_size=TEST_DATA_SIZE, begin_idx=0, epsilon=EPSILON)
