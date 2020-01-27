@@ -2,7 +2,7 @@ import os
 import math
 from torch.utils.data import Dataset
 from collections import defaultdict
-from factor_graph import build_factorgraph_from_SATproblem
+from factor_graph import FactorGraph
 from utils import dotdict
 import numpy as np
 from decimal import Decimal
@@ -112,7 +112,7 @@ def parse_dimacs(filename, verbose=False):
         print()
     return n_vars, clauses, load_successful
 
-
+#Pytorch dataset
 class SatProblems(Dataset):
     def __init__(self, problems_to_load, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0, verbose=True, epsilon=0, max_factor_dimensions=5):
         '''
@@ -224,13 +224,182 @@ class SatProblems(Dataset):
     def __getitem__(self, index):
         '''
         Outputs:
-        - sat_problem (FactorGraph, defined in models): factor graph representation of sat problem
+        - sat_problem (FactorGraph, defined in factor_graph.py): factor graph representation of sat problem
         - log_solution_count (float): ln(# of satisfying solutions to the sat problem)
         '''
         sat_problem = self.sat_problems[index]
         log_solution_count = self.log_solution_counts[index]
         return sat_problem, log_solution_count
 
+def build_factorPotential_fromClause(clause, state_dimensions, epsilon):
+    '''
+    The ith variable in a clause corresponds to the ith dimension in the tensor representation of the state.
+    Inputs:
+    - epsilon (float): set states with potential 0 to epsilon for numerical stability
+
+    Outputs:
+    - state (tensor): 1 for variable assignments that satisfy the clause, 0 otherwise
+    - mask (tensor): 1 signifies an invalid location (outside factor's valid variables), 0 signifies a valid location 
+    '''
+    #Create a tensor for the 2^state_dimensions states
+    state = torch.zeros([2 for i in range(state_dimensions)])
+    mask = torch.zeros([2 for i in range(state_dimensions)])
+    #Iterate over the 2^state_dimensions variable assignments and set those to 1 that satisfy the clause
+    for indices in np.ndindex(state.shape):
+        junk_location = False
+        for dimension in range(len(clause), state_dimensions):
+            if indices[dimension] == 1:
+                junk_location = True #this dimension is unused by this clause, set to 0
+        if junk_location:
+            mask[indices] = 1
+            continue
+        set_to_1 = False
+        for dimension, index_val in enumerate(indices):
+            if dimension >= len(clause):
+                break
+            if clause[dimension] > 0 and index_val == 1:
+                set_to_1 = True
+            elif clause[dimension] < 0 and index_val == 0:
+                set_to_1 = True
+        if set_to_1:
+            state[indices] = 1
+        else:
+            state[indices] = epsilon
+    return state, mask
+
+def test_build_factorPotential_fromClause():
+    for new_dimensions in range(3,7):
+        state, mask = build_factorPotential_fromClause([1, -2, 3], new_dimensions)
+        print(state)
+        for indices in np.ndindex(state.shape):
+            print(tuple(reversed(indices)), state[tuple(reversed(indices))])
+
+
+def build_edge_var_indices(clauses, max_clause_degree=None):
+    print("max_clause_degree:", max_clause_degree)
+    indices_at_source_node = []
+    indices_at_destination_node = []
+    for clause in clauses:
+        for var_idx in range(len(clause)):
+            indices_at_source_node.append(var_idx) #source node is the factor
+            indices_at_destination_node.append(0) #destination node is the variable
+            if max_clause_degree is not None:
+                assert(var_idx < max_clause_degree), (var_idx, max_clause_degree)
+    edge_var_indices = torch.tensor([indices_at_source_node, indices_at_destination_node])
+    return edge_var_indices
+
+def test_build_edge_var_indices():
+    clauses = [[1, -2, 3], [-2, 4], [3]]
+    edge_var_indices = build_edge_var_indices(clauses)
+    expected_edge_var_indices = torch.tensor([[0, 0, 0, 1, 0, 2, 0, 0, 0, 1, 0, 0],
+                                              [0, 0, 1, 0, 2, 0, 0, 0, 1, 0, 0, 0]])
+    assert(torch.all(torch.eq(edge_var_indices, expected_edge_var_indices)))
+    print(edge_var_indices)
+    print(expected_edge_var_indices)
+
+def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilon=0, max_factor_dimensions=5,
+                                      local_state_dim=False):
+    '''
+    Take a SAT problem in CNF form (specified by clauses) and return a factor graph representation
+    whose partition function is the number of satisfying solutions
+
+    Inputs:
+    - clauses: (list of list of ints) variables should be numbered 1 to N with no gaps
+    - initialize_randomly: (bool) if true randomly initialize beliefs and previous messages
+        if false initialize to 1
+    - epsilon (float): set states with potential 0 to epsilon for numerical stability
+    - max_factor_dimensions (int): do not construct a factor graph if the largest factor (clause) contains
+        more than this many variables
+    - local_state_dim (bool): if True, then the number of dimensions in each factor is set to the number of 
+        variables in the largest clause in /this/ problem.  If False, then the number of dimensions in each factor
+        is set to max_factor_dimensions for compatibility with other SAT problems.
+
+    Outputs:
+    - factorgraph (FactorGraph): or None if there is a clause containing more than max_factor_dimensions variables
+    '''
+    num_factors = len(clauses)
+    factorToVar_edge_index_list = []
+    dictionary_of_vars = defaultdict(int)
+    for clause_idx, clause in enumerate(clauses):
+        for literal in clause:
+            var_node_idx = np.abs(literal) - 1
+            factorToVar_edge_index_list.append([clause_idx, var_node_idx])
+            dictionary_of_vars[np.abs(literal)] += 1
+
+    # print("a")
+
+    # check largest variable name equals the number of variables
+    N = -1 #number of variables
+    max_var_degree = -1
+    for var_name, var_degree in dictionary_of_vars.items():
+        if var_name > N:
+            N = var_name
+        if var_degree > max_var_degree:
+            max_var_degree = var_degree
+    if(N != len(dictionary_of_vars)):
+        for var_idx in range(1, N+1):
+            if var_idx not in dictionary_of_vars:
+                print(var_idx, "missing from dictionary_of_vars")
+    assert(N == len(dictionary_of_vars)), (N, len(dictionary_of_vars))
+
+    # print("b")
+
+    # get largest clause degree
+    max_clause_degree = -1
+    for clause in clauses:
+        if len(clause) > max_clause_degree:
+            max_clause_degree = len(clause)
+    if max_clause_degree > max_factor_dimensions:
+        return None
+    # state_dimensions = max(max_clause_degree, max_var_degree)
+    if local_state_dim:
+        state_dimensions = max_clause_degree
+    else:
+        state_dimensions = max_factor_dimensions
+
+    factorToVar_edge_index = torch.tensor(factorToVar_edge_index_list, dtype=torch.long)
+
+    # print("c")
+
+
+####################    # create local indices of variable nodes for each clause node
+####################    # the first variable appearing in a clause has index 0, the second variable
+####################    # appearing in a clause has index 1, etc.  It is important to keep track
+####################    # of this because these variable indices are different between clauses
+####################
+####################    clause_node_variable_indices = []
+
+    # factor_potentials = torch.stack([build_factorPotential_fromClause(clause=clause, state_dimensions=state_dimensions, epsilon=epsilon) for clause in clauses], dim=0)
+    states = []
+    masks = []
+    for clause in clauses:
+        state, mask = build_factorPotential_fromClause(clause=clause, state_dimensions=state_dimensions, epsilon=epsilon)
+        states.append(state)
+        masks.append(mask)
+    factor_potentials = torch.stack(states, dim=0)
+    factor_potential_masks = torch.stack(masks, dim=0)
+ 
+
+
+   
+    # print("d")
+
+
+    x_base = torch.zeros_like(factor_potentials)
+    x_base.copy_(factor_potentials)
+
+    edge_var_indices = build_edge_var_indices(clauses, max_clause_degree=max_clause_degree)
+    # print("state_dimensions:", state_dimensions)
+
+    edge_count = edge_var_indices.shape[1]
+
+
+
+    factor_graph = FactorGraph(factor_potentials=torch.log(factor_potentials),
+                 factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=N, numFactors=num_factors, 
+                 edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks)
+
+    return factor_graph
 
 
 

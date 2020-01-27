@@ -3,8 +3,8 @@ from torch.nn import Sequential as Seq, Linear, ReLU
 import numpy as np
 from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
-from factor_graph import build_factorgraph_from_SATproblem, FactorGraph
-from sat_data import parse_dimacs, SatProblems
+from factor_graph import FactorGraph
+from sat_data import parse_dimacs, SatProblems, build_factorgraph_from_SATproblem
 from utils import dotdict, logminusexp, log_normalize, max_multipleDim, logsumexp_multipleDim, shift_func
 import matplotlib.pyplot as plt
 import matplotlib

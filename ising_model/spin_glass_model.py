@@ -1,0 +1,83 @@
+import numpy as np
+import mrftools_utils
+import libdai_utils
+
+class SpinGlassModel:
+    def __init__(self, N, f, c, all_weights_1=False):
+        '''
+        Sample local field parameters and coupling parameters to define a spin glass model
+        
+        Inputs:
+        - N: int, the model will be a grid with shape (NxN)
+        - f: float, local field parameters (theta_i) will be drawn uniformly at random
+            from [-f, f] for each node in the grid
+        - c: float, coupling parameters (theta_ij) will be drawn uniformly at random from
+            [0, c) (gumbel paper uses [0,c], but this shouldn't matter) for each edge in 
+            the grid
+        - all_weights_1: bool, if true return a model with all weights = 1 so Z=2^(N^2)
+                               if false return randomly sampled model
+
+        Values defining the spin glass model:
+        - lcl_fld_params: array with dimensions (NxN), local field parameters (theta_i)
+            that we sampled for each node in the grid 
+        - cpl_params_h: array with dimensions (N x N-1), coupling parameters (theta_ij)
+            for each horizontal edge in the grid.  cpl_params_h[k,l] corresponds to 
+            theta_ij where i is the node indexed by (k,l) and j is the node indexed by
+            (k,l+1)
+        - cpl_params_v: array with dimensions (N-1 x N), coupling parameters (theta_ij)
+            for each vertical edge in the grid.  cpl_params_h[k,l] corresponds to 
+            theta_ij where i is the node indexed by (k,l) and j is the node indexed by
+            (k+1,l)     
+        '''
+        self.N = N
+
+        if all_weights_1: #make all weights 1
+            #sample local field parameters (theta_i) for each node
+            self.lcl_fld_params = np.zeros((N,N))
+    
+            #sample horizontal coupling parameters (theta_ij) for each horizontal edge
+            self.cpl_params_h = np.zeros((N,N-1))
+    
+            #sample vertical coupling parameters (theta_ij) for each vertical edge
+            self.cpl_params_v = np.zeros((N-1,N))
+
+        else: #randomly sample weights
+            #sample local field parameters (theta_i) for each node
+            self.lcl_fld_params = np.random.uniform(low=-f, high=f, size=(N,N))
+    
+            #sample horizontal coupling parameters (theta_ij) for each horizontal edge
+            self.cpl_params_h = np.random.uniform(low=0.0, high=c, size=(N,N-1))
+    
+            #sample vertical coupling parameters (theta_ij) for each vertical edge
+            self.cpl_params_v = np.random.uniform(low=0.0, high=c, size=(N-1,N))
+
+
+    def brute_force_z_mrftools(self):
+        '''
+        Brute force calculate the partition function of this spin glass model using mrftools
+
+        Outputs:
+        - exact_z: the exact partition function
+        '''
+        exact_z = mrftools_utils.brute_force(self)
+        return exact_z
+
+    def junction_tree_libdai(self):
+        '''
+        Compute the partition function of this spin glass model using the junction tree 
+        implementation from libdai
+
+        Outputs:
+        - ln_Z: natural logarithm of the exact partition function
+        '''
+        ln_Z = libdai_utils.junction_tree(self)
+        return ln_Z
+
+
+
+if __name__ == "__main__":
+    sg_model = SpinGlassModel(N=5, f=1, c=1)
+    print("exact partition function:", sg_model.junction_tree_libdai())
+    print("exact partition function:", sg_model.brute_force_z_mrftools())
+
+

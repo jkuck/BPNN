@@ -1,6 +1,6 @@
 import torch
 from torch import autograd
-from models import lbp_message_passing_network
+from nn_models import lbp_message_passing_network
 from sat_data import SatProblems
 from factor_graph import FactorGraph
 from torch.utils.data import DataLoader
