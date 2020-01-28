@@ -1,9 +1,10 @@
 import sys
+import numpy as np
 
 # Atlas
-# LIBDAI_SWIG_DIRECTORY = '/atlas/u/jkuck/libdai/swig/'
+LIBDAI_SWIG_DIRECTORY = '/atlas/u/jkuck/libdai2/swig/'
 # Local
-LIBDAI_SWIG_DIRECTORY = '/Users/jkuck/research/libdai/swig'
+# LIBDAI_SWIG_DIRECTORY = '/Users/jkuck/research/libdai/swig'
 sys.path.insert(0, LIBDAI_SWIG_DIRECTORY)
 import dai
 
@@ -135,7 +136,7 @@ def build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={}):
 
     return sg_FactorGraph
 
-def junction_tree(sg_model):
+def junction_tree(sg_model, verbose=False):
     '''
     Brute force calculate the partition function of a spin glass model using mrftools
     Inputs:
@@ -149,11 +150,13 @@ def junction_tree(sg_model):
 
     # Write factorgraph to a file
     sg_FactorGraph.WriteToFile('sg_temp.fg')
-    print( 'spin glass factor graph written to sg_temp.fg')
+    if verbose:
+        print( 'spin glass factor graph written to sg_temp.fg')
 
     # Output some information about the factorgraph
-    print( sg_FactorGraph.nrVars(), 'variables')
-    print( sg_FactorGraph.nrFactors(), 'factors')
+    if verbose:
+        print( sg_FactorGraph.nrVars(), 'variables')
+        print( sg_FactorGraph.nrFactors(), 'factors')
 
     # Set some constants
     maxiter = 10000
@@ -191,9 +194,10 @@ def junction_tree(sg_model):
     jtmapstate = jtmap.findMaximum()
     ln_Z = jt.logZ()
     # Report log partition sum (normalizing constant) of sg_FactorGraph, calculated by the junction tree algorithm
-    print()
-    print('-'*80)
-    print('Exact log partition sum:', ln_Z)
+    if verbose:
+        print()
+        print('-'*80)
+        print('Exact log partition sum:', ln_Z)
     return(ln_Z)
 
 def run_inference(sg_model):

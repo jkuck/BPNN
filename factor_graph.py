@@ -40,7 +40,7 @@ class FactorGraph(dotdict):
 
         # edge_var_indices has shape [2, E]. 
         #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
-        #   [1, i] indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
+        #   [1, i] IS CURRENTLY UNUSED AND BROKEN, BUT IN GENERAL FOR PYTORCH GEOMETRIC SHOULD indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
         self.edge_var_indices = edge_var_indices
         # (int) the largest node degree
         self.state_dimensions = state_dimensions

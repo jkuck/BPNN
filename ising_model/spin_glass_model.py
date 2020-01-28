@@ -74,10 +74,20 @@ class SpinGlassModel:
         return ln_Z
 
 
+def compare_libdai_mrftools():
+    sg_model = SpinGlassModel(N=10, f=1, c=1)
+    print("exact ln(partition function):", sg_model.junction_tree_libdai())
+    Z = sg_model.brute_force_z_mrftools()
+    print("exact partition function:", Z, "ln(partition function):", np.log(Z))
+
 
 if __name__ == "__main__":
-    sg_model = SpinGlassModel(N=5, f=1, c=1)
-    print("exact partition function:", sg_model.junction_tree_libdai())
-    print("exact partition function:", sg_model.brute_force_z_mrftools())
+    # compare_libdai_mrftools()
+    # f = np.random.rand()*3
+    # c = np.random.rand()*3
+    f = 2
+    c = 2
+    sg_model = SpinGlassModel(N=10, f=f, c=c)
+    print("f:", f, "c:", c, "exact ln(partition function):", sg_model.junction_tree_libdai())
 
 
