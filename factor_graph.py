@@ -74,12 +74,12 @@ class FactorGraph(dotdict):
     def get_initial_beliefs_and_messages(self, initialize_randomly=False):
         edge_count = self.edge_var_indices.shape[1]
 
-        prv_varToFactor_messages = torch.log(torch.stack([torch.ones([2], dtype=torch.float64) for j in range(edge_count)], dim=0))
-        prv_factorToVar_messages = torch.log(torch.stack([torch.ones([2], dtype=torch.float64) for j in range(edge_count)], dim=0))
-        prv_factor_beliefs = torch.log(torch.stack([torch.ones([2 for i in range(self.state_dimensions)], dtype=torch.float64) for j in range(self.numFactors)], dim=0))
+        prv_varToFactor_messages = torch.log(torch.stack([torch.ones([2], dtype=torch.float) for j in range(edge_count)], dim=0))
+        prv_factorToVar_messages = torch.log(torch.stack([torch.ones([2], dtype=torch.float) for j in range(edge_count)], dim=0))
+        prv_factor_beliefs = torch.log(torch.stack([torch.ones([2 for i in range(self.state_dimensions)], dtype=torch.float) for j in range(self.numFactors)], dim=0))
         # prv_factor_beliefs = torch.log(factor_potentials.clone())
         # prv_factor_beliefs = prv_factor_beliefs/torch.logsumexp(prv_factor_beliefs, [i for i in range(1, len(prv_factor_beliefs.size()))])
-        prv_var_beliefs = torch.log(torch.stack([torch.ones([2], dtype=torch.float64) for j in range(self.numVars)], dim=0))
+        prv_var_beliefs = torch.log(torch.stack([torch.ones([2], dtype=torch.float) for j in range(self.numVars)], dim=0))
         if initialize_randomly:
             prv_varToFactor_messages = torch.rand_like(prv_varToFactor_messages)
             prv_factorToVar_messages = torch.rand_like(prv_factorToVar_messages)

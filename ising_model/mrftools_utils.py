@@ -1,5 +1,7 @@
 import mrftools
 import numpy as np
+from .parameters import MRFTOOLS_LBP_ITERS
+
 
 def build_single_node_factor(mn, fixed_variables, var_idx, f):
     '''
@@ -125,7 +127,7 @@ def brute_force(sg_model):
     exact_z = bf.compute_z()
     return exact_z
 
-def run_LBP(sg_model, max_iter=6):
+def run_LBP(sg_model, max_iter=MRFTOOLS_LBP_ITERS):
     sg_as_MarkoveNet = build_MarkovNet_from_SpinGlassModel(sg_model)
 
 

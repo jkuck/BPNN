@@ -18,7 +18,7 @@ import numpy as np
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 6 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 2 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -42,8 +42,8 @@ VALIDATION_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/val_spinGlass/"
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/test_SAT_problems/"
 TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 
-TRAINING_DATA_SIZE = 100
-VAL_DATA_SIZE = 100#100
+TRAINING_DATA_SIZE = 10
+VAL_DATA_SIZE = 10#100
 TEST_DATA_SIZE = 100
 
 
@@ -54,7 +54,7 @@ SAVE_FREQUENCY = 10
 
 
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS)
-lbp_net.double()
+# lbp_net.double()
 def train():
     lbp_net.train()
 
@@ -98,7 +98,7 @@ def train():
             print("root mean squared training error =", np.sqrt(np.mean(losses)))
             losses = []
             val_losses = []
-            for t, (spin_glass_problem, exact_ln_partition_function) in enumerate(val_data_loader):
+            for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(val_data_loader):
                 spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
                 assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
                 estimated_ln_partition_function = lbp_net(spin_glass_problem)                
@@ -123,7 +123,7 @@ def train():
     torch.save(lbp_net.state_dict(), TRAINED_MODELS_DIR + MODEL_NAME)
 
 def test():
-    # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
+    lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
     # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "simple_4layer_firstWorking.pth"))
     # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "trained39non90_2layer.pth"))
 

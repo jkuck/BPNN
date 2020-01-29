@@ -7,6 +7,8 @@ LIBDAI_SWIG_DIRECTORY = '/atlas/u/jkuck/libdai2/swig/'
 # LIBDAI_SWIG_DIRECTORY = '/Users/jkuck/research/libdai/swig'
 sys.path.insert(0, LIBDAI_SWIG_DIRECTORY)
 import dai
+from .parameters import LIBDAI_LBP_ITERS
+
 
 def build_single_node_factor(variables, fixed_variables, var_idx, f):
     '''
@@ -200,7 +202,7 @@ def junction_tree(sg_model, verbose=False):
         print('Exact log partition sum:', ln_Z)
     return(ln_Z)
 
-def run_loopyBP(sg_model, maxiter=6):
+def run_loopyBP(sg_model, maxiter=LIBDAI_LBP_ITERS):
     sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
     # sg_FactorGraph = build_graph_from_clique_ising_model(sg_model, fixed_variables={})
 
