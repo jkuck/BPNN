@@ -13,11 +13,9 @@ from .parameters import LIBDAI_LBP_ITERS
 def build_single_node_factor(variables, fixed_variables, var_idx, f):
     '''
     copied from https://github.com/jkuck/mrf_nesting_ub/blob/master/Factor_Graphs/libdai_ising_model.py
-    Create libdai factor representation from SAT clause
 
     Inputs:
-    - variables: (list of dai.Var) available variables. Variable i in the SAT clause representation
-                 will be at location i - 1 in this list of variables
+    - variables: (list of dai.Var) available variables.
     - fixed_variables: (dictionary)
         key: (int) 0 to N-1 variable index
         value: (int) -1 or 1, the value the variable is fixed to                 
@@ -40,11 +38,9 @@ def build_single_node_factor(variables, fixed_variables, var_idx, f):
 def build_pairwise_factor(variables, fixed_variables, var_idx1, var_idx2, c):
     '''
     copied from https://github.com/jkuck/mrf_nesting_ub/blob/master/Factor_Graphs/libdai_ising_model.py
-    Create libdai factor representation from SAT clause
 
     Inputs:
-    - variables: (list of dai.Var) available variables. Variable i in the SAT clause representation
-                 will be at location i - 1 in this list of variables
+    - variables: (list of dai.Var) available variables. 
     - fixed_variables: (dictionary)
         key: (int) 0 to N-1 variable index
         value: (int) -1 or 1, the value the variable is fixed to                 
@@ -79,6 +75,27 @@ def build_pairwise_factor(variables, fixed_variables, var_idx1, var_idx2, c):
         assert(False), "This shouldn't happen!!?"
     return factor
 
+
+
+
+def build_higher_order_factor(variables, fixed_variables, var_idx1, var_idx2, c):
+    '''
+    NOT IMPLEMENTED
+    Inputs:
+    - variables: (list of dai.Var) available variables.
+    - fixed_variables: (dictionary)
+        key: (int) 0 to N-1 variable index
+        value: (int) -1 or 1, the value the variable is fixed to                 
+    - var_idx1: (int) variable index, 0 to N-1, for the first node in this factor
+    - var_idx2: (int) variable index, 0 to N-1, for the second node in this factor
+    - c: (float) coupling strength for this factor
+
+    Outputs:
+    - factor: (dai.Factor)
+    '''
+
+    pass
+
 def build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={}):
     '''
     copied from https://github.com/jkuck/mrf_nesting_ub/blob/master/Factor_Graphs/libdai_ising_model.py
@@ -104,7 +121,7 @@ def build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={}):
     #     assert(accumulator_var_idx is not None)
 
 
-    # Define binary variables in the factor graph (that represent variables in the SAT problem)
+    # Define binary variables in the factor graph
     variables = []
     for var_idx in range(N**2):
         if var_idx in fixed_variables:
@@ -127,6 +144,13 @@ def build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={}):
             factors.append(build_pairwise_factor(variables, fixed_variables, var_idx1=var_idx, var_idx2=var_idx+N, c=sg_model.cpl_params_v[r,c]))
         if c < N-1:
             factors.append(build_pairwise_factor(variables, fixed_variables, var_idx1=var_idx, var_idx2=var_idx+1, c=sg_model.cpl_params_h[r,c]))
+
+    #Define higher order factors
+    if sg_model.contains_higher_order_potentials:
+        # Add higher order factors
+        for potential_idx in range(sg_model.ho_potential_count):
+            factor_potentials_list.append(sg_model.higher_order_potentials[potential_idx])
+            masks_list.append(torch.zeros_like(sg_model.higher_order_potentials[potential_idx]))
 
     assert(len(factors) == N**2 + 2*N*(N-1))
 

@@ -174,6 +174,12 @@ def build_edge_var_indices(sg_model):
             indices_at_destination_node.append(-99) #destination node is the variable
             indices_at_destination_node.append(-99) #destination node is the variable
 
+    if sg_model.contains_higher_order_potentials:
+        for potential_idx in range(sg_model.ho_potential_count):
+            for var_idx in range(sg_model.ho_potential_degree):
+                indices_at_source_node.append(var_idx) #source node is the factor
+                indices_at_destination_node.append(-99) #destination node is the variable
+
     edge_var_indices = torch.tensor([indices_at_source_node, indices_at_destination_node])
     return edge_var_indices
 
@@ -190,7 +196,10 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
     N = sg_model.N
     num_vars = N**2
     #(N-1)*N horizontal coupling factors, (N-1)*N vertical coupling factors, and N**2 single variable factors
-    num_factors = 2*(N - 1)*N + N**2
+    if sg_model.contains_higher_order_potentials:
+        num_factors = 2*(N - 1)*N + N**2 + sg_model.ho_potential_count
+    else:
+        num_factors = 2*(N - 1)*N + N**2
 
     #Variable indexing: variable with indices [row_idx, col_idx] (e.g. with lcl_fld_param given by lcl_fld_params[row_idx,col_idx]) has index row_idx*N+col_idx
     #Factor indexing: 
@@ -219,6 +228,13 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
             var_idx2 = (row_idx+1)*N + col_idx
             factorToVar_edge_index_list.append([vertical_factor_idx, var_idx2])
     assert(len(factorToVar_edge_index_list) == 4*(N - 1)*N + N**2)
+    if sg_model.contains_higher_order_potentials:
+        for higher_order_idx in range(sg_model.ho_potential_count):
+            factor_idx =  2*(N - 1)*N + N**2 + higher_order_idx
+            for variable_idx in sg_model.higher_order_potentials_variables[higher_order_idx]
+                factorToVar_edge_index_list.append([factor_idx, variable_idx])
+            # pass
+
     # - factorToVar_edge_index (Tensor): The indices of a general (sparse) edge
     #     matrix with shape :obj:`[numFactors, numVars]`
     factorToVar_edge_index = torch.tensor(factorToVar_edge_index_list, dtype=torch.long)
@@ -250,6 +266,12 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
             factor_potential, mask = build_pairwise_factor(c=sg_model.cpl_params_v[row_idx,col_idx], state_dimensions=state_dimensions)
             factor_potentials_list.append(factor_potential)
             masks_list.append(mask)
+
+    if sg_model.contains_higher_order_potentials:
+        # Add higher order factors
+        for potential_idx in range(sg_model.ho_potential_count):
+            factor_potentials_list.append(torch.tensor(sg_model.higher_order_potentials[potential_idx]))
+            masks_list.append(torch.zeros_like(sg_model.higher_order_potentials[potential_idx]))
 
     factor_potentials = torch.stack(factor_potentials_list, dim=0)
     factor_potential_masks = torch.stack(masks_list, dim=0)

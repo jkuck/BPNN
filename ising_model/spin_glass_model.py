@@ -1,9 +1,10 @@
 import numpy as np
 from . import mrftools_utils
 from . import libdai_utils
+import torch
 
 class SpinGlassModel:
-    def __init__(self, N, f, c, all_weights_1=False):
+    def __init__(self, N, f, c, all_weights_1=False, create_higher_order_potentials=False):
         '''
         Sample local field parameters and coupling parameters to define a spin glass model
         
@@ -55,7 +56,17 @@ class SpinGlassModel:
             #sample vertical coupling parameters (theta_ij) for each vertical edge
             self.cpl_params_v = np.random.uniform(low=0.0, high=c, size=(N-1,N))
 
-
+            if create_higher_order_potentials:
+                self.contains_higher_order_potentials = True
+                self.ho_potential_count = 10 # the number of higher order potentials to create
+                self.ho_potential_degree = 5 # the number of variables in each potential
+                self.ho_potential_shape = [2 for i in range(ho_potential_degree)]
+                #sample the potentials
+                self.higher_order_potentials = np.random.uniform(low=-c, high=c, size=[ho_potential_count] + ho_potential_shape)
+                #higher_order_potentials_variables[i] is a nupmy array of the variables in the ith potential
+                self.higher_order_potentials_variables = [np.random.choice(self.N**2, ho_potential_degree, replace=False) for i in rnage(ho_potential_count)]
+            else:
+                self.contains_higher_order_potentials = False
     def brute_force_z_mrftools(self):
         '''
         Brute force calculate the partition function of this spin glass model using mrftools
