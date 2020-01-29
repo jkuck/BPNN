@@ -125,7 +125,7 @@ def brute_force(sg_model):
     exact_z = bf.compute_z()
     return exact_z
 
-def run_LBP(sg_model, max_iter=100):
+def run_LBP(sg_model, max_iter=6):
     sg_as_MarkoveNet = build_MarkovNet_from_SpinGlassModel(sg_model)
 
 

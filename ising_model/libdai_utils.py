@@ -200,7 +200,7 @@ def junction_tree(sg_model, verbose=False):
         print('Exact log partition sum:', ln_Z)
     return(ln_Z)
 
-def run_loopyBP(sg_model, maxiter=100):
+def run_loopyBP(sg_model, maxiter=6):
     sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
     # sg_FactorGraph = build_graph_from_clique_ising_model(sg_model, fixed_variables={})
 

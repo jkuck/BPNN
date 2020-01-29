@@ -18,21 +18,21 @@ import numpy as np
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 100 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 6 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
-MODEL_NAME = "spinGlass_2layer.pth"
+MODEL_NAME = "spinGlass_%dlayer.pth" % MSG_PASSING_ITERS
 ROOT_DIR = "/atlas/u/jkuck/learn_BP/" #file path to the directory cloned from github
 TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored here
 
 
 
 ##########################################################################################################
-N_MIN = 5
-N_MAX = 10
-F_MAX = 3.0
-C_MAX = 3.0
+N_MIN = 8
+N_MAX = 11
+F_MAX = 5.0
+C_MAX = 5.0
 
 #contains CNF files for training/validation/test problems
 TRAINING_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_spinGlass/"
@@ -42,7 +42,7 @@ VALIDATION_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/val_spinGlass/"
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/test_SAT_problems/"
 TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 
-TRAINING_DATA_SIZE = 500
+TRAINING_DATA_SIZE = 100
 VAL_DATA_SIZE = 100#100
 TEST_DATA_SIZE = 100
 
@@ -146,7 +146,7 @@ def test():
         # spin_glass_problem.compute_bethe_free_energy()
         spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
         estimated_ln_partition_function = lbp_net(spin_glass_problem)
-        GNN_estimated_counts.append(estimated_ln_partition_function)
+        GNN_estimated_counts.append(estimated_ln_partition_function.item())
         LBPlibdai_estimated_counts.append(libdai_lbp_Z_est)
         LBPmrftools_estimated_counts.append(mrftools_lbp_Z_estimate)
         exact_solution_counts.append(exact_ln_partition_function)
@@ -164,9 +164,9 @@ def test():
         print("exact_ln_partition_function:", exact_ln_partition_function)
         print()
 
-    print("LBP libdai squared errors:", lbp_losses)
-    print("LBP mrftools squared errors:", mrftool_lbp_losses)
-    print("GNN squared errors:", GNN_estimated_counts)
+    print("LBP libdai MSE:", np.sqrt(np.mean(lbp_losses)))
+    print("LBP mrftools MSE:", np.sqrt(np.mean(mrftool_lbp_losses)))
+    print("GNN MSE:", np.sqrt(np.mean(losses)))
 
 
     losses.sort()
