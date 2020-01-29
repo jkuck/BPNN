@@ -125,3 +125,17 @@ def brute_force(sg_model):
     exact_z = bf.compute_z()
     return exact_z
 
+def run_LBP(sg_model, max_iter=100):
+    sg_as_MarkoveNet = build_MarkovNet_from_SpinGlassModel(sg_model)
+
+
+    bp = mrftools.BeliefPropagator(sg_as_MarkoveNet)
+    bp.set_max_iter(max_iter)
+    # bp.infer(display='full')
+
+    bp.compute_pairwise_beliefs()
+
+    # print("Bethe energy functional: %f" % bp.compute_energy_functional())
+
+    lbp_estimate = bp.compute_energy_functional() 
+    return lbp_estimate

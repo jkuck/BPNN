@@ -161,7 +161,7 @@ def junction_tree(sg_model, verbose=False):
     # Set some constants
     maxiter = 10000
     tol = 1e-9
-    verb = 1    
+    verb = 0
     # Store the constants in a PropertySet object
     opts = dai.PropertySet()
     opts["maxiter"] = str(maxiter)   # Maximum number of iterations
@@ -199,6 +199,48 @@ def junction_tree(sg_model, verbose=False):
         print('-'*80)
         print('Exact log partition sum:', ln_Z)
     return(ln_Z)
+
+def run_loopyBP(sg_model, maxiter=100):
+    sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
+    # sg_FactorGraph = build_graph_from_clique_ising_model(sg_model, fixed_variables={})
+
+    # Write factorgraph to a file
+    sg_FactorGraph.WriteToFile('sg_temp.fg')
+
+    # Set some constants
+    # maxiter = 10000
+    maxiter = maxiter
+    # maxiter = 4
+    tol = 1e-9
+    verb = 1
+    # Store the constants in a PropertySet object
+    opts = dai.PropertySet()
+    opts["maxiter"] = str(maxiter)   # Maximum number of iterations
+    opts["tol"] = str(tol)           # Tolerance for convergence
+    opts["verbose"] = str(verb)      # Verbosity (amount of output generated)bpopts["updates"] = "SEQRND"
+
+
+    ##################### Run Loopy Belief Propagation #####################
+    # Construct a BP (belief propagation) object from the FactorGraph sg_FactorGraph
+    # using the parameters specified by opts and two additional properties,
+    # specifying the type of updates the BP algorithm should perform and
+    # whether they should be done in the real or in the logdomain
+    bpopts = opts
+    # bpopts["updates"] = "SEQRND"
+    bpopts["updates"] = "PARALL"
+    bpopts["logdomain"] = "1"
+
+    bp = dai.BP( sg_FactorGraph, bpopts )
+    # Initialize belief propagation algorithm
+    bp.init()
+    # Run belief propagation algorithm
+    bp.run()
+
+    # Report log partition sum of sg_FactorGraph, approximated by the belief propagation algorithm
+    ln_z_estimate = bp.logZ()
+    return ln_z_estimate
+
+
 
 def run_inference(sg_model):
     sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})

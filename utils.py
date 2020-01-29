@@ -43,6 +43,12 @@ def log_normalize(tensor):
     #     assert((factor_beliefs[factor_idx] != -np.inf).all()), (factor_beliefs[factor_idx], log_sum_exp_factor_beliefs[factor_idx], (factor_beliefs[factor_idx] != -np.inf))    
     assert((log_sum_exp_factor_beliefs != -np.inf).all()) #debugging, assumes every index should contain non-zero entries
     normalized_tensor = tensor - log_sum_exp_factor_beliefs#normalize factor beliefs
+   
+    # #DEBUG
+    # logsumexp_normalized_tensor = logsumexp_multipleDim(normalized_tensor, dim=0)
+    # assert((logsumexp_normalized_tensor == 0.0).all()), (logsumexp_normalized_tensor, tensor, normalized_tensor)
+    # #END DEBUG
+
     return normalized_tensor
 
 

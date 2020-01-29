@@ -1,6 +1,6 @@
 import numpy as np
-import mrftools_utils
-import libdai_utils
+from . import mrftools_utils
+from . import libdai_utils
 
 class SpinGlassModel:
     def __init__(self, N, f, c, all_weights_1=False):
@@ -44,7 +44,11 @@ class SpinGlassModel:
         else: #randomly sample weights
             #sample local field parameters (theta_i) for each node
             self.lcl_fld_params = np.random.uniform(low=-f, high=f, size=(N,N))
-    
+            # self.lcl_fld_params = np.random.uniform(low=.5, high=f, size=(N,N))
+            # lcl_fld_params_pos = np.random.uniform(low=1.5, high=f, size=(N,N))
+            # randomarray = np.random.uniform(low=0, high=1, size=(N,N))
+            # self.lcl_fld_params[np.where(randomarray>.5)] = lcl_fld_params_pos[np.where(randomarray>.5)]
+
             #sample horizontal coupling parameters (theta_ij) for each horizontal edge
             self.cpl_params_h = np.random.uniform(low=0.0, high=c, size=(N,N-1))
     
@@ -62,6 +66,10 @@ class SpinGlassModel:
         exact_z = mrftools_utils.brute_force(self)
         return exact_z
 
+    def loopyBP_mrftools(self):
+        ln_Z_estimate = mrftools_utils.run_LBP(self)
+        return ln_Z_estimate
+
     def junction_tree_libdai(self):
         '''
         Compute the partition function of this spin glass model using the junction tree 
@@ -73,6 +81,16 @@ class SpinGlassModel:
         ln_Z = libdai_utils.junction_tree(self)
         return ln_Z
 
+    def loopyBP_libdai(self):
+        '''
+        estimate the partition function of this spin glass model using the 
+        loopy belief propagation implementation from libdai
+
+        Outputs:
+        - ln_Z_estimate: estimate of the natural logarithm of the partition function
+        '''
+        ln_Z_estimate = libdai_utils.run_loopyBP(self)
+        return ln_Z_estimate
 
 def compare_libdai_mrftools():
     sg_model = SpinGlassModel(N=10, f=1, c=1)

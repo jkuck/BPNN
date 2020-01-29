@@ -1,5 +1,10 @@
 import random
+from torch.utils.data import Dataset
+import numpy as np
+import torch
 
+from factor_graph import FactorGraph
+from .spin_glass_model import SpinGlassModel
 
 #Pytorch dataset
 class SpinGlassDataset(Dataset):
@@ -20,16 +25,27 @@ class SpinGlassDataset(Dataset):
 
         self.spin_glass_problems = []
         self.ln_partition_functions = []
+        self.lpb_partition_function_estimates = []
+        self.mrftools_lpb_partition_function_estimates = []
         for idx in range(dataset_size):
+            print("creating spin glass problem", idx)
             cur_N = random.randint(N_min, N_max)
             cur_f = np.random.uniform(low=0, high=f_max)
             cur_c = np.random.uniform(low=0, high=c_max)
             cur_sg_model = SpinGlassModel(N=cur_N, f=cur_f, c=cur_c)
+            lbp_Z_estimate = cur_sg_model.loopyBP_libdai()
+
+            mrftools_lbp_Z_estimate = cur_sg_model.loopyBP_mrftools()
+            self.mrftools_lpb_partition_function_estimates.append(mrftools_lbp_Z_estimate)
+            print("lbp libdai:", lbp_Z_estimate, "lbp mrftools:", mrftools_lbp_Z_estimate)
+            print()
+
             cur_ln_Z = cur_sg_model.junction_tree_libdai()
             sg_as_factor_graph = build_factorgraph_from_SpinGlassModel(cur_sg_model)
 
-            self.spin_glass_problems.append(sg_as_factor_graph)\
+            self.spin_glass_problems.append(sg_as_factor_graph)
             self.ln_partition_functions.append(cur_ln_Z)
+            self.lpb_partition_function_estimates.append(lbp_Z_estimate)
         assert(dataset_size == len(self.spin_glass_problems))            
         assert(dataset_size == len(self.ln_partition_functions))
 
@@ -40,18 +56,19 @@ class SpinGlassDataset(Dataset):
         '''
         Outputs:
         - sg_problem (FactorGraph, defined in factor_graph.py): factor graph representation of spin glass problem
-        - ln_solution_count (float): natural logarithm(partition function of sg_problem)
+        - ln_Z (float): natural logarithm(partition function of sg_problem)
         '''
         sg_problem = self.spin_glass_problems[index]
-        ln_solution_count = self.ln_partition_functions[index]
-        return sg_problem, ln_solution_count
+        ln_Z = self.ln_partition_functions[index]
+        lbp_Z_estimate = self.lpb_partition_function_estimates[index]
+        mrftools_lbp_Z_estimate = self.mrftools_lpb_partition_function_estimates[index]
+        return sg_problem, ln_Z, lbp_Z_estimate, mrftools_lbp_Z_estimate
 
-def build_unary_factor(var_idx, f, state_dimensions):
+def build_unary_factor(f, state_dimensions):
     '''
     create single variable factor for pytorch
 
     Inputs:
-    - var_idx: (int) variable index, 0 to N-1, for this factor's node
     - f: (float) local field at this node
 
     Outputs:
@@ -62,13 +79,13 @@ def build_unary_factor(var_idx, f, state_dimensions):
     #only use 1 dimension for a single variable factor 
     used_dimension_count = 1
     #initialize to all 0's, -infinity in log space
-    state = -np.inf*torch.ones([2 for i in range(state_dimensions)])
+    factor_potential = -np.inf*torch.ones([2 for i in range(state_dimensions)])
     mask = torch.zeros([2 for i in range(state_dimensions)])
 
 
-    # set state[:, 0, 0, ..., 0] = [-f, f]
+    # set factor_potential[:, 0, 0, ..., 0] = [-f, f]
     # set all values of mask to 1, except for mask[:, 0, 0, ..., 0]
-    for indices in np.ndindex(state.shape):
+    for indices in np.ndindex(factor_potential.shape):
         junk_location = False
         for dimension in range(used_dimension_count, state_dimensions):
             if indices[dimension] == 1:
@@ -79,19 +96,18 @@ def build_unary_factor(var_idx, f, state_dimensions):
         for idx in range(used_dimension_count, len(indices)):
             assert(indices[idx] == 0)
         if indices[0] == 0:
-            state[indices] = -f
+            factor_potential[indices] = -f
         elif indices[0] == 1:
-            state[indices] = f
+            factor_potential[indices] = f
         else:
             assert(False)
-    return state, mask
+    return factor_potential, mask
 
-def build_pairwise_factor(var_idx, c, state_dimensions):
+def build_pairwise_factor(c, state_dimensions):
     '''
     create factor over two variables for pytorch
 
     Inputs:
-    - var_idx: (int) variable index, 0 to N-1, for this factor's node
     - f: (float) local field at this node
 
     Outputs:
@@ -103,14 +119,14 @@ def build_pairwise_factor(var_idx, c, state_dimensions):
     #only use 1 dimension for a single variable factor 
     used_dimension_count = 2
     #initialize to all 0's, -infinity in log space
-    state = -np.inf*torch.ones([2 for i in range(state_dimensions)])
+    factor_potential = -np.inf*torch.ones([2 for i in range(state_dimensions)])
     mask = torch.zeros([2 for i in range(state_dimensions)])
 
 
-    # set state[:, :, 0, ..., 0] = [[ c, -c],
+    # set factor_potential[:, :, 0, ..., 0] = [[ c, -c],
     #                               [-c,  c]]
     # set all values of mask to 1, except for mask[:, :, 0, 0, ..., 0]
-    for indices in np.ndindex(state.shape):
+    for indices in np.ndindex(factor_potential.shape):
         junk_location = False
         for dimension in range(used_dimension_count, state_dimensions):
             if indices[dimension] == 1:
@@ -121,11 +137,11 @@ def build_pairwise_factor(var_idx, c, state_dimensions):
         for idx in range(used_dimension_count, len(indices)):
             assert(indices[idx] == 0)
         if indices[0] == indices[1]:
-            state[indices] = c
+            factor_potential[indices] = c
         else:
-            state[indices] = -c
+            factor_potential[indices] = -c
 
-    return state, mask    
+    return factor_potential, mask    
 
 
 def build_edge_var_indices(sg_model):
@@ -170,7 +186,6 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
     Outputs:
     - factorgraph (FactorGraph): or None if there is a clause containing more than max_factor_dimensions variables
     '''
-    assert(len(sg_model.fixed_variables) == 0)
     state_dimensions = 2
     N = sg_model.N
     num_vars = N**2
@@ -208,36 +223,38 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
     #     matrix with shape :obj:`[numFactors, numVars]`
     factorToVar_edge_index = torch.tensor(factorToVar_edge_index_list, dtype=torch.long)
 
+    factor_potentials_list = []
+    masks_list = []
     # Create pytorch tensor factors for each single variable factor
     for var_idx in range(N**2):
         r = var_idx//N
         c = var_idx%N
-        state, mask = build_single_node_factor(mn, fixed_variables, var_idx, f=sg_model.lcl_fld_params[r,c])
-        states.append(state)
-        masks.append(mask)
+        factor_potential, mask = build_unary_factor(f=sg_model.lcl_fld_params[r,c], state_dimensions=state_dimensions)
+        factor_potentials_list.append(factor_potential)
+        masks_list.append(mask)
 
     # Create pytorch tensor factors for each horizontal pairwise factor
     for row_idx in range(N):
         for col_idx in range(N-1):
             var_idx1 = row_idx*N + col_idx
             var_idx2 = row_idx*N + col_idx + 1
-            state, mask = build_pairwise_factor(mn, fixed_variables, var_idx1=var_idx1, var_idx2=var_idx2, c=sg_model.cpl_params_h[row_idx,col_idx])
-            states.append(state)
-            masks.append(mask)
+            factor_potential, mask = build_pairwise_factor(c=sg_model.cpl_params_h[row_idx,col_idx], state_dimensions=state_dimensions)
+            factor_potentials_list.append(factor_potential)
+            masks_list.append(mask)
 
     # Create pytorch tensor factors for each vertical pairwise factor
     for row_idx in range(N-1):
         for col_idx in range(N):
             var_idx1 = row_idx*N + col_idx
             var_idx2 = (row_idx+1)*N + col_idx
-            state, mask = build_pairwise_factor(mn, fixed_variables, var_idx1=var_idx1, var_idx2=var_idx2, c=sg_model.cpl_params_v[row_idx,col_idx])
-            states.append(state)
-            masks.append(mask)
+            factor_potential, mask = build_pairwise_factor(c=sg_model.cpl_params_v[row_idx,col_idx], state_dimensions=state_dimensions)
+            factor_potentials_list.append(factor_potential)
+            masks_list.append(mask)
 
-    factor_potentials = torch.stack(states, dim=0)
-    factor_potential_masks = torch.stack(masks, dim=0)
+    factor_potentials = torch.stack(factor_potentials_list, dim=0)
+    factor_potential_masks = torch.stack(masks_list, dim=0)
 
-    edge_var_indices = build_edge_var_indices(clauses, max_clause_degree=max_clause_degree)
+    edge_var_indices = build_edge_var_indices(sg_model=sg_model)
     # print("state_dimensions:", state_dimensions)
 
     edge_count = edge_var_indices.shape[1]

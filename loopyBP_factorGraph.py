@@ -66,7 +66,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         if False we take exponent then run mlp then take log
     """
 
-    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True, logspace_mlp=False):
+    def __init__(self, learn_BP=False, factor_state_space=None, avoid_nans=False, logspace_mlp=False):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
 
         self.learn_BP = learn_BP
