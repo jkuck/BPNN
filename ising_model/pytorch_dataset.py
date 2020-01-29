@@ -231,7 +231,7 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
     if sg_model.contains_higher_order_potentials:
         for higher_order_idx in range(sg_model.ho_potential_count):
             factor_idx =  2*(N - 1)*N + N**2 + higher_order_idx
-            for variable_idx in sg_model.higher_order_potentials_variables[higher_order_idx]
+            for variable_idx in sg_model.higher_order_potentials_variables[higher_order_idx]:
                 factorToVar_edge_index_list.append([factor_idx, variable_idx])
             # pass
 

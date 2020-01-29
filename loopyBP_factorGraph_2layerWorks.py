@@ -174,17 +174,18 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             #                ReLU(),
             #                Linear(factor_state_space, factor_state_space))
 
-    def forward(self, factor_graph, prv_varToFactor_messages, prv_factor_beliefs):
+    def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs):
         '''
         Inputs:
         - factor_graph: (FactorGraph, defined in factor_graph.py) the factor graph we will perform one
             iteration of message passing on.
         '''
         # Step 3-5: Start propagating messages.
-        return self.propagate(factor_graph, prv_varToFactor_messages, prv_factor_beliefs)
+        return self.propagate(factor_graph=factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                              prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
 
 
-    def propagate(self, factor_graph, prv_varToFactor_messages, prv_factor_beliefs, debug=False):
+    def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, alpha=.5, debug=False):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
 
@@ -193,6 +194,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             iteration of message passing on.
         - prv_varToFactor_messages (tensor): varToFactor_messages from the last message passing iteration
         - prv_factor_beliefs (tensor): factor beliefs from the last message passing iteration
+        - alpha (float): residual weighting for factorToVar_messages
 
         Outputs:
         - varToFactor_messages (tensor): varToFactor_messages in this message passing iteration 
@@ -203,7 +205,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         #update variable beliefs
-        factorToVar_messages = self.message_factorToVar(prv_factor_beliefs, factor_graph, prv_varToFactor_messages)
+        factorToVar_messages = alpha*self.message_factorToVar(prv_factor_beliefs, factor_graph, prv_varToFactor_messages) +\
+                               (1 - alpha)*prv_factorToVar_messages
         assert(not torch.isnan(factorToVar_messages).any()), prv_factor_beliefs
 
         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.factorToVar_edge_index[1], dim_size=factor_graph.numVars)

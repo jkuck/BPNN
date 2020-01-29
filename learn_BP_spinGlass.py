@@ -8,6 +8,7 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
+import ising_model.parameters
 
 ##########################
 ##### Run me on Atlas
@@ -18,7 +19,7 @@ import numpy as np
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 2 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 3 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -42,8 +43,8 @@ VALIDATION_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/val_spinGlass/"
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/test_SAT_problems/"
 TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 
-TRAINING_DATA_SIZE = 10
-VAL_DATA_SIZE = 10#100
+TRAINING_DATA_SIZE = 5
+VAL_DATA_SIZE = 5#100
 TEST_DATA_SIZE = 100
 
 
@@ -75,6 +76,7 @@ def train():
     # with autograd.detect_anomaly():
     losses = []
     for e in range(EPOCH_COUNT):
+        epoch_loss = 0
         for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(train_data_loader):
             optimizer.zero_grad()
 
@@ -87,12 +89,14 @@ def train():
             # print("exact_ln_partition_function:", exact_ln_partition_function)
             # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
+            epoch_loss += loss
             # print("loss:", loss)
             # print()
             losses.append(loss.item())
-            loss.backward()
-            # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
-            optimizer.step()
+            
+        epoch_loss.backward()
+        # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
+        optimizer.step()
 
         if e % PRINT_FREQUENCY == 0:
             print("root mean squared training error =", np.sqrt(np.mean(losses)))
@@ -174,8 +178,8 @@ def test():
     lbp_losses.sort()
 
     plt.plot(exact_solution_counts, GNN_estimated_counts, 'x', c='g', label='GNN estimate, %d iters, RMSE=%.2f, 10 lrgst removed RMSE=%.2f' % (MSG_PASSING_ITERS, np.sqrt(np.mean(losses)), np.sqrt(np.mean(losses[:-10]))))
-    plt.plot(exact_solution_counts, LBPmrftools_estimated_counts, '+', c='r', label='LBP mrftools, RMSE=%.2f, 10 lrgst removed RMSE=%.2f' % (np.sqrt(np.mean(mrftool_lbp_losses)), np.sqrt(np.mean(mrftool_lbp_losses[:-10]))))
-    plt.plot(exact_solution_counts, LBPlibdai_estimated_counts, 'x', c='b', label='LBP libdai, RMSE=%.2f, 10 lrgst removed RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses)), np.sqrt(np.mean(lbp_losses[:-10]))))
+    plt.plot(exact_solution_counts, LBPmrftools_estimated_counts, '+', c='r', label='LBP mrftools, %d iters, RMSE=%.2f, 10 lrgst removed RMSE=%.2f' % (ising_model.parameters.MRFTOOLS_LBP_ITERS, np.sqrt(np.mean(mrftool_lbp_losses)), np.sqrt(np.mean(mrftool_lbp_losses[:-10]))))
+    plt.plot(exact_solution_counts, LBPlibdai_estimated_counts, 'x', c='b', label='LBP libdai, %d iters, RMSE=%.2f, 10 lrgst removed RMSE=%.2f' % (ising_model.parameters.LIBDAI_LBP_ITERS, np.sqrt(np.mean(lbp_losses)), np.sqrt(np.mean(lbp_losses[:-10]))))
     plt.plot([min(exact_solution_counts), max(exact_solution_counts)], [min(exact_solution_counts), max(exact_solution_counts)], '-', c='g', label='Exact')
 
     # plt.axhline(y=math.log(2)*log_2_Z[PROBLEM_NAME], color='y', label='Ground Truth ln(Set Size)') 
@@ -200,5 +204,5 @@ def test():
 
 
 if __name__ == "__main__":
-    # train()
-    test()
+    train()
+    # test()

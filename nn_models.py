@@ -25,7 +25,8 @@ class lbp_message_passing_network(nn.Module):
         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages()
         for message_passing_layer in self.message_passing_layers:
             prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
-                message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages, prv_factor_beliefs=prv_factor_beliefs)
+                message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                                      prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
         bethe_free_energy = factor_graph.compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs)
         estimated_ln_partition_function = -bethe_free_energy
         return estimated_ln_partition_function
