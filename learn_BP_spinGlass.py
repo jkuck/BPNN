@@ -18,7 +18,7 @@ import parameters
 # $ cd /atlas/u/jkuck/virtual_environments/pytorch_geometric
 # $ source bin/activate
 
-MODE = "train" #run "test" or "train" mode
+MODE = "test" #run "test" or "train" mode
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
@@ -43,16 +43,16 @@ REGENERATE_DATA = False
 DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
 
 
-TRAINING_DATA_SIZE = 5
+TRAINING_DATA_SIZE = 50
 VAL_DATA_SIZE = 5#100
-TEST_DATA_SIZE = 100
+TEST_DATA_SIZE = 50
 
 
 EPOCH_COUNT = 1000
 PRINT_FREQUENCY = 1
 SAVE_FREQUENCY = 1
 
-TEST_DATSET = 'train' #can test and plot results for 'train', 'val', or 'test' datasets
+TEST_DATSET = 'test' #can test and plot results for 'train', 'val', or 'test' datasets
 TEST_TRAINED_MODEL = False #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
 ##########################
 
@@ -84,7 +84,8 @@ def train():
     lbp_net.train()
 
     # Initialize optimizer
-    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0005)
+#     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0005)
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.002)
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1) #multiply lr by gamma every step_size epochs    
 
     loss_func = torch.nn.MSELoss()
