@@ -19,10 +19,12 @@ import parameters
 # $ source bin/activate
 
 MODE = "train" #run "test" or "train" mode
+TEST_TRAINED_MODEL = True #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
+
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 10 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 5 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -44,16 +46,15 @@ DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
 
 
 TRAINING_DATA_SIZE = 50
-VAL_DATA_SIZE = 5#100
+VAL_DATA_SIZE = 50#100
 TEST_DATA_SIZE = 50
 
 
-EPOCH_COUNT = 1000
+EPOCH_COUNT = 10000
 PRINT_FREQUENCY = 1
 SAVE_FREQUENCY = 1
 
 TEST_DATSET = 'test' #can test and plot results for 'train', 'val', or 'test' datasets
-TEST_TRAINED_MODEL = True #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
 ##########################
 
 
@@ -84,11 +85,11 @@ def train():
     lbp_net.train()
 
     # Initialize optimizer
-    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0005)
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.000)
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.002) #used for training on 50
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.001)
 #     optimizer = torch.optim.SGD(lbp_net.parameters(), lr=0.001)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5) #multiply lr by gamma every step_size epochs    
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5) #multiply lr by gamma every step_size epochs    
 
     loss_func = torch.nn.MSELoss()
 

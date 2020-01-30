@@ -185,7 +185,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                               prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
 
 
-    def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, alpha=alpha, debug=False):
+    def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, alpha=alpha, alpha2= .5, debug=False):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
 
@@ -293,7 +293,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                     factor_beliefs_clone = factor_beliefs.clone()
                     
                     check_factor_beliefs(factor_beliefs) #debugging
-                    factor_beliefs_temp = self.mlp(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
+                    factor_beliefs_temp = (1-alpha2)*self.mlp(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) + alpha2*factor_beliefs_clone
                     # factor_beliefs = factor_beliefs_temp.clone()
                     # factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
                     # factor_beliefs[factor_beliefs_neg_inf_locations] = -np.inf
