@@ -1,6 +1,11 @@
 import mrftools
 import numpy as np
-from .parameters import MRFTOOLS_LBP_ITERS
+import os,sys,inspect
+current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir) 
+from parameters import MRFTOOLS_LBP_ITERS
+# from ..parameters import MRFTOOLS_LBP_ITERS
 
 
 def build_single_node_factor(mn, fixed_variables, var_idx, f):

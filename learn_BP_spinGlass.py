@@ -1,21 +1,24 @@
 import torch
 from torch import autograd
+import pickle
+
 from nn_models import lbp_message_passing_network
 from ising_model.pytorch_dataset import SpinGlassDataset
 from factor_graph import FactorGraph
 from torch.utils.data import DataLoader
+# from torch_geometric.data import DataLoader
 import os
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
-import ising_model.parameters
+import parameters
 
 ##########################
 ##### Run me on Atlas
 # $ cd /atlas/u/jkuck/virtual_environments/pytorch_geometric
 # $ source bin/activate
 
-
+MODE = "train" #run "test" or "train" mode
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
@@ -35,24 +38,44 @@ N_MAX = 11
 F_MAX = 5.0
 C_MAX = 5.0
 
-#contains CNF files for training/validation/test problems
-TRAINING_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_spinGlass/"
+REGENERATE_DATA = False
+DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
 
-VALIDATION_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/val_spinGlass/"
-
-# TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/test_SAT_problems/"
-TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 
 TRAINING_DATA_SIZE = 5
 VAL_DATA_SIZE = 5#100
 TEST_DATA_SIZE = 100
 
 
-EPOCH_COUNT = 40
+EPOCH_COUNT = 1000
 PRINT_FREQUENCY = 1
-SAVE_FREQUENCY = 10
+SAVE_FREQUENCY = 1
+
+TEST_DATSET = 'train' #can test and plot results for 'train', 'val', or 'test' datasets
+TEST_TRAINED_MODEL = False #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
 ##########################
 
+
+def get_dataset(dataset_type):
+    assert(dataset_type in ['train', 'val', 'test'])
+    if dataset_type == 'train':
+        datasize = TRAINING_DATA_SIZE
+    elif dataset_type == 'val':
+        datasize = VAL_DATA_SIZE
+    else:
+        datasize = TEST_DATA_SIZE
+    dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f.pkl' % (datasize, N_MIN, N_MAX, F_MAX, C_MAX)
+    if REGENERATE_DATA or (not os.path.exists(dataset_file)):
+        print("REGENERATING DATA!!")
+        sg_data = SpinGlassDataset(dataset_size=datasize, N_min=N_MIN, N_max=N_MAX, f_max=F_MAX, c_max=C_MAX)
+        if not os.path.exists(DATA_DIR):
+            os.makedirs(DATA_DIR)
+        with open(dataset_file, 'wb') as f:
+            pickle.dump(sg_data, f)            
+    else:
+        with open(dataset_file, 'rb') as f:
+            sg_data = pickle.load(f)
+    return sg_data
 
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS)
 # lbp_net.double()
@@ -60,16 +83,16 @@ def train():
     lbp_net.train()
 
     # Initialize optimizer
-    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0001)
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0005)
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1) #multiply lr by gamma every step_size epochs    
 
     loss_func = torch.nn.MSELoss()
 
-    sg_data_train = SpinGlassDataset(dataset_size=TRAINING_DATA_SIZE, N_min=N_MIN, N_max=N_MAX, f_max=F_MAX, c_max=C_MAX)
-    # sleep(temp)
-    train_data_loader = DataLoader(sg_data_train, batch_size=1)
 
-    sg_data_val = SpinGlassDataset(dataset_size=VAL_DATA_SIZE, N_min=N_MIN, N_max=N_MAX, f_max=F_MAX, c_max=C_MAX)
+    sg_data_train = get_dataset(dataset_type='train')
+    # sg_data_train = SpinGlassDataset(dataset_size=datasize, N_min=N_MIN, N_max=N_MAX, f_max=F_MAX, c_max=C_MAX)
+    train_data_loader = DataLoader(sg_data_train, batch_size=1)
+    sg_data_val = get_dataset(dataset_type='val')
     val_data_loader = DataLoader(sg_data_val, batch_size=1)
 
 
@@ -77,8 +100,8 @@ def train():
     losses = []
     for e in range(EPOCH_COUNT):
         epoch_loss = 0
+        optimizer.zero_grad()
         for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(train_data_loader):
-            optimizer.zero_grad()
 
             spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
             assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
@@ -127,14 +150,15 @@ def train():
     torch.save(lbp_net.state_dict(), TRAINED_MODELS_DIR + MODEL_NAME)
 
 def test():
-    lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
-    # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "simple_4layer_firstWorking.pth"))
-    # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "trained39non90_2layer.pth"))
+    if TEST_TRAINED_MODEL:
+        lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
+        # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "simple_4layer_firstWorking.pth"))
+        # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "trained39non90_2layer.pth"))
 
 
     lbp_net.eval()
 
-    sg_data = SpinGlassDataset(dataset_size=TEST_DATA_SIZE, N_min=N_MIN, N_max=N_MAX, f_max=F_MAX, c_max=C_MAX)
+    sg_data = get_dataset(dataset_type=TEST_DATSET)
 
     data_loader = DataLoader(sg_data, batch_size=1)
     loss_func = torch.nn.MSELoss()
@@ -178,15 +202,16 @@ def test():
     lbp_losses.sort()
 
     plt.plot(exact_solution_counts, GNN_estimated_counts, 'x', c='g', label='GNN estimate, %d iters, RMSE=%.2f, 10 lrgst removed RMSE=%.2f' % (MSG_PASSING_ITERS, np.sqrt(np.mean(losses)), np.sqrt(np.mean(losses[:-10]))))
-    plt.plot(exact_solution_counts, LBPmrftools_estimated_counts, '+', c='r', label='LBP mrftools, %d iters, RMSE=%.2f, 10 lrgst removed RMSE=%.2f' % (ising_model.parameters.MRFTOOLS_LBP_ITERS, np.sqrt(np.mean(mrftool_lbp_losses)), np.sqrt(np.mean(mrftool_lbp_losses[:-10]))))
-    plt.plot(exact_solution_counts, LBPlibdai_estimated_counts, 'x', c='b', label='LBP libdai, %d iters, RMSE=%.2f, 10 lrgst removed RMSE=%.2f' % (ising_model.parameters.LIBDAI_LBP_ITERS, np.sqrt(np.mean(lbp_losses)), np.sqrt(np.mean(lbp_losses[:-10]))))
+    plt.plot(exact_solution_counts, LBPmrftools_estimated_counts, '+', c='r', label='LBP mrftools, %d iters, RMSE=%.2f, 10 lrgst removed RMSE=%.2f' % (parameters.MRFTOOLS_LBP_ITERS, np.sqrt(np.mean(mrftool_lbp_losses)), np.sqrt(np.mean(mrftool_lbp_losses[:-10]))))
+    plt.plot(exact_solution_counts, LBPlibdai_estimated_counts, 'x', c='b', label='LBP libdai, %d iters, RMSE=%.2f, 10 lrgst removed RMSE=%.2f' % (parameters.LIBDAI_LBP_ITERS, np.sqrt(np.mean(lbp_losses)), np.sqrt(np.mean(lbp_losses[:-10]))))
     plt.plot([min(exact_solution_counts), max(exact_solution_counts)], [min(exact_solution_counts), max(exact_solution_counts)], '-', c='g', label='Exact')
 
     # plt.axhline(y=math.log(2)*log_2_Z[PROBLEM_NAME], color='y', label='Ground Truth ln(Set Size)') 
     plt.xlabel('ln(Exact Model Count)', fontsize=14)
     plt.ylabel('ln(Estimated Model Count)', fontsize=14)
     plt.title('Exact Model Count vs. Estimates', fontsize=20)
-    plt.legend(fontsize=12)    
+    # plt.legend(fontsize=8, loc=2, prop={'size': 6})    
+    plt.legend(fontsize=12, prop={'size': 8})    
     #make the font bigger
     matplotlib.rcParams.update({'font.size': 10})        
 
@@ -197,12 +222,20 @@ def test():
     #                 box.width, box.height * 0.9])
     #fig.savefig('/Users/jkuck/Downloads/temp.png', bbox_extra_artists=(lgd,), bbox_inches='tight')    
 
-    plt.show()
+    if not os.path.exists(ROOT_DIR + 'plots/'):
+        os.makedirs(ROOT_DIR + 'plots/')
+
+    # plot_name = 'trained=%s_%s_%diters_%d_%d_%.2f_%.2f.png' % (TEST_TRAINED_MODEL, TEST_DATSET, MSG_PASSING_ITERS, N_MIN, N_MAX, F_MAX, C_MAX)
+    plot_name = 'trained=%s_dataset=%s%d_%diters_alpha%f.png' % (TEST_TRAINED_MODEL, TEST_DATSET, len(data_loader), MSG_PASSING_ITERS, parameters.alpha)
+    plt.savefig(ROOT_DIR + 'plots/' + plot_name)
+    # plt.show()
 
 
 
 
 
 if __name__ == "__main__":
-    train()
-    # test()
+    if MODE == "train":
+        train()
+    elif MODE == "test":
+        test()

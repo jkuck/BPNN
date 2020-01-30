@@ -7,8 +7,12 @@ LIBDAI_SWIG_DIRECTORY = '/atlas/u/jkuck/libdai2/swig/'
 # LIBDAI_SWIG_DIRECTORY = '/Users/jkuck/research/libdai/swig'
 sys.path.insert(0, LIBDAI_SWIG_DIRECTORY)
 import dai
-from .parameters import LIBDAI_LBP_ITERS
-
+import os,sys,inspect
+current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir) 
+from parameters import LIBDAI_LBP_ITERS
+# from ..parameters import LIBDAI_LBP_ITERS
 
 def build_single_node_factor(variables, fixed_variables, var_idx, f):
     '''

@@ -3,10 +3,18 @@ import numpy as np
 
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
+    # https://github.com/aparo/pyes/issues/183
+    def __getattr__(self, attr):
+        if attr.startswith('__'):
+            raise AttributeError
+        return self.get(attr, None)
+
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
+    def __getstate__(self): return self.__dict__
+    def __setstate__(self, d): self.__dict__.update(d)
 
 def neg_inf_to_zero(tensor):
     '''

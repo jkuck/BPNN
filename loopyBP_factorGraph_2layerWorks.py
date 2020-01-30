@@ -9,7 +9,7 @@ from utils import dotdict, logminusexp
 import matplotlib.pyplot as plt
 import matplotlib
 import mrftools
-
+from parameters import alpha
 
 __size_error_msg__ = ('All tensors which should get mapped to the same source '
                       'or target nodes must be of same size in dimension 0.')
@@ -185,7 +185,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                               prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
 
 
-    def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, alpha=.5, debug=False):
+    def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, alpha=alpha, debug=False):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
 
@@ -194,7 +194,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             iteration of message passing on.
         - prv_varToFactor_messages (tensor): varToFactor_messages from the last message passing iteration
         - prv_factor_beliefs (tensor): factor beliefs from the last message passing iteration
-        - alpha (float): residual weighting for factorToVar_messages
+        - alpha (float): residual weighting for factorToVar_messages. alpha=1 corresponds to no skip connection, 
+            alpha=0 removes the neural network
 
         Outputs:
         - varToFactor_messages (tensor): varToFactor_messages in this message passing iteration 
