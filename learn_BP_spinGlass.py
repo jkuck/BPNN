@@ -18,11 +18,11 @@ import parameters
 # $ cd /atlas/u/jkuck/virtual_environments/pytorch_geometric
 # $ source bin/activate
 
-MODE = "test" #run "test" or "train" mode
+MODE = "train" #run "test" or "train" mode
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 5 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 10 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -53,7 +53,7 @@ PRINT_FREQUENCY = 1
 SAVE_FREQUENCY = 1
 
 TEST_DATSET = 'test' #can test and plot results for 'train', 'val', or 'test' datasets
-TEST_TRAINED_MODEL = False #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
+TEST_TRAINED_MODEL = True #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
 ##########################
 
 
@@ -84,9 +84,11 @@ def train():
     lbp_net.train()
 
     # Initialize optimizer
-#     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0005)
-    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.002)
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1) #multiply lr by gamma every step_size epochs    
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0005)
+#     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.002) #used for training on 50
+#     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.001)
+#     optimizer = torch.optim.SGD(lbp_net.parameters(), lr=0.001)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5) #multiply lr by gamma every step_size epochs    
 
     loss_func = torch.nn.MSELoss()
 
@@ -122,6 +124,7 @@ def train():
         epoch_loss.backward()
         # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
         optimizer.step()
+        scheduler.step()
 
         if e % PRINT_FREQUENCY == 0:
             print("root mean squared training error =", np.sqrt(np.mean(losses)))
@@ -145,7 +148,6 @@ def train():
                 os.makedirs(TRAINED_MODELS_DIR)
             torch.save(lbp_net.state_dict(), TRAINED_MODELS_DIR + MODEL_NAME)
 
-        # scheduler.step()
 
     if not os.path.exists(TRAINED_MODELS_DIR):
         os.makedirs(TRAINED_MODELS_DIR)
