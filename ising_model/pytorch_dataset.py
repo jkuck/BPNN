@@ -22,17 +22,34 @@ class SpinGlassDataset(Dataset):
              from [0, c_max]
 
         '''
-
-        self.spin_glass_problems = []
+        
+        self.dataset_size = dataset_size
+        self.N_min = N_min
+        self.N_max = N_max
+        self.f_max = f_max
+        self.c_max = c_max
+        
+        
+    def generate_problems(self, return_sg_objects):
+        '''
+        Moved to a separate function from __init__() so that we can return problems as 
+        a list of SpinGlassModels
+        
+        Inputs:
+        - return_sg_objects (bool): if True, return the spin glass models as SpinGlassModel's        
+        '''
+        self.spin_glass_problems_FGs = [] #stored as FactorGraph's
+        spin_glass_problems_SGMs = [] #stored as SpinGlassModel's
         self.ln_partition_functions = []
         self.lpb_partition_function_estimates = []
         self.mrftools_lpb_partition_function_estimates = []
-        for idx in range(dataset_size):
+        for idx in range(self.dataset_size):
             print("creating spin glass problem", idx)
-            cur_N = random.randint(N_min, N_max)
-            cur_f = np.random.uniform(low=0, high=f_max)
-            cur_c = np.random.uniform(low=0, high=c_max)
+            cur_N = random.randint(self.N_min, self.N_max)
+            cur_f = np.random.uniform(low=0, high=self.f_max)
+            cur_c = np.random.uniform(low=0, high=self.c_max)
             cur_sg_model = SpinGlassModel(N=cur_N, f=cur_f, c=cur_c)
+            spin_glass_problems_SGMs.append(cur_sg_model)
             lbp_Z_estimate = cur_sg_model.loopyBP_libdai()
 
             mrftools_lbp_Z_estimate = cur_sg_model.loopyBP_mrftools()
@@ -43,12 +60,14 @@ class SpinGlassDataset(Dataset):
             cur_ln_Z = cur_sg_model.junction_tree_libdai()
             sg_as_factor_graph = build_factorgraph_from_SpinGlassModel(cur_sg_model)
 
-            self.spin_glass_problems.append(sg_as_factor_graph)
+            self.spin_glass_problems_FGs.append(sg_as_factor_graph)
             self.ln_partition_functions.append(cur_ln_Z)
             self.lpb_partition_function_estimates.append(lbp_Z_estimate)
-        assert(dataset_size == len(self.spin_glass_problems))            
-        assert(dataset_size == len(self.ln_partition_functions))
-
+        assert(self.dataset_size == len(self.spin_glass_problems_FGs))            
+        assert(self.dataset_size == len(self.ln_partition_functions))
+        if return_sg_objects:
+            return spin_glass_problems_SGMs
+    
     def __len__(self):
         return len(self.ln_partition_functions)
 
@@ -58,7 +77,7 @@ class SpinGlassDataset(Dataset):
         - sg_problem (FactorGraph, defined in factor_graph.py): factor graph representation of spin glass problem
         - ln_Z (float): natural logarithm(partition function of sg_problem)
         '''
-        sg_problem = self.spin_glass_problems[index]
+        sg_problem = self.spin_glass_problems_FGs[index]
         ln_Z = self.ln_partition_functions[index]
         lbp_Z_estimate = self.lpb_partition_function_estimates[index]
         mrftools_lbp_Z_estimate = self.mrftools_lpb_partition_function_estimates[index]

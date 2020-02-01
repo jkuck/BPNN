@@ -4,7 +4,8 @@ from . import libdai_utils
 import torch
 
 class SpinGlassModel:
-    def __init__(self, N, f, c, all_weights_1=False, create_higher_order_potentials=False):
+    def __init__(self, N, f, c, all_weights_1=False, create_higher_order_potentials=False,\
+                attractive_field=False):
         '''
         Sample local field parameters and coupling parameters to define a spin glass model
         
@@ -17,7 +18,8 @@ class SpinGlassModel:
             the grid
         - all_weights_1: bool, if true return a model with all weights = 1 so Z=2^(N^2)
                                if false return randomly sampled model
-
+        - attractive_field (bool): if True sample couple potentials from [0,c], if False
+            sample from [-c,c]
         Values defining the spin glass model:
         - lcl_fld_params: array with dimensions (NxN), local field parameters (theta_i)
             that we sampled for each node in the grid 
@@ -50,12 +52,21 @@ class SpinGlassModel:
             # randomarray = np.random.uniform(low=0, high=1, size=(N,N))
             # self.lcl_fld_params[np.where(randomarray>.5)] = lcl_fld_params_pos[np.where(randomarray>.5)]
 
-            #sample horizontal coupling parameters (theta_ij) for each horizontal edge
-            self.cpl_params_h = np.random.uniform(low=0.0, high=c, size=(N,N-1))
-    
-            #sample vertical coupling parameters (theta_ij) for each vertical edge
-            self.cpl_params_v = np.random.uniform(low=0.0, high=c, size=(N-1,N))
+            if attractive_field:
+                #sample horizontal coupling parameters (theta_ij) for each horizontal edge
+                self.cpl_params_h = np.random.uniform(low=0, high=c, size=(N,N-1))
 
+                #sample vertical coupling parameters (theta_ij) for each vertical edge
+                self.cpl_params_v = np.random.uniform(low=0, high=c, size=(N-1,N))
+
+            else:
+                #sample horizontal coupling parameters (theta_ij) for each horizontal edge
+                self.cpl_params_h = np.random.uniform(low=-c, high=c, size=(N,N-1))
+
+                #sample vertical coupling parameters (theta_ij) for each vertical edge
+                self.cpl_params_v = np.random.uniform(low=-c, high=c, size=(N-1,N))                
+                
+                
             if create_higher_order_potentials:
                 self.contains_higher_order_potentials = True
                 self.ho_potential_count = 10 # the number of higher order potentials to create
@@ -92,7 +103,7 @@ class SpinGlassModel:
         ln_Z = libdai_utils.junction_tree(self)
         return ln_Z
 
-    def loopyBP_libdai(self):
+    def loopyBP_libdai(self, maxiter=None):
         '''
         estimate the partition function of this spin glass model using the 
         loopy belief propagation implementation from libdai
@@ -100,7 +111,7 @@ class SpinGlassModel:
         Outputs:
         - ln_Z_estimate: estimate of the natural logarithm of the partition function
         '''
-        ln_Z_estimate = libdai_utils.run_loopyBP(self)
+        ln_Z_estimate = libdai_utils.run_loopyBP(self, maxiter)
         return ln_Z_estimate
 
 def compare_libdai_mrftools():
