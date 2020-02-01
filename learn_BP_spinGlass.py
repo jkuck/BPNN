@@ -19,7 +19,7 @@ import parameters
 # $ cd /atlas/u/jkuck/virtual_environments/pytorch_geometric
 # $ source bin/activate
 
-MODE = "train" #run "test" or "train" mode
+MODE = "test" #run "test" or "train" mode
 TEST_TRAINED_MODEL = True #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
 
 ##########################
@@ -29,7 +29,8 @@ MSG_PASSING_ITERS = 5 #the number of iterations of message passing, we have this
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
-MODEL_NAME = "debugCUDA_spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
+# MODEL_NAME = "debugCUDA_spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
+MODEL_NAME = "spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
 
 ROOT_DIR = "/atlas/u/jkuck/learn_BP/" #file path to the directory cloned from github
 TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored here
@@ -41,10 +42,12 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # N_MAX = 11
 # F_MAX = 5.0
 # C_MAX = 5.0
-N_MIN = 10
-N_MAX = 10
+N_MIN = 14
+N_MAX = 14
 F_MAX = .1
 C_MAX = 5.0
+# F_MAX = 1
+# C_MAX = 10.0
 
 REGENERATE_DATA = False
 DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
@@ -203,15 +206,20 @@ def create_ising_model_figure(skip_our_model=False):
     LBPlibdai_500iters_estimated_counts = []
     LBPlibdai_5kiters_estimated_counts = []
     
+    meanFieldlibdai_5kiters_estimated_counts = []
+    
     lbp_losses_5iters = []
     lbp_losses_50iters = []
     lbp_losses_500iters = []
     lbp_losses_5kiters = []
     
+    mean_field_losses_5kiters = []
+    
     losses = []
     lbp_losses = []
     mrftool_lbp_losses = []
     for idx, (spin_glass_problem, exact_ln_partition_function, libdai_lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(data_loader):
+        print("problem:", idx)
         # spin_glass_problem.compute_bethe_free_energy()     
         sg_problem_SGM = spin_glass_problems_SGMs[idx]
         if not skip_our_model:
@@ -233,6 +241,10 @@ def create_ising_model_figure(skip_our_model=False):
         LBPlibdai_500iters_estimated_counts.append(libdai_lbp_Z_500-exact_ln_partition_function)
         LBPlibdai_5kiters_estimated_counts.append(libdai_lbp_Z_5k-exact_ln_partition_function)
 
+        libdai_meanField_Z_5k = sg_problem_SGM.mean_field_libdai(maxiter=100000)
+        meanFieldlibdai_5kiters_estimated_counts.append(libdai_meanField_Z_5k-exact_ln_partition_function)
+
+        
         
         exact_solution_counts.append(exact_ln_partition_function)
 
@@ -241,6 +253,7 @@ def create_ising_model_figure(skip_our_model=False):
         lbp_losses_50iters.append(loss_func(torch.tensor(libdai_lbp_Z_50), exact_ln_partition_function.float().squeeze()).item())
         lbp_losses_500iters.append(loss_func(torch.tensor(libdai_lbp_Z_500), exact_ln_partition_function.float().squeeze()).item())
         lbp_losses_5kiters.append(loss_func(torch.tensor(libdai_lbp_Z_5k), exact_ln_partition_function.float().squeeze()).item())
+        mean_field_losses_5kiters.append(loss_func(torch.tensor(libdai_meanField_Z_5k), exact_ln_partition_function.float().squeeze()).item())
 
         if not skip_our_model:
             print("GNN estimated_ln_partition_function:", estimated_ln_partition_function)
@@ -256,15 +269,17 @@ def create_ising_model_figure(skip_our_model=False):
     lbp_losses.sort()
 
     if not skip_our_model:
-        plt.plot(exact_solution_counts, GNN_estimated_counts, 'x', label='%d layer BPNN estimate, RMSE=%.2f' % (MSG_PASSING_ITERS, np.sqrt(np.mean(losses))))
+        plt.plot(exact_solution_counts, GNN_estimated_counts, 'x', label='%d layer BPNN, RMSE=%.2f' % (MSG_PASSING_ITERS, np.sqrt(np.mean(losses))))
         
     plt.plot(exact_solution_counts, LBPlibdai_5iters_estimated_counts, '+', label='LBP 5 iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_5iters))))
     
-    plt.plot(exact_solution_counts, LBPlibdai_50iters_estimated_counts, '+', label='LBP 50 iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_50iters))))
+#     plt.plot(exact_solution_counts, LBPlibdai_50iters_estimated_counts, '+', label='LBP 50 iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_50iters))))
     
     plt.plot(exact_solution_counts, LBPlibdai_500iters_estimated_counts, '+', label='LBP 500 iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_500iters))))
     
     plt.plot(exact_solution_counts, LBPlibdai_5kiters_estimated_counts, '+', label='LBP 5k iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_5kiters))))
+    
+    plt.plot(exact_solution_counts, meanFieldlibdai_5kiters_estimated_counts, '1', label='Mean Field, RMSE=%.2f' % (np.sqrt(np.mean(mean_field_losses_5kiters))))
     
     plt.plot([min(exact_solution_counts), max(exact_solution_counts)], [0, 0], '-', c='g', label='Exact')
 
@@ -288,7 +303,7 @@ def create_ising_model_figure(skip_our_model=False):
         os.makedirs(ROOT_DIR + 'plots/')
 
     # plot_name = 'trained=%s_%s_%diters_%d_%d_%.2f_%.2f.png' % (TEST_TRAINED_MODEL, TEST_DATSET, MSG_PASSING_ITERS, N_MIN, N_MAX, F_MAX, C_MAX)
-    plot_name = 'trained=%s_dataset=%s%d_%diters_alpha%f.png' % (TEST_TRAINED_MODEL, TEST_DATSET, len(data_loader), MSG_PASSING_ITERS, parameters.alpha)
+    plot_name = 'trained=%s_dataset=%s%d_c%f_f%f_%diters_alpha%f.png' % (TEST_TRAINED_MODEL, TEST_DATSET, len(data_loader), F_MAX, C_MAX, MSG_PASSING_ITERS, parameters.alpha)
     plt.savefig(ROOT_DIR + 'plots/' + plot_name)
     # plt.show()
 

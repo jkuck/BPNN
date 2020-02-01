@@ -114,6 +114,19 @@ class SpinGlassModel:
         ln_Z_estimate = libdai_utils.run_loopyBP(self, maxiter)
         return ln_Z_estimate
 
+    def mean_field_libdai(self, maxiter=None):
+        '''
+        estimate the partition function of this spin glass model using the 
+        mean field implementation from libdai
+
+        Outputs:
+        - ln_Z_estimate: estimate of the natural logarithm of the partition function
+        '''
+        ln_Z_estimate = libdai_utils.run_mean_field(self, maxiter)
+        return ln_Z_estimate    
+    
+    
+    
 def compare_libdai_mrftools():
     sg_model = SpinGlassModel(N=10, f=1, c=1)
     print("exact ln(partition function):", sg_model.junction_tree_libdai())

@@ -12,6 +12,7 @@ current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentfra
 parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir) 
 from parameters import LIBDAI_LBP_ITERS
+from parameters import LIBDAI_MEAN_FIELD_ITERS
 # from ..parameters import LIBDAI_LBP_ITERS
 
 def build_single_node_factor(variables, fixed_variables, var_idx, f):
@@ -272,6 +273,47 @@ def run_loopyBP(sg_model, maxiter):
 
     # Report log partition sum of sg_FactorGraph, approximated by the belief propagation algorithm
     ln_z_estimate = bp.logZ()
+    return ln_z_estimate
+
+
+def run_mean_field(sg_model, maxiter):
+    if maxiter is None:
+        maxiter=LIBDAI_MEAN_FIELD_ITERS
+    
+    sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
+    # sg_FactorGraph = build_graph_from_clique_ising_model(sg_model, fixed_variables={})
+
+    # Write factorgraph to a file
+    sg_FactorGraph.WriteToFile('sg_temp.fg')
+
+    # Set some constants
+    # maxiter = 10000
+    maxiter = maxiter
+    # maxiter = 4
+    tol = 1e-9
+    verb = 1
+    # Store the constants in a PropertySet object
+    opts = dai.PropertySet()
+    opts["maxiter"] = str(maxiter)   # Maximum number of iterations
+    opts["tol"] = str(tol)           # Tolerance for convergence
+    opts["verbose"] = str(verb)      # Verbosity (amount of output generated)
+
+
+    ##################### Run Loopy Belief Propagation #####################
+    # Construct an MF (mean field) object from the FactorGraph sg_FactorGraph
+    # using the parameters specified by opts and two additional properties,
+
+    mfopts = opts
+#     mfopts["damping"] = ".5"
+
+    mf = dai.MF( sg_FactorGraph, mfopts )
+    # Initialize mean field algorithm
+    mf.init()
+    # Run mean field algorithm
+    mf.run()
+
+    # Report log partition sum of sg_FactorGraph, approximated by the mean field algorithm
+    ln_z_estimate = mf.logZ()
     return ln_z_estimate
 
 
