@@ -9,7 +9,7 @@ from utils import dotdict, logminusexp
 import matplotlib.pyplot as plt
 import matplotlib
 import mrftools
-from parameters import alpha
+from parameters import alpha, alpha2
 
 __size_error_msg__ = ('All tensors which should get mapped to the same source '
                       'or target nodes must be of same size in dimension 0.')
@@ -50,6 +50,8 @@ def map_beliefs(beliefs, factor_graph, map_type):
         # print("mapped_beliefs.size(0):", mapped_beliefs.size(0))
         raise ValueError(__size_error_msg__)
 
+#     print(type(beliefs), type(mapped_beliefs), type(factor_graph.factorToVar_edge_index))
+#     print(beliefs.device, mapped_beliefs.device, factor_graph.factorToVar_edge_index.device)
     mapped_beliefs = torch.index_select(mapped_beliefs, 0, factor_graph.factorToVar_edge_index[idx])
     return mapped_beliefs
 
@@ -185,7 +187,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                               prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
 
 
-    def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, alpha=alpha, alpha2= .5, debug=False):
+    def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, alpha=alpha, alpha2=alpha2, debug=False):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
 

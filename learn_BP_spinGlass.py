@@ -19,7 +19,7 @@ import parameters
 # $ cd /atlas/u/jkuck/virtual_environments/pytorch_geometric
 # $ source bin/activate
 
-MODE = "test" #run "test" or "train" mode
+MODE = "train" #run "test" or "train" mode
 TEST_TRAINED_MODEL = True #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
 
 ##########################
@@ -29,7 +29,7 @@ MSG_PASSING_ITERS = 5 #the number of iterations of message passing, we have this
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
-MODEL_NAME = "spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
+MODEL_NAME = "debugCUDA_spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
 
 ROOT_DIR = "/atlas/u/jkuck/learn_BP/" #file path to the directory cloned from github
 TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored here
@@ -86,10 +86,11 @@ def get_dataset(dataset_type):
             (sg_data, spin_glass_problems_SGMs) = pickle.load(f)
     return sg_data, spin_glass_problems_SGMs
  
-lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS)
-
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 device = torch.device('cpu')
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS,\
+                                      msg_passing_iters=MSG_PASSING_ITERS, device=None)
+
 lbp_net = lbp_net.to(device)
 
 # lbp_net.double()
@@ -126,12 +127,15 @@ def train():
 
             spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
             assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
+#             spin_glass_problem.to_device(device)
             estimated_ln_partition_function = lbp_net(spin_glass_problem)
 
             # print("estimated_ln_partition_function:", estimated_ln_partition_function)
             # print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
             # print("exact_ln_partition_function:", exact_ln_partition_function)
             # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
+#             print(estimated_ln_partition_function.device, exact_ln_partition_function.device)
+#             exact_ln_partition_function = exact_ln_partition_function.to(device)
             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
             epoch_loss += loss
             # print("loss:", loss)
@@ -152,7 +156,9 @@ def train():
             for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(val_data_loader):
                 spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
                 assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
-                estimated_ln_partition_function = lbp_net(spin_glass_problem)                
+#                 spin_glass_problem.to_device(device)
+                estimated_ln_partition_function = lbp_net(spin_glass_problem) 
+#                 exact_ln_partition_function = exact_ln_partition_function.to(device)
                 loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
                 # print("estimated_ln_partition_function:", estimated_ln_partition_function)
 
@@ -211,7 +217,7 @@ def create_ising_model_figure(skip_our_model=False):
         if not skip_our_model:
             spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
 #             spin_glass_problem = spin_glass_problem.to(device)
-            exact_ln_partition_function = exact_ln_partition_function.to(device)
+#             exact_ln_partition_function = exact_ln_partition_function.to(device)
             estimated_ln_partition_function = lbp_net(spin_glass_problem)
             GNN_estimated_counts.append(estimated_ln_partition_function.item()-exact_ln_partition_function)
             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
@@ -315,7 +321,7 @@ def test(skip_our_model=False):
         if not skip_our_model:
             spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
 #             spin_glass_problem = spin_glass_problem.to(device)
-            exact_ln_partition_function = exact_ln_partition_function.to(device)
+#             exact_ln_partition_function = exact_ln_partition_function.to(device)
             estimated_ln_partition_function = lbp_net(spin_glass_problem)
             GNN_estimated_counts.append(estimated_ln_partition_function.item()-exact_ln_partition_function)
             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())

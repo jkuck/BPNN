@@ -48,6 +48,17 @@ class FactorGraph(dotdict):
         #1 signifies an invalid location (e.g. a dummy dimension in a factor), 0 signifies a valid location 
         self.factor_potential_masks = factor_potential_masks
 
+    def to_device(self, device):
+        self.factor_potentials = self.factor_potentials.to(device)
+        self.factorToVar_edge_index = self.factorToVar_edge_index.to(device)
+        self.factor_degrees = self.factor_degrees.to(device)
+        self.var_degrees = self.var_degrees.to(device)
+        self.numVars = self.numVars.to(device)
+        self.numFactors = self.numFactors.to(device)
+        self.edge_var_indices = self.edge_var_indices.to(device)
+        self.state_dimensions = self.state_dimensions.to(device)
+        self.factor_potential_masks = self.factor_potential_masks.to(device)
+        
     @classmethod
     def init_from_dictionary(cls, arg_dictionary, squeeze_tensors=False):
         '''
@@ -71,7 +82,7 @@ class FactorGraph(dotdict):
         return cls(arg_dictionary["factor_potentials"], arg_dictionary["factorToVar_edge_index"], arg_dictionary["numVars"], arg_dictionary["numFactors"], 
                    arg_dictionary["edge_var_indices"], arg_dictionary["state_dimensions"], arg_dictionary["factor_potential_masks"])
 
-    def get_initial_beliefs_and_messages(self, initialize_randomly=False):
+    def get_initial_beliefs_and_messages(self, initialize_randomly=False, device=None):
         edge_count = self.edge_var_indices.shape[1]
 
         prv_varToFactor_messages = torch.log(torch.stack([torch.ones([2], dtype=torch.float) for j in range(edge_count)], dim=0))
@@ -85,6 +96,11 @@ class FactorGraph(dotdict):
             prv_factorToVar_messages = torch.rand_like(prv_factorToVar_messages)
             # prv_factor_beliefs = torch.rand_like(prv_factor_beliefs)
             prv_var_beliefs = torch.rand_like(prv_var_beliefs)
+        if device is not None:
+            prv_varToFactor_messages = prv_varToFactor_messages.to(device)
+            prv_factorToVar_messages = prv_factorToVar_messages.to(device)
+            prv_factor_beliefs = prv_factor_beliefs.to(device)
+            prv_var_beliefs = prv_var_beliefs.to(device)
         return prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs
 
 

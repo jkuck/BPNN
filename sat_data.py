@@ -6,6 +6,7 @@ from factor_graph import FactorGraph
 from utils import dotdict
 import numpy as np
 from decimal import Decimal
+import torch
 
 def parse_dimacs(filename, verbose=False):
     clauses = []
