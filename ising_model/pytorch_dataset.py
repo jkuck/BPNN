@@ -6,8 +6,9 @@ import torch
 from factor_graph import FactorGraph
 from .spin_glass_model import SpinGlassModel
 
-#Pytorch dataset
+
 class SpinGlassDataset(Dataset):
+    #Pytorch dataset, for use with belief propagation neural networks, in learn_BP_spinGlass.py
     def __init__(self, dataset_size, N_min, N_max, f_max, c_max):
         '''
         Inputs:

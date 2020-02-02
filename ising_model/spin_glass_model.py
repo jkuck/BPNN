@@ -94,7 +94,7 @@ class SpinGlassModel:
 
     def junction_tree_libdai(self):
         '''
-        Compute the partition function of this spin glass model using the junction tree 
+        Compute the exact partition function of this spin glass model using the junction tree 
         implementation from libdai
 
         Outputs:
