@@ -243,10 +243,10 @@ class FactorGraphData(Data):
 
         
         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = self.get_initial_beliefs_and_messages()
-        self.prv_varToFactor_messages = torch.tensor(prv_varToFactor_messages)
-        self.prv_factorToVar_messages = torch.tensor(prv_factorToVar_messages)
-        self.prv_factor_beliefs = torch.tensor(prv_factor_beliefs)
-        self.prv_var_beliefs = torch.tensor(prv_var_beliefs)
+        self.prv_varToFactor_messages = prv_varToFactor_messages
+        self.prv_factorToVar_messages = prv_factorToVar_messages
+        self.prv_factor_beliefs = prv_factor_beliefs
+        self.prv_var_beliefs = prv_var_beliefs
 #         for attr, value in self.__dict__.items():
 #             if value is not None:
 #                 print(attr, type(value))

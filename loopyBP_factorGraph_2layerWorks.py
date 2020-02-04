@@ -387,8 +387,13 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             #best idea: set to say 0, then log sum exp with -# of infinities precomputed tensor to correct
 
             # mapped_factor_beliefs[torch.where(mapped_factor_beliefs==-np.inf)] = -99
+            
+            #was using 2/4/2020
             mapped_factor_beliefs[torch.where((mapped_factor_potentials_masks==0) & (mapped_factor_beliefs==-np.inf))] = -99 #leave invalid beliefs at -inf
-
+            #quick debug 2/4/2020
+#             mapped_factor_beliefs[torch.where(mapped_factor_beliefs==-np.inf)] = -99
+#             mapped_factor_beliefs[torch.where(mapped_factor_potentials_masks==1)] = -99
+        
             # factor_beliefs_neg_inf_locations = torch.where(mapped_factor_beliefs==-np.inf)
             # mapped_factor_beliefs[factor_beliefs_neg_inf_locations] = 0
             # adjustment_tensor = torch.zeros_like(mapped_factor_beliefs)
@@ -400,7 +405,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
    
             marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)         
-            marginalized_states = marginalized_states_fast[:-1].view((num_edges, 2))
+            marginalized_states = marginalized_states_fast[:-1].view((2,num_edges)).permute(1,0)
            
             if debug:
                 marginalized_states_orig = torch.stack([
@@ -409,20 +414,22 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             
                 debug = torch.where(torch.zeros_like(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()))==0)[0]
                 marginalized_states_fast_debug = scatter_('add', src=debug, index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)                      
-                print("@@@@@")
-                print("marginalized_states.shape:", marginalized_states.shape)
+#                 print("@@@@@")
+#                 print("marginalized_states.shape:", marginalized_states.shape)
     #             print("marginalized_states.shape:", marginalized_states.shape)
 
-                print("factor_graph.facStates_to_varIdx:", factor_graph.facStates_to_varIdx)
+#                 print("factor_graph.facStates_to_varIdx:", factor_graph.facStates_to_varIdx)
 
 
-                print("debug:", debug)
-                print("marginalized_states_fast_debug:", marginalized_states_fast_debug)            
+#                 print("debug:", debug)
+#                 print("marginal ized_states_fast_debug:", marginalized_states_fast_debug)            
 
-                print("mapped_factor_beliefs.view(mapped_factor_beliefs.numel()):", mapped_factor_beliefs.view(mapped_factor_beliefs.numel()))
-                print("marginalized_states_fast:", marginalized_states_fast)
-                assert(torch.allclose(marginalized_states, marginalized_states_orig)), (marginalized_states, marginalized_states_orig)
-                sleep(have_to_reshape_marginalized_states_fast)
+#                 print("mapped_factor_beliefs.view(mapped_factor_beliefs.numel()):", mapped_factor_beliefs.view(mapped_factor_beliefs.numel()))
+#                 print("marginalized_states_fast:", marginalized_states_fast)
+
+#                 assert(torch.allclose(marginalized_states, marginalized_states_orig)), (marginalized_states, marginalized_states_orig)
+
+#                 sleep(have_to_reshape_marginalized_states_fast)
             # marginalized_adjustment_tensor = torch.stack([
             #     torch.logsumexp(node_adjustment, dim=tuple([i for i in range(len(node_adjustment.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_adjustment in enumerate(torch.unbind(adjustment_tensor, dim=0))
             #                                   ], dim=0)
@@ -439,6 +446,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         prv_varToFactor_messages_zeroed = prv_varToFactor_messages.clone()
         prv_varToFactor_messages_zeroed[prv_varToFactor_messages_zeroed == -np.inf] = 0
         #avoid double counting
+#         messages = marginalized_states_orig - prv_varToFactor_messages_zeroed
         messages = marginalized_states - prv_varToFactor_messages_zeroed
 
         return messages
