@@ -3,6 +3,7 @@ from torch.nn import Sequential as Seq, Linear, ReLU
 import numpy as np
 from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
+from torch_scatter import scatter_logsumexp
 from factor_graph import FactorGraph
 from sat_data import parse_dimacs, SatProblems, build_factorgraph_from_SATproblem
 from utils import dotdict, logminusexp
@@ -50,9 +51,9 @@ def map_beliefs(beliefs, factor_graph, map_type):
         # print("mapped_beliefs.size(0):", mapped_beliefs.size(0))
         raise ValueError(__size_error_msg__)
 
-#     print(type(beliefs), type(mapped_beliefs), type(factor_graph.factorToVar_edge_index))
-#     print(beliefs.device, mapped_beliefs.device, factor_graph.factorToVar_edge_index.device)
-    mapped_beliefs = torch.index_select(mapped_beliefs, 0, factor_graph.factorToVar_edge_index[idx])
+#     print(type(beliefs), type(mapped_beliefs), type(factor_graph.facToVar_edge_idx))
+#     print(beliefs.device, mapped_beliefs.device, factor_graph.facToVar_edge_idx.device)
+    mapped_beliefs = torch.index_select(mapped_beliefs, 0, factor_graph.facToVar_edge_idx[idx])
     return mapped_beliefs
 
 def max_multipleDim(input, axes, keepdim=False):
@@ -212,7 +213,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                                (1 - alpha)*prv_factorToVar_messages
         assert(not torch.isnan(factorToVar_messages).any()), prv_factor_beliefs
 
-        var_beliefs = scatter_('add', factorToVar_messages, factor_graph.factorToVar_edge_index[1], dim_size=factor_graph.numVars)
+        var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1], dim_size=factor_graph.numVars)
         if debug:
             print("var_beliefs pre norm:", torch.exp(var_beliefs))
         assert(len(var_beliefs.shape) == 2)
@@ -225,9 +226,12 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages) 
         assert(not torch.isnan(varToFactor_messages).any()), prv_factor_beliefs
         expansion_list = [2 for i in range(factor_graph.state_dimensions - 1)] + [-1,] #messages have states for one variable, add dummy dimensions for the other variables in factors
+#         print("state_dimensions:", factor_graph.state_dimensions)
+        
         varToFactor_expandedMessages = torch.stack([
             # message_state.expand(expansion_list).transpose(factor_graph.edge_var_indices[0, message_idx], factor_graph.edge_var_indices[0, message_idx]) for message_idx, message_state in enumerate(torch.unbind(varToFactor_messages, dim=0))
-            message_state.expand(expansion_list).transpose(factor_graph.edge_var_indices[0, message_idx], factor_graph.state_dimensions-1) for message_idx, message_state in enumerate(torch.unbind(varToFactor_messages, dim=0))
+            message_state.expand(expansion_list).transpose(factor_graph.edge_var_indices[0, message_idx], factor_graph.state_dimensions.item()-1) for message_idx, message_state in enumerate(torch.unbind(varToFactor_messages, dim=0))
+#             message_state.expand(expansion_list).transpose(factor_graph.edge_var_indices[0, message_idx], factor_graph.state_dimensions-1) for message_idx, message_state in enumerate(torch.unbind(varToFactor_messages, dim=0))
                                           ], dim=0)
 
 
@@ -247,7 +251,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             print("varToFactor_expandedMessages:", torch.exp(varToFactor_expandedMessages))
         #end debug
 
-        factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.factorToVar_edge_index[0], dim_size=factor_graph.numFactors)
+        factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0], dim_size=factor_graph.numFactors)
         
         assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
       
@@ -359,8 +363,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
         if debug:
             print("3 factor_beliefs:", torch.exp(factor_beliefs))
-            print("factor_graph.factorToVar_edge_index[0]:", factor_graph.factorToVar_edge_index[0])
-            print("factor_graph.factorToVar_edge_index:", factor_graph.factorToVar_edge_index)
+            print("factor_graph.facToVar_edge_idx[0]:", factor_graph.facToVar_edge_idx[0])
+            print("factor_graph.facToVar_edge_idx:", factor_graph.facToVar_edge_idx)
             sleep(debug34)
         
         return varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs
@@ -369,7 +373,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 # def logsumexp(tensor, dim):
 #     tensor_exp = tor
 
-    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages):
+    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages, debug=False):
         # prv_factor_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_varToFactor_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
         # factor_graph.edge_var_indices has shape [2, E]. 
@@ -391,10 +395,34 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             # adjustment_tensor[factor_beliefs_neg_inf_locations] = 1
 
             # tensor with dimensions [edges, 2] for binary variables
-            marginalized_states = torch.stack([
+
+            num_edges = factor_graph.facToVar_edge_idx.shape[1]
+
+   
+            marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)         
+            marginalized_states = marginalized_states_fast[:-1].view((num_edges, 2))
+           
+            if debug:
+                marginalized_states_orig = torch.stack([
                 torch.logsumexp(node_state, dim=tuple([i for i in range(len(node_state.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_state in enumerate(torch.unbind(mapped_factor_beliefs, dim=0))
                                               ], dim=0)
+            
+                debug = torch.where(torch.zeros_like(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()))==0)[0]
+                marginalized_states_fast_debug = scatter_('add', src=debug, index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)                      
+                print("@@@@@")
+                print("marginalized_states.shape:", marginalized_states.shape)
+    #             print("marginalized_states.shape:", marginalized_states.shape)
 
+                print("factor_graph.facStates_to_varIdx:", factor_graph.facStates_to_varIdx)
+
+
+                print("debug:", debug)
+                print("marginalized_states_fast_debug:", marginalized_states_fast_debug)            
+
+                print("mapped_factor_beliefs.view(mapped_factor_beliefs.numel()):", mapped_factor_beliefs.view(mapped_factor_beliefs.numel()))
+                print("marginalized_states_fast:", marginalized_states_fast)
+                assert(torch.allclose(marginalized_states, marginalized_states_orig)), (marginalized_states, marginalized_states_orig)
+                sleep(have_to_reshape_marginalized_states_fast)
             # marginalized_adjustment_tensor = torch.stack([
             #     torch.logsumexp(node_adjustment, dim=tuple([i for i in range(len(node_adjustment.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_adjustment in enumerate(torch.unbind(adjustment_tensor, dim=0))
             #                                   ], dim=0)
@@ -436,8 +464,9 @@ def check_factor_beliefs(factor_beliefs):
     Check that none of the factors have all beliefs set to -infinity
     For debugging
     '''
-    for factor_idx in range(factor_beliefs.shape[0]):
-        assert((factor_beliefs[factor_idx] != -np.inf).any())
+    pass
+#     for factor_idx in range(factor_beliefs.shape[0]):
+#         assert((factor_beliefs[factor_idx] != -np.inf).any())
 
 def test_LoopyBP_ForSAT_automatedGraphConstruction(filename=None, learn_BP=True):
     if filename is None:

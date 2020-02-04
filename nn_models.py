@@ -7,6 +7,7 @@ from torch_geometric.nn.inits import reset
 from torch_geometric.utils import remove_self_loops
 
 from torch.nn import Sequential as Seq, Linear, ReLU
+from utils import neg_inf_to_zero
 
 import math
 # from loopyBP_factorGraph import FactorGraphMsgPassingLayer_NoDoubleCounting
@@ -29,18 +30,73 @@ class lbp_message_passing_network(nn.Module):
         self.device = device
 
     def forward(self, factor_graph):
-        prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
+#         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
         for message_passing_layer in self.message_passing_layers:
             prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
-                message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
-                                      prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
-        bethe_free_energy = factor_graph.compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs)
+                message_passing_layer(factor_graph, prv_varToFactor_messages=factor_graph.prv_varToFactor_messages,
+                                      prv_factorToVar_messages=factor_graph.prv_factorToVar_messages, prv_factor_beliefs=factor_graph.prv_factor_beliefs)
+        bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
         estimated_ln_partition_function = -bethe_free_energy
         return estimated_ln_partition_function
     
     
+def compute_bethe_average_energy(factor_beliefs, factor_potentials, debug=False):
+    '''
+    Equation (37) in:
+    https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
+    '''
+    assert(factor_potentials.shape == factor_beliefs.shape)
+    if debug:
+        print()
+        print('!!!!!!!')
+        print("debugging compute_bethe_average_energy")
+        print("torch.exp(factor_beliefs):", torch.exp(factor_beliefs))
+        print("neg_inf_to_zero(factor_potentials):", neg_inf_to_zero(factor_potentials))
+    bethe_average_energy = -torch.sum(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)) #elementwise multiplication, then sum
+    # print("bethe_average_energy:", bethe_average_energy)
+    return bethe_average_energy
+
+def compute_bethe_entropy(factor_beliefs, var_beliefs, numVars, var_degrees):
+    '''
+    Equation (38) in:
+    https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
+    '''
+    bethe_entropy = -torch.sum(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs)) #elementwise multiplication, then sum
+
+    assert(var_beliefs.shape == torch.Size([numVars, 2])), (var_beliefs.shape, [numVars, 2])
+    # sum_{x_i} b_i(x_i)*ln(b_i(x_i))
+    inner_sum = torch.einsum('ij,ij->i', [torch.exp(var_beliefs), neg_inf_to_zero(var_beliefs)])
+    # sum_{i=1}^N (d_i - 1)*inner_sum
+    outer_sum = torch.sum((var_degrees.float() - 1) * inner_sum)
+    # outer_sum = torch.einsum('i,i->', [var_degrees - 1, inner_sum])
+
+    bethe_entropy += outer_sum
+    # print("bethe_entropy:", bethe_entropy)
+    return bethe_entropy
+
+def compute_bethe_free_energy(factor_beliefs, var_beliefs, factor_graph):
+    '''
+    Compute the Bethe approximation of the free energy.
+    - free energy = -ln(Z)
+      where Z is the partition function
+    - (Bethe approximation of the free energy) = (Bethe average energy) - (Bethe entropy)
+
+    For more details, see page 11 of:
+    https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf
+    '''
+    # print("self.compute_bethe_average_energy():", self.compute_bethe_average_energy())
+    # print("self.compute_bethe_entropy():", self.compute_bethe_entropy())
+    if torch.isnan(factor_beliefs).any():
+        print("values, some should be nan:")
+        for val in factor_beliefs.flatten():
+            print(val)
+    assert(not torch.isnan(factor_beliefs).any()), (factor_beliefs, torch.where(factor_beliefs == torch.tensor(float('nan'))), torch.where(var_beliefs == torch.tensor(float('nan'))))
+    assert(not torch.isnan(var_beliefs).any()), var_beliefs
+    return (compute_bethe_average_energy(factor_beliefs=factor_beliefs, factor_potentials=factor_graph.factor_potentials)\
+            - compute_bethe_entropy(factor_beliefs=factor_beliefs, var_beliefs=var_beliefs, numVars=factor_graph.numVars, var_degrees=factor_graph.var_degrees))
+
 class GIN_Network_withEdgeFeatures(nn.Module):
-    def __init__(self, input_state_size=1, edge_attr_size=1, hidden_size=128, msg_passing_iters=5, edgedevice=None):
+    def __init__(self, input_state_size=1, edge_attr_size=1, hidden_size=32, msg_passing_iters=5, edgedevice=None):
         '''
         Inputs:
         - msg_passing_iters (int): the number of iterations of message passing to run (we have this many

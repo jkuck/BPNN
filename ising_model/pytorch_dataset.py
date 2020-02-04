@@ -3,7 +3,7 @@ from torch.utils.data import Dataset
 import numpy as np
 import torch
 
-from factor_graph import FactorGraph
+from factor_graph import FactorGraph, FactorGraphData
 from .spin_glass_model import SpinGlassModel
 
 
@@ -210,7 +210,7 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
     Inputs:
     - sg_model (SpinGlassModel): defines a sping glass model
     Outputs:
-    - factorgraph (FactorGraph): or None if there is a clause containing more than max_factor_dimensions variables
+    - factorgraph (FactorGraph): 
     '''
     state_dimensions = 2
     N = sg_model.N
@@ -226,11 +226,17 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
     #   - single variable factors: have the same index as their variable index 
     #   - horizontal coupling factors: factor between [row_idx, col_idx] and [row_idx, col_idx+1] has index (N**2 + row_idx*(N-1) + col_idx)
     #   - vertical coupling factors: factor between [row_idx, col_idx] and [row_idx+1, col_idx] has index (N**2 + N*(N-1) + row_idx*N + col_idx)
+    
+    #list of [factor_idx, var_idx] for each edge factor to variable edge
     factorToVar_edge_index_list = []
+    # factorToVar_double_list[i] is a list of all variables that factor with index i shares an edge with
+    # factorToVar_double_list[i][j] is the index of the jth variable that the factor with index i shares an edge with
+    factorToVar_double_list = []
     # add unary factor to variable edges
     for unary_factor_idx in range(N**2):
         var_idx = unary_factor_idx
         factorToVar_edge_index_list.append([unary_factor_idx, var_idx])
+        factorToVar_double_list.append([var_idx])
     # add horizontal factor to variable edges
     for row_idx in range(N):
         for col_idx in range(N-1):
@@ -239,6 +245,9 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
             factorToVar_edge_index_list.append([horizontal_factor_idx, var_idx1])
             var_idx2 = row_idx*N + col_idx + 1
             factorToVar_edge_index_list.append([horizontal_factor_idx, var_idx2])
+            assert(len(factorToVar_double_list) == horizontal_factor_idx)
+            factorToVar_double_list.append([var_idx1, var_idx2])
+            
     # add vertical factor to variable edges
     for row_idx in range(N-1):
         for col_idx in range(N):
@@ -247,6 +256,10 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
             factorToVar_edge_index_list.append([vertical_factor_idx, var_idx1])
             var_idx2 = (row_idx+1)*N + col_idx
             factorToVar_edge_index_list.append([vertical_factor_idx, var_idx2])
+            
+            assert(len(factorToVar_double_list) == vertical_factor_idx)
+            factorToVar_double_list.append([var_idx1, var_idx2])  
+            
     assert(len(factorToVar_edge_index_list) == 4*(N - 1)*N + N**2)
     if sg_model.contains_higher_order_potentials:
         for higher_order_idx in range(sg_model.ho_potential_count):
@@ -254,6 +267,9 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
             for variable_idx in sg_model.higher_order_potentials_variables[higher_order_idx]:
                 factorToVar_edge_index_list.append([factor_idx, variable_idx])
             # pass
+            
+            assert(len(factorToVar_double_list) == factor_idx)
+            factorToVar_double_list.append(list(sg_model.higher_order_potentials_variables[higher_order_idx]))
 
     # - factorToVar_edge_index (Tensor): The indices of a general (sparse) edge
     #     matrix with shape :obj:`[numFactors, numVars]`
@@ -301,10 +317,11 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
 
     edge_count = edge_var_indices.shape[1]
 
-
-
-    factor_graph = FactorGraph(factor_potentials=factor_potentials,
+    ln_Z = sg_model.junction_tree_libdai()
+#     factor_graph = FactorGraph(factor_potentials=factor_potentials,
+    factor_graph = FactorGraphData(factor_potentials=factor_potentials,
                  factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
-                 edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks)
+                 edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks,
+                 ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
 
     return factor_graph
