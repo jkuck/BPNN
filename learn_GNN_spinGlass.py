@@ -20,6 +20,7 @@ from ising_model.spin_glass_model import SpinGlassModel
 from nn_models import GIN_Network_withEdgeFeatures
 
 from parameters import ROOT_DIR
+import pickle
 ##########################################################################################################
 MSG_PASSING_ITERS = 5
 
@@ -36,22 +37,82 @@ TRAIN_DATA_SIZE = 50
 # N_MAX_VAL = 10
 # F_MAX_VAL = .1
 # C_MAX_VAL = 5
-N_MIN_VAL = 14
-N_MAX_VAL = 14
-F_MAX_VAL = 1
-C_MAX_VAL = 10
-VAL_DATA_SIZE = 2
+N_MIN_VAL = 8
+N_MAX_VAL = 11
+F_MAX_VAL = 5
+C_MAX_VAL = 5
+VAL_DATA_SIZE = 50
 
 train_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
                                                         f=np.random.uniform(low=0, high=F_MAX),\
                                                         c=np.random.uniform(low=0, high=C_MAX))) for i in range(TRAIN_DATA_SIZE)]
 train_loader = DataLoader(train_data_list, batch_size=50)
 
-val_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN_VAL, N_MAX_VAL),\
-                                                        f=np.random.uniform(low=0, high=F_MAX_VAL),\
-                                                        c=np.random.uniform(low=0, high=C_MAX_VAL))) for i in range(VAL_DATA_SIZE)]
-val_loader = DataLoader(val_data_list, batch_size=200)
 
+DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
+REGENERATE_DATA = False
+N_MIN_BP = 10
+N_MAX_BP = 10
+F_MAX_BP = .1
+C_MAX_BP = 5.0
+DATA_SIZE = VAL_DATA_SIZE
+def get_dataset(dataset_type='test'):
+    assert(dataset_type in ['train', 'val', 'test'])
+    dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f.pkl' % (DATA_SIZE, N_MIN_BP, N_MAX_BP, F_MAX_BP, C_MAX_BP)
+    if REGENERATE_DATA or (not os.path.exists(dataset_file)):
+        assert(False), "test dataset missing!"
+#         print("REGENERATING DATA!!")
+#         sg_data = SpinGlassDataset(dataset_size=datasize, N_min=N_MIN, N_max=N_MAX, f_max=F_MAX, c_max=C_MAX)
+#         spin_glass_problems_SGMs = sg_data.generate_problems(return_sg_objects=True)
+#         if not os.path.exists(DATA_DIR):
+#             os.makedirs(DATA_DIR)
+#         with open(dataset_file, 'wb') as f:
+#             pickle.dump((sg_data, spin_glass_problems_SGMs), f)            
+    else:
+        with open(dataset_file, 'rb') as f:
+            (sg_data, spin_glass_problems_SGMs) = pickle.load(f)
+    return sg_data, spin_glass_problems_SGMs
+
+sg_data, spin_glass_problems_SGMs = get_dataset(dataset_type='test')
+val_data_list = [spinGlass_to_torchGeometric(sg_problem) for sg_problem in spin_glass_problems_SGMs]
+train_loader = DataLoader(val_data_list, batch_size=50)
+
+USE_BPNN_DATA=False
+######### FOR GETTING THE SAME TEST SET ##############
+if USE_BPNN_DATA:
+    DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
+    REGENERATE_DATA = False
+    N_MIN_BP = 10
+    N_MAX_BP = 10
+    F_MAX_BP = .1
+    C_MAX_BP = 5.0
+    DATA_SIZE = VAL_DATA_SIZE
+    def get_dataset(dataset_type='test'):
+        assert(dataset_type in ['train', 'val', 'test'])
+        dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f.pkl' % (DATA_SIZE, N_MIN_BP, N_MAX_BP, F_MAX_BP, C_MAX_BP)
+        if REGENERATE_DATA or (not os.path.exists(dataset_file)):
+            assert(False), "test dataset missing!"
+    #         print("REGENERATING DATA!!")
+    #         sg_data = SpinGlassDataset(dataset_size=datasize, N_min=N_MIN, N_max=N_MAX, f_max=F_MAX, c_max=C_MAX)
+    #         spin_glass_problems_SGMs = sg_data.generate_problems(return_sg_objects=True)
+    #         if not os.path.exists(DATA_DIR):
+    #             os.makedirs(DATA_DIR)
+    #         with open(dataset_file, 'wb') as f:
+    #             pickle.dump((sg_data, spin_glass_problems_SGMs), f)            
+        else:
+            with open(dataset_file, 'rb') as f:
+                (sg_data, spin_glass_problems_SGMs) = pickle.load(f)
+        return sg_data, spin_glass_problems_SGMs
+
+    sg_data, spin_glass_problems_SGMs = get_dataset(dataset_type='test')
+    val_data_list = [spinGlass_to_torchGeometric(sg_problem) for sg_problem in spin_glass_problems_SGMs]
+    val_loader = DataLoader(val_data_list, batch_size=50)
+else:
+    val_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN_VAL, N_MAX_VAL),\
+                                                            f=np.random.uniform(low=0, high=F_MAX_VAL),\
+                                                            c=np.random.uniform(low=0, high=C_MAX_VAL))) for i in range(VAL_DATA_SIZE)]
+    val_loader = DataLoader(val_data_list, batch_size=200)    
+    
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = GIN_Network_withEdgeFeatures(msg_passing_iters=MSG_PASSING_ITERS).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
