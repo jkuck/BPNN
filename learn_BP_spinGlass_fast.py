@@ -18,7 +18,8 @@ import parameters
 from parameters import ROOT_DIR
 import random
 import cProfile 
-  
+import time
+
 ##########################
 ##### Run me on Atlas
 # $ cd /atlas/u/jkuck/virtual_environments/pytorch_geometric
@@ -62,8 +63,8 @@ REGENERATE_DATA = False
 DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
 
 
-TRAINING_DATA_SIZE = 50
-VAL_DATA_SIZE = 50#100
+TRAINING_DATA_SIZE = 10
+VAL_DATA_SIZE = 1#100
 TEST_DATA_SIZE = 200
 
 
@@ -141,7 +142,7 @@ def train():
     lbp_net.train()
 
     # Initialize optimizer
-    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0005)
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.00005)
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.002) #used for training on 50
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.001)
@@ -159,7 +160,10 @@ def train():
 
 
     # with autograd.detect_anomaly():
+    epoch_times = []
     for e in range(EPOCH_COUNT):
+        time_a = time.time()
+        
         epoch_loss = 0
         optimizer.zero_grad()
         losses = []
@@ -167,7 +171,7 @@ def train():
         for spin_glass_problem in train_data_loader:
 #             sleep(entered_loop)
 #             spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
-            assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
+            assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
 #             spin_glass_problem.to_device(device)
             estimated_ln_partition_function = lbp_net(spin_glass_problem)
             exact_ln_partition_function = spin_glass_problem.ln_Z
@@ -188,12 +192,16 @@ def train():
         # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
         optimizer.step()
         scheduler.step()
+        time_b = time.time()
+        epoch_times.append(time_b - time_a)        
                     
         
         if e % PRINT_FREQUENCY == 0:
             print("root mean squared training error =", np.sqrt(np.mean(losses)))
      
         if e % VAL_FREQUENCY == 0:
+            print("average time per epoch:", np.mean(epoch_times))
+            epoch_times = []
 #         if False:
             val_losses = []
 #             for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(val_data_loader):

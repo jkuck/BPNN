@@ -40,7 +40,7 @@ N_MIN_VAL = 14
 N_MAX_VAL = 14
 F_MAX_VAL = 1
 C_MAX_VAL = 10
-VAL_DATA_SIZE = 200
+VAL_DATA_SIZE = 2
 
 train_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
                                                         f=np.random.uniform(low=0, high=F_MAX),\
@@ -60,6 +60,7 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.5)
 loss_func = torch.nn.MSELoss(reduction='sum') #sum of squared errors
 
 def train():
+#     print("hi")
     model.train()
     total_loss = 0
     for data in train_loader:
