@@ -49,35 +49,35 @@ train_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N
 train_loader = DataLoader(train_data_list, batch_size=50)
 
 
-DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
-REGENERATE_DATA = False
-N_MIN_BP = 10
-N_MAX_BP = 10
-F_MAX_BP = .1
-C_MAX_BP = 5.0
-DATA_SIZE = VAL_DATA_SIZE
-def get_dataset(dataset_type='test'):
-    assert(dataset_type in ['train', 'val', 'test'])
-    dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f.pkl' % (DATA_SIZE, N_MIN_BP, N_MAX_BP, F_MAX_BP, C_MAX_BP)
-    if REGENERATE_DATA or (not os.path.exists(dataset_file)):
-        assert(False), "test dataset missing!"
-#         print("REGENERATING DATA!!")
-#         sg_data = SpinGlassDataset(dataset_size=datasize, N_min=N_MIN, N_max=N_MAX, f_max=F_MAX, c_max=C_MAX)
-#         spin_glass_problems_SGMs = sg_data.generate_problems(return_sg_objects=True)
-#         if not os.path.exists(DATA_DIR):
-#             os.makedirs(DATA_DIR)
-#         with open(dataset_file, 'wb') as f:
-#             pickle.dump((sg_data, spin_glass_problems_SGMs), f)            
-    else:
-        with open(dataset_file, 'rb') as f:
-            (sg_data, spin_glass_problems_SGMs) = pickle.load(f)
-    return sg_data, spin_glass_problems_SGMs
+# DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
+# REGENERATE_DATA = False
+# N_MIN_BP = 10
+# N_MAX_BP = 10
+# F_MAX_BP = .1
+# C_MAX_BP = 5.0
+# DATA_SIZE = VAL_DATA_SIZE
+# def get_dataset(dataset_type='test'):
+#     assert(dataset_type in ['train', 'val', 'test'])
+#     dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f.pkl' % (DATA_SIZE, N_MIN_BP, N_MAX_BP, F_MAX_BP, C_MAX_BP)
+#     if REGENERATE_DATA or (not os.path.exists(dataset_file)):
+#         assert(False), "test dataset missing!"
+# #         print("REGENERATING DATA!!")
+# #         sg_data = SpinGlassDataset(dataset_size=datasize, N_min=N_MIN, N_max=N_MAX, f_max=F_MAX, c_max=C_MAX)
+# #         spin_glass_problems_SGMs = sg_data.generate_problems(return_sg_objects=True)
+# #         if not os.path.exists(DATA_DIR):
+# #             os.makedirs(DATA_DIR)
+# #         with open(dataset_file, 'wb') as f:
+# #             pickle.dump((sg_data, spin_glass_problems_SGMs), f)            
+#     else:
+#         with open(dataset_file, 'rb') as f:
+#             (sg_data, spin_glass_problems_SGMs) = pickle.load(f)
+#     return sg_data, spin_glass_problems_SGMs
 
-sg_data, spin_glass_problems_SGMs = get_dataset(dataset_type='test')
-val_data_list = [spinGlass_to_torchGeometric(sg_problem) for sg_problem in spin_glass_problems_SGMs]
-train_loader = DataLoader(val_data_list, batch_size=50)
+# sg_data, spin_glass_problems_SGMs = get_dataset(dataset_type='test')
+# val_data_list = [spinGlass_to_torchGeometric(sg_problem) for sg_problem in spin_glass_problems_SGMs]
+# train_loader = DataLoader(val_data_list, batch_size=50)
 
-USE_BPNN_DATA=False
+USE_BPNN_DATA=True
 ######### FOR GETTING THE SAME TEST SET ##############
 if USE_BPNN_DATA:
     DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
