@@ -42,14 +42,14 @@ def map_beliefs(beliefs, factor_graph, map_type):
     else:
         mapped_beliefs = beliefs.clone()
 
-#     if size is not None and size[idx] != mapped_beliefs.size(0):
-#         # print("factor_graph:", factor_graph)
-#         # print("beliefs:", beliefs)
-#         # print("beliefs.shape:", beliefs.shape)
-#         # print("size:", size)
-#         # print("idx:", idx)
-#         # print("mapped_beliefs.size(0):", mapped_beliefs.size(0))
-#         raise ValueError(__size_error_msg__)
+    if size is not None and size[idx] != mapped_beliefs.size(0):
+        # print("factor_graph:", factor_graph)
+        # print("beliefs:", beliefs)
+        # print("beliefs.shape:", beliefs.shape)
+        # print("size:", size)
+        # print("idx:", idx)
+        # print("mapped_beliefs.size(0):", mapped_beliefs.size(0))
+        raise ValueError(__size_error_msg__)
 
 #     print(type(beliefs), type(mapped_beliefs), type(factor_graph.facToVar_edge_idx))
 #     print(beliefs.device, mapped_beliefs.device, factor_graph.facToVar_edge_idx.device)
