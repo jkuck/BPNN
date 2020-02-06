@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 import os 
+import wandb
 
 import torch
 import torch.nn.functional as F
@@ -21,8 +22,10 @@ from nn_models import GIN_Network_withEdgeFeatures
 
 from parameters import ROOT_DIR
 import pickle
+
+MODE = 'val'
 ##########################################################################################################
-MSG_PASSING_ITERS = 5
+MSG_PASSING_ITERS = 10
 
 N_MIN = 10
 N_MAX = 10
@@ -37,12 +40,14 @@ ATTRACTIVE_FIELD_TRAIN = True
 # N_MAX_VAL = 10
 # F_MAX_VAL = .1
 # C_MAX_VAL = 5
-N_MIN_VAL = 8
-N_MAX_VAL = 11
+N_MIN_VAL = 10
+N_MAX_VAL = 10
 F_MAX_VAL = 5
 C_MAX_VAL = 5
 VAL_DATA_SIZE = 50
 ATTRACTIVE_FIELD_VAL = False
+
+SAVE_FREQUENCY = 10
 
 train_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
                                                         f=np.random.uniform(low=0, high=F_MAX),\
@@ -123,8 +128,10 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5
 
 loss_func = torch.nn.MSELoss(reduction='sum') #sum of squared errors
 
-def train():
+def train_epoch():
 #     print("hi")
+
+    
     model.train()
     total_loss = 0
     for data in train_loader:
@@ -147,7 +154,9 @@ def train():
     return total_loss / TRAIN_DATA_SIZE
 
 
-def test(plot=False):
+def val_epoch(plot=False, val_mode=False):
+    if val_mode:
+        model.load_state_dict(torch.load('./wandb/run-20200206_050548-r30fh08e/model.pt'))
     model.eval()
     total_loss = 0
     for data in val_loader:
@@ -190,15 +199,30 @@ def test(plot=False):
         # plt.show()        
     return total_loss / VAL_DATA_SIZE
 
-
-for epoch in range(1, 5001):
-# for epoch in range(1, 501):
-    loss = train()
-#     print('Epoch {:03d}, Loss: {:.4f}'.format(epoch, loss,))    
-    if epoch % 100 == 0:
-        test_loss = test(plot=True)
-    else:
-        test_loss = test(plot=False)
-    print('Epoch {:03d}, Loss: {:.4f}, Test: {:.4f}'.format(
-        epoch, np.sqrt(loss), np.sqrt(test_loss)))
-    scheduler.step()
+def train():
+    wandb.init(project="gnn_sat")
+    wandb.watch(model)
+    for epoch in range(1, 5001):
+    
+    # for epoch in range(1, 501):
+        loss = train_epoch()
+    #     print('Epoch {:03d}, Loss: {:.4f}'.format(epoch, loss,))    
+        if epoch % 100 == 0:
+            test_loss = val_epoch(plot=True)
+        else:
+            test_loss = val_epoch(plot=False)
+        print('Epoch {:03d}, Loss: {:.4f}, Test: {:.4f}'.format(
+            epoch, np.sqrt(loss), np.sqrt(test_loss)))
+        wandb.log({"RMSE_val": np.sqrt(test_loss), "RMSE_training": np.sqrt(loss)})        
+    
+        if epoch % SAVE_FREQUENCY == 0:
+            # Save model to wandb
+            torch.save(model.state_dict(), os.path.join(wandb.run.dir, 'model.pt'))    
+        scheduler.step()
+        
+if __name__ == "__main__":
+    if MODE == "train":
+        train()
+    elif MODE == "val":
+        val_loss = val_epoch(plot=True, val_mode=True)
+        print('Val loss: {:.4f}'.format(np.sqrt(val_loss)))
