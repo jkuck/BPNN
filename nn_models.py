@@ -96,7 +96,7 @@ def compute_bethe_free_energy(factor_beliefs, var_beliefs, factor_graph):
             - compute_bethe_entropy(factor_beliefs=factor_beliefs, var_beliefs=var_beliefs, numVars=factor_graph.numVars, var_degrees=factor_graph.var_degrees))
 
 class GIN_Network_withEdgeFeatures(nn.Module):
-    def __init__(self, input_state_size=1, edge_attr_size=1, hidden_size=32, msg_passing_iters=5, edgedevice=None):
+    def __init__(self, input_state_size=1, edge_attr_size=1, hidden_size=4, msg_passing_iters=5, edgedevice=None):
         '''
         Inputs:
         - msg_passing_iters (int): the number of iterations of message passing to run (we have this many

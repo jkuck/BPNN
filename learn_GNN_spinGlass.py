@@ -31,7 +31,7 @@ C_MAX = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
 TRAIN_DATA_SIZE = 50
-
+ATTRACTIVE_FIELD_TRAIN = True
 
 # N_MIN_VAL = 10
 # N_MAX_VAL = 10
@@ -42,10 +42,12 @@ N_MAX_VAL = 11
 F_MAX_VAL = 5
 C_MAX_VAL = 5
 VAL_DATA_SIZE = 50
+ATTRACTIVE_FIELD_VAL = False
 
 train_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
                                                         f=np.random.uniform(low=0, high=F_MAX),\
-                                                        c=np.random.uniform(low=0, high=C_MAX))) for i in range(TRAIN_DATA_SIZE)]
+                                                        c=np.random.uniform(low=0, high=C_MAX),\
+                                                        attractive_field=ATTRACTIVE_FIELD_TRAIN)) for i in range(TRAIN_DATA_SIZE)]
 train_loader = DataLoader(train_data_list, batch_size=50)
 
 
@@ -77,7 +79,7 @@ train_loader = DataLoader(train_data_list, batch_size=50)
 # val_data_list = [spinGlass_to_torchGeometric(sg_problem) for sg_problem in spin_glass_problems_SGMs]
 # train_loader = DataLoader(val_data_list, batch_size=50)
 
-USE_BPNN_DATA=True
+USE_BPNN_DATA=False
 ######### FOR GETTING THE SAME TEST SET ##############
 if USE_BPNN_DATA:
     DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
@@ -110,13 +112,14 @@ if USE_BPNN_DATA:
 else:
     val_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN_VAL, N_MAX_VAL),\
                                                             f=np.random.uniform(low=0, high=F_MAX_VAL),\
-                                                            c=np.random.uniform(low=0, high=C_MAX_VAL))) for i in range(VAL_DATA_SIZE)]
+                                                            c=np.random.uniform(low=0, high=C_MAX_VAL),\
+                                                            attractive_field=ATTRACTIVE_FIELD_VAL)) for i in range(VAL_DATA_SIZE)]
     val_loader = DataLoader(val_data_list, batch_size=200)    
     
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = GIN_Network_withEdgeFeatures(msg_passing_iters=MSG_PASSING_ITERS).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.5)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5)
 
 loss_func = torch.nn.MSELoss(reduction='sum') #sum of squared errors
 
@@ -188,8 +191,8 @@ def test(plot=False):
     return total_loss / VAL_DATA_SIZE
 
 
-# for epoch in range(1, 2001):
-for epoch in range(1, 501):
+for epoch in range(1, 5001):
+# for epoch in range(1, 501):
     loss = train()
 #     print('Epoch {:03d}, Loss: {:.4f}'.format(epoch, loss,))    
     if epoch % 100 == 0:
