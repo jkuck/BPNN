@@ -2,12 +2,14 @@ import torch
 from torch import autograd
 import pickle
 import wandb
+import random
 
 from nn_models import lbp_message_passing_network
-from ising_model.pytorch_dataset import SpinGlassDataset
+from ising_model.pytorch_dataset import SpinGlassDataset, build_factorgraph_from_SpinGlassModel
+from ising_model.spin_glass_model import SpinGlassModel
 from factor_graph import FactorGraph, FactorGraphData
-from torch.utils.data import DataLoader
-# from torch_geometric.data import DataLoader
+# from torch.utils.data import DataLoader
+from torch_geometric.data import DataLoader
 import os
 import matplotlib.pyplot as plt
 import matplotlib
@@ -48,15 +50,21 @@ F_MAX = .1
 C_MAX = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
-ATTRACTIVE_FIELD = True
+ATTRACTIVE_FIELD_TRAIN = True
 
+N_MIN_VAL = 10
+N_MAX_VAL = 10
+F_MAX_VAL = .1
+C_MAX_VAL = 5.0
+ATTRACTIVE_FIELD_VAL = True
+ATTRACTIVE_FIELD_TEST = True
 
 REGENERATE_DATA = True
 DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
 
 
-TRAINING_DATA_SIZE = 50
-VAL_DATA_SIZE = 50#100
+TRAINING_DATA_SIZE = 3
+VAL_DATA_SIZE = 3#100
 TEST_DATA_SIZE = 200
 
 
@@ -73,10 +81,14 @@ def get_dataset(dataset_type):
     assert(dataset_type in ['train', 'val', 'test'])
     if dataset_type == 'train':
         datasize = TRAINING_DATA_SIZE
+        ATTRACTIVE_FIELD = ATTRACTIVE_FIELD_TRAIN
     elif dataset_type == 'val':
         datasize = VAL_DATA_SIZE
+        ATTRACTIVE_FIELD = ATTRACTIVE_FIELD_VAL
     else:
         datasize = TEST_DATA_SIZE
+        ATTRACTIVE_FIELD = ATTRACTIVE_FIELD_TEST
+        
     dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f.pkl' % (datasize, N_MIN, N_MAX, F_MAX, C_MAX)
     if REGENERATE_DATA or (not os.path.exists(dataset_file)):
         print("REGENERATING DATA!!")
@@ -122,15 +134,39 @@ def train():
     sg_data_val, spin_glass_problems_SGMs_val = get_dataset(dataset_type='val')
     val_data_loader = DataLoader(sg_data_val, batch_size=1)
 
+    PYTORCH_GEOMETRIC_DATA_LOADER = True
+    if PYTORCH_GEOMETRIC_DATA_LOADER:
+        train_data_list = [build_factorgraph_from_SpinGlassModel(SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
+        # train_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
+                                                                f=np.random.uniform(low=0, high=F_MAX),\
+                                                                c=np.random.uniform(low=0, high=C_MAX),\
+                                                                attractive_field=ATTRACTIVE_FIELD_TRAIN)) for i in range(TRAINING_DATA_SIZE)]
+        train_data_loader = DataLoader(train_data_list, batch_size=1)
 
+        val_data_list = [build_factorgraph_from_SpinGlassModel(SpinGlassModel(N=random.randint(N_MIN_VAL, N_MAX_VAL),\
+        # val_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN_VAL, N_MAX_VAL),\
+                                                                f=np.random.uniform(low=0, high=F_MAX_VAL),\
+                                                                c=np.random.uniform(low=0, high=C_MAX_VAL),\
+                                                                attractive_field=ATTRACTIVE_FIELD_VAL)) for i in range(VAL_DATA_SIZE)]
+        val_data_loader = DataLoader(val_data_list, batch_size=1)
+    
+    
     # with autograd.detect_anomaly():
     for e in range(EPOCH_COUNT):
         epoch_loss = 0
         optimizer.zero_grad()
         losses = []
-        for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(train_data_loader):
-
-            spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
+#         for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(train_data_loader):
+        for spin_glass_problem in train_data_loader:
+#             spin_glass_problem.ln_Z = spin_glass_problem.ln_Z.item()
+#             spin_glass_problem.numVars = spin_glass_problem.numVars.item()
+#             spin_glass_problem.numFactors = spin_glass_problem.numFactors.item()
+#             spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions.item()
+            
+            if PYTORCH_GEOMETRIC_DATA_LOADER:
+                exact_ln_partition_function = spin_glass_problem.ln_Z
+                
+#             spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
             assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
 #             spin_glass_problem.to_device(device)
             estimated_ln_partition_function = lbp_net(spin_glass_problem)
@@ -158,8 +194,11 @@ def train():
      
         if e % VAL_FREQUENCY == 0:
             val_losses = []
-            for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(val_data_loader):
-                spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
+#             for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(val_data_loader):
+            for spin_glass_problem in val_data_loader:
+                if PYTORCH_GEOMETRIC_DATA_LOADER:
+                    exact_ln_partition_function = spin_glass_problem.ln_Z                
+#                 spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
                 assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
 #                 spin_glass_problem.to_device(device)
                 estimated_ln_partition_function = lbp_net(spin_glass_problem) 

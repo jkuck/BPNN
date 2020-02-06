@@ -319,8 +319,9 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
     edge_count = edge_var_indices.shape[1]
 
     ln_Z = sg_model.junction_tree_libdai()
-    factor_graph = FactorGraph(factor_potentials=factor_potentials,
-#     factor_graph = FactorGraphData(factor_potentials=factor_potentials,
+
+#     factor_graph = FactorGraph(factor_potentials=factor_potentials,
+    factor_graph = FactorGraphData(factor_potentials=factor_potentials,
                  factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
                  edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks,
                  ln_Z=ln_Z)
