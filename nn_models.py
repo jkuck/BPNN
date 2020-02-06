@@ -30,11 +30,14 @@ class lbp_message_passing_network(nn.Module):
         self.device = device
 
     def forward(self, factor_graph):
-#         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
+        prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
         for message_passing_layer in self.message_passing_layers:
             prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
-                message_passing_layer(factor_graph, prv_varToFactor_messages=factor_graph.prv_varToFactor_messages,
-                                      prv_factorToVar_messages=factor_graph.prv_factorToVar_messages, prv_factor_beliefs=factor_graph.prv_factor_beliefs)
+                message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                                      prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)  
+#                 message_passing_layer(factor_graph, prv_varToFactor_messages=factor_graph.prv_varToFactor_messages,
+#                                       prv_factorToVar_messages=factor_graph.prv_factorToVar_messages, prv_factor_beliefs=factor_graph.prv_factor_beliefs)
+          
         bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
         estimated_ln_partition_function = -bethe_free_energy
         return estimated_ln_partition_function

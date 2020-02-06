@@ -9,7 +9,7 @@ from .spin_glass_model import SpinGlassModel
 
 class SpinGlassDataset(Dataset):
     #Pytorch dataset, for use with belief propagation neural networks, in learn_BP_spinGlass.py
-    def __init__(self, dataset_size, N_min, N_max, f_max, c_max):
+    def __init__(self, dataset_size, N_min, N_max, f_max, c_max, attractive_field):
         '''
         Inputs:
         - N_min, N_max: ints, each model in the dataset will be a grid with shape (NxN), where 
@@ -29,6 +29,7 @@ class SpinGlassDataset(Dataset):
         self.N_max = N_max
         self.f_max = f_max
         self.c_max = c_max
+        self.attractive_field = attractive_field
         
         
     def generate_problems(self, return_sg_objects):
@@ -49,7 +50,7 @@ class SpinGlassDataset(Dataset):
             cur_N = random.randint(self.N_min, self.N_max)
             cur_f = np.random.uniform(low=0, high=self.f_max)
             cur_c = np.random.uniform(low=0, high=self.c_max)
-            cur_sg_model = SpinGlassModel(N=cur_N, f=cur_f, c=cur_c)
+            cur_sg_model = SpinGlassModel(N=cur_N, f=cur_f, c=cur_c, attractive_field=self.attractive_field)
             spin_glass_problems_SGMs.append(cur_sg_model)
             lbp_Z_estimate = cur_sg_model.loopyBP_libdai()
 
@@ -318,10 +319,11 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
     edge_count = edge_var_indices.shape[1]
 
     ln_Z = sg_model.junction_tree_libdai()
-#     factor_graph = FactorGraph(factor_potentials=factor_potentials,
-    factor_graph = FactorGraphData(factor_potentials=factor_potentials,
+    factor_graph = FactorGraph(factor_potentials=factor_potentials,
+#     factor_graph = FactorGraphData(factor_potentials=factor_potentials,
                  factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
                  edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks,
-                 ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
+                 ln_Z=ln_Z)
+#                  ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
 
     return factor_graph

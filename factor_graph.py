@@ -25,7 +25,7 @@ class FactorGraph(dotdict):
         #     matrix with shape :obj:`[numFactors, numVars]`
         #     stored as a [2, E] tensor 
         self.factorToVar_edge_index = factorToVar_edge_index
-
+        self.facToVar_edge_idx = factorToVar_edge_index
 
 
 
@@ -53,8 +53,6 @@ class FactorGraph(dotdict):
 
         #1 signifies an invalid location (e.g. a dummy dimension in a factor), 0 signifies a valid location 
         self.factor_potential_masks = factor_potential_masks
-
-        self.factorStates_to_varIndices = self.create_factorStates_to_varIndices()
         
     
         

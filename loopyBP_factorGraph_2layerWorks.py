@@ -53,6 +53,7 @@ def map_beliefs(beliefs, factor_graph, map_type):
 
 #     print(type(beliefs), type(mapped_beliefs), type(factor_graph.facToVar_edge_idx))
 #     print(beliefs.device, mapped_beliefs.device, factor_graph.facToVar_edge_idx.device)
+    assert(factor_graph is not None)
     mapped_beliefs = torch.index_select(mapped_beliefs, 0, factor_graph.facToVar_edge_idx[idx])
     return mapped_beliefs
 
@@ -208,6 +209,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         """
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
+        assert(factor_graph is not None)
         #update variable beliefs
         factorToVar_messages = alpha*self.message_factorToVar(prv_factor_beliefs, factor_graph, prv_varToFactor_messages) +\
                                (1 - alpha)*prv_factorToVar_messages
@@ -378,7 +380,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 # def logsumexp(tensor, dim):
 #     tensor_exp = tor
 
-    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages, debug=False):
+    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages, debug=False, fast_logsumexp=False):
         # prv_factor_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_varToFactor_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
         # factor_graph.edge_var_indices has shape [2, E]. 
@@ -410,38 +412,42 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
 #             print("factor_graph.facStates_to_varIdx.shape:", factor_graph.facStates_to_varIdx.shape)
 #             print("mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape:", mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape)
-            marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)         
-            marginalized_states = marginalized_states_fast[:-1].view((2,num_edges)).permute(1,0)
-           
-            if debug:
-                marginalized_states_orig = torch.stack([
-                torch.logsumexp(node_state, dim=tuple([i for i in range(len(node_state.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_state in enumerate(torch.unbind(mapped_factor_beliefs, dim=0))
-                                              ], dim=0)
-            
-                debug = torch.where(torch.zeros_like(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()))==0)[0]
-                marginalized_states_fast_debug = scatter_('add', src=debug, index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)                      
-#                 print("@@@@@")
-#                 print("marginalized_states.shape:", marginalized_states.shape)
-    #             print("marginalized_states.shape:", marginalized_states.shape)
+            if fast_logsumexp:
+                marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)         
+                marginalized_states = marginalized_states_fast[:-1].view((2,num_edges)).permute(1,0)
 
-#                 print("factor_graph.facStates_to_varIdx:", factor_graph.facStates_to_varIdx)
+                if debug:
+                    marginalized_states_orig = torch.stack([
+                    torch.logsumexp(node_state, dim=tuple([i for i in range(len(node_state.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_state in enumerate(torch.unbind(mapped_factor_beliefs, dim=0))
+                                                  ], dim=0)
+
+                    debug = torch.where(torch.zeros_like(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()))==0)[0]
+#                     marginalized_states_fast_debug = scatter_('add', src=debug, index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)                      
+    #                 print("@@@@@")
+    #                 print("marginalized_states.shape:", marginalized_states.shape)
+        #             print("marginalized_states.shape:", marginalized_states.shape)
+
+    #                 print("factor_graph.facStates_to_varIdx:", factor_graph.facStates_to_varIdx)
 
 
-#                 print("debug:", debug)
-#                 print("marginal ized_states_fast_debug:", marginalized_states_fast_debug)            
+    #                 print("debug:", debug)
+    #                 print("marginal ized_states_fast_debug:", marginalized_states_fast_debug)            
 
-#                 print("mapped_factor_beliefs.view(mapped_factor_beliefs.numel()):", mapped_factor_beliefs.view(mapped_factor_beliefs.numel()))
-#                 print("marginalized_states_fast:", marginalized_states_fast)
+    #                 print("mapped_factor_beliefs.view(mapped_factor_beliefs.numel()):", mapped_factor_beliefs.view(mapped_factor_beliefs.numel()))
+    #                 print("marginalized_states_fast:", marginalized_states_fast)
 
-#                 assert(torch.allclose(marginalized_states, marginalized_states_orig)), (marginalized_states, marginalized_states_orig)
+    #                 assert(torch.allclose(marginalized_states, marginalized_states_orig)), (marginalized_states, marginalized_states_orig)
 
-#                 sleep(have_to_reshape_marginalized_states_fast)
-            # marginalized_adjustment_tensor = torch.stack([
-            #     torch.logsumexp(node_adjustment, dim=tuple([i for i in range(len(node_adjustment.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_adjustment in enumerate(torch.unbind(adjustment_tensor, dim=0))
-            #                                   ], dim=0)
+    #                 sleep(have_to_reshape_marginalized_states_fast)
+                # marginalized_adjustment_tensor = torch.stack([
+                #     torch.logsumexp(node_adjustment, dim=tuple([i for i in range(len(node_adjustment.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_adjustment in enumerate(torch.unbind(adjustment_tensor, dim=0))
+                #                                   ], dim=0)
 
-            # marginalized_states = logminusexp(marginalized_states, marginalized_adjustment_tensor)
-
+                # marginalized_states = logminusexp(marginalized_states, marginalized_adjustment_tensor)
+            else:
+                marginalized_states = torch.stack([
+                    torch.logsumexp(node_state, dim=tuple([i for i in range(len(node_state.shape)) if i != factor_graph.edge_var_indices[0, edge_idx]])) for edge_idx, node_state in enumerate(torch.unbind(mapped_factor_beliefs, dim=0))
+                                                  ], dim=0)
         else:
             # tensor with dimensions [edges, 2] for binary variables
             marginalized_states = torch.stack([

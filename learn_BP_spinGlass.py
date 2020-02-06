@@ -26,7 +26,7 @@ TEST_TRAINED_MODEL = True #test a pretrained model if True.  Test untrained mode
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 5 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 10 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -48,8 +48,10 @@ F_MAX = .1
 C_MAX = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
+ATTRACTIVE_FIELD = True
 
-REGENERATE_DATA = False
+
+REGENERATE_DATA = True
 DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
 
 
@@ -78,7 +80,7 @@ def get_dataset(dataset_type):
     dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f.pkl' % (datasize, N_MIN, N_MAX, F_MAX, C_MAX)
     if REGENERATE_DATA or (not os.path.exists(dataset_file)):
         print("REGENERATING DATA!!")
-        sg_data = SpinGlassDataset(dataset_size=datasize, N_min=N_MIN, N_max=N_MAX, f_max=F_MAX, c_max=C_MAX)
+        sg_data = SpinGlassDataset(dataset_size=datasize, N_min=N_MIN, N_max=N_MAX, f_max=F_MAX, c_max=C_MAX, attractive_field=ATTRACTIVE_FIELD)
         spin_glass_problems_SGMs = sg_data.generate_problems(return_sg_objects=True)
         if not os.path.exists(DATA_DIR):
             os.makedirs(DATA_DIR)
@@ -104,7 +106,7 @@ def train():
     lbp_net.train()
 
     # Initialize optimizer
-    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.005)
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0005)
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.00005)
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.002) #used for training on 50
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.001)
