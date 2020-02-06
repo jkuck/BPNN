@@ -53,18 +53,20 @@ F_MAX = .1
 C_MAX = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
+ATTRACTIVE_FIELD_TRAIN = True
 
 N_MIN_VAL = 10
 N_MAX_VAL = 10
 F_MAX_VAL = .1
 C_MAX_VAL = 5.0
+ATTRACTIVE_FIELD_VAL = True
 
 REGENERATE_DATA = False
 DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
 
 
 TRAINING_DATA_SIZE = 10
-VAL_DATA_SIZE = 1#100
+VAL_DATA_SIZE = 50#100
 TEST_DATA_SIZE = 200
 
 
@@ -110,13 +112,15 @@ def spinGlass_to_torchGeometric(sg_model):
 train_data_list = [build_factorgraph_from_SpinGlassModel(SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
 # train_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
                                                         f=np.random.uniform(low=0, high=F_MAX),\
-                                                        c=np.random.uniform(low=0, high=C_MAX))) for i in range(TRAINING_DATA_SIZE)]
+                                                        c=np.random.uniform(low=0, high=C_MAX),\
+                                                        attractive_field=ATTRACTIVE_FIELD_TRAIN)) for i in range(TRAINING_DATA_SIZE)]
 train_data_loader = DataLoader(train_data_list, batch_size=1)
 
 val_data_list = [build_factorgraph_from_SpinGlassModel(SpinGlassModel(N=random.randint(N_MIN_VAL, N_MAX_VAL),\
 # val_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN_VAL, N_MAX_VAL),\
                                                         f=np.random.uniform(low=0, high=F_MAX_VAL),\
-                                                        c=np.random.uniform(low=0, high=C_MAX_VAL))) for i in range(VAL_DATA_SIZE)]
+                                                        c=np.random.uniform(low=0, high=C_MAX_VAL),\
+                                                        attractive_field=ATTRACTIVE_FIELD_VAL)) for i in range(VAL_DATA_SIZE)]
 val_data_loader = DataLoader(val_data_list, batch_size=1)
  
 device = torch.device('cpu')
@@ -142,7 +146,7 @@ def train():
     lbp_net.train()
 
     # Initialize optimizer
-    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0005)
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.005)
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.00005)
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.002) #used for training on 50
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.001)

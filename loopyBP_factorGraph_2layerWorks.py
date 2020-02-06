@@ -227,8 +227,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages) 
         assert(not torch.isnan(varToFactor_messages).any()), prv_factor_beliefs
         
-        print("!"*10)
-        print("varToFactor_messages.shape:", varToFactor_messages.shape)        
+#         print("!"*10)
+#         print("varToFactor_messages.shape:", varToFactor_messages.shape)        
         
         expansion_list = [2 for i in range(factor_graph.state_dimensions - 1)] + [-1,] #messages have states for one variable, add dummy dimensions for the other variables in factors
 #         print("state_dimensions:", factor_graph.state_dimensions)
@@ -408,8 +408,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
             num_edges = factor_graph.facToVar_edge_idx.shape[1]
 
-            print("factor_graph.facStates_to_varIdx.shape:", factor_graph.facStates_to_varIdx.shape)
-            print("mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape:", mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape)
+#             print("factor_graph.facStates_to_varIdx.shape:", factor_graph.facStates_to_varIdx.shape)
+#             print("mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape:", mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape)
             marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)         
             marginalized_states = marginalized_states_fast[:-1].view((2,num_edges)).permute(1,0)
            
