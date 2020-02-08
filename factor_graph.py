@@ -245,6 +245,9 @@ class FactorGraphData(Data):
         self.prv_factorToVar_messages = prv_factorToVar_messages
         self.prv_factor_beliefs = prv_factor_beliefs
         self.prv_var_beliefs = prv_var_beliefs
+        print("added prv_varToFactor_messages!!1234")
+#         print("prv_varToFactor_messages:", prv_varToFactor_messages)
+#         sleep(temp23)
 #         for attr, value in self.__dict__.items():
 #             if value is not None:
 #                 print(attr, type(value))

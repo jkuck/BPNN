@@ -27,7 +27,7 @@ MODE = "train" #run "test" or "train" mode
 TEST_TRAINED_MODEL = True #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
 
 USE_WANDB = False
-COMPARE_DATA_LOADERS = False
+COMPARE_DATA_LOADERS = True
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
@@ -172,14 +172,14 @@ def train():
         optimizer.zero_grad()
         losses = []
 #         for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(train_data_loader):
-        for spin_glass_problem in train_data_loader:
+#         for (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in train_data_loader:
 
-#         for spin_glass_problem, spin_glass_problem_pyGeom in zip(train_data_loader, train_data_loader_pytorchGeometric):
+        for (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate), spin_glass_problem_pyGeom in zip(train_data_loader, train_data_loader_pytorchGeometric):
 #         for spin_glass_problem_pyGeom in train_data_loader_pytorchGeometric:
 #         for spin_glass_problem in train_data_loader:
 
-            print("spin_glass_problem:")
-            print(spin_glass_problem)
+#             print("spin_glass_problem:")
+#             print(spin_glass_problem)
             spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
 
 
@@ -190,22 +190,52 @@ def train():
             if COMPARE_DATA_LOADERS:
 #                 spin_glass_problem_pyGeom = train_data_loader_pytorchGeometric[idx]
                 assert(spin_glass_problem.state_dimensions == spin_glass_problem_pyGeom.state_dimensions)
-                assert(spin_glass_problem.factor_potentials == spin_glass_problem_pyGeom.factor_potentials)
-                assert(spin_glass_problem.facToVar_edge_idx == spin_glass_problem_pyGeom.facToVar_edge_idx)
-                assert(spin_glass_problem.factor_degrees == spin_glass_problem_pyGeom.factor_degrees)
-                assert(spin_glass_problem.var_degrees == spin_glass_problem_pyGeom.var_degrees)
                 assert(spin_glass_problem.numVars == spin_glass_problem_pyGeom.numVars)
                 assert(spin_glass_problem.numFactors == spin_glass_problem_pyGeom.numFactors)
-                assert(spin_glass_problem.edge_var_indices == spin_glass_problem_pyGeom.edge_var_indices)
-                assert(spin_glass_problem.factor_potential_masks == spin_glass_problem_pyGeom.factor_potential_masks)
-        
+                
+                spin_glass_problem_pyGeom.state_dimensions = spin_glass_problem.state_dimensions
+                spin_glass_problem_pyGeom.numVars = spin_glass_problem.numVars
+                spin_glass_problem_pyGeom.numFactors = spin_glass_problem.numFactors
+
+#                 print(spin_glass_problem.state_dimensions, spin_glass_problem_pyGeom.state_dimensions)
+#                 print(spin_glass_problem.numVars, spin_glass_problem_pyGeom.numVars)
+#                 print(spin_glass_problem.numFactors, spin_glass_problem_pyGeom.numFactors)
+                
+                
+                assert((spin_glass_problem.var_degrees == spin_glass_problem_pyGeom.var_degrees).all())
+                assert((spin_glass_problem.edge_var_indices == spin_glass_problem_pyGeom.edge_var_indices).all())
+                assert((spin_glass_problem.factor_potential_masks == spin_glass_problem_pyGeom.factor_potential_masks).all())
+                assert((spin_glass_problem.factor_potentials == spin_glass_problem_pyGeom.factor_potentials).all())
+                assert((spin_glass_problem.facToVar_edge_idx == spin_glass_problem_pyGeom.facToVar_edge_idx).all())
+                assert((spin_glass_problem.factor_degrees == spin_glass_problem_pyGeom.factor_degrees) ).all() 
+                
+                spin_glass_problem_pyGeom.var_degrees = spin_glass_problem.var_degrees
+                spin_glass_problem_pyGeom.edge_var_indices = spin_glass_problem.edge_var_indices
+                spin_glass_problem_pyGeom.factor_potential_masks = spin_glass_problem.factor_potential_masks
+                spin_glass_problem_pyGeom.factor_potentials = spin_glass_problem.factor_potentials
+                spin_glass_problem_pyGeom.facToVar_edge_idx = spin_glass_problem.facToVar_edge_idx
+                spin_glass_problem_pyGeom.factor_degrees = spin_glass_problem.factor_degrees
+                
+#                 print(spin_glass_problem.var_degrees, spin_glass_problem_pyGeom.var_degrees)
+#                 print(spin_glass_problem.edge_var_indices, spin_glass_problem_pyGeom.edge_var_indices)
+#                 print(spin_glass_problem.factor_potential_masks, spin_glass_problem_pyGeom.factor_potential_masks)
+#                 print(spin_glass_problem.factor_potentials, spin_glass_problem_pyGeom.factor_potentials)
+#                 print(spin_glass_problem.facToVar_edge_idx, spin_glass_problem_pyGeom.facToVar_edge_idx)
+#                 print(spin_glass_problem.factor_degrees, spin_glass_problem_pyGeom.factor_degrees)
+#                 sleep(temp)
             if PYTORCH_GEOMETRIC_DATA_LOADER:
                 exact_ln_partition_function = spin_glass_problem.ln_Z
                 
 #             spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
             assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
 #             spin_glass_problem.to_device(device)
-            estimated_ln_partition_function = lbp_net(spin_glass_problem)
+            
+            if COMPARE_DATA_LOADERS:
+                estimated_ln_partition_function = lbp_net(spin_glass_problem_pyGeom)
+#                 estimated_ln_partition_function = lbp_net(spin_glass_problem)                
+            else:
+                estimated_ln_partition_function = lbp_net(spin_glass_problem)
+
 
             # print("estimated_ln_partition_function:", estimated_ln_partition_function)
             # print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
@@ -231,13 +261,20 @@ def train():
         if e % VAL_FREQUENCY == 0:
             val_losses = []
 #             for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(val_data_loader):
-            for spin_glass_problem in val_data_loader:
+#             for spin_glass_problem in val_data_loader:
+            for (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate), spin_glass_problem_pyGeom in zip(train_data_loader, train_data_loader_pytorchGeometric):
+
+
                 if PYTORCH_GEOMETRIC_DATA_LOADER:
                     exact_ln_partition_function = spin_glass_problem.ln_Z                
-#                 spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
+                spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
                 assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
 #                 spin_glass_problem.to_device(device)
-                estimated_ln_partition_function = lbp_net(spin_glass_problem) 
+                if COMPARE_DATA_LOADERS:
+                    estimated_ln_partition_function = lbp_net(spin_glass_problem_pyGeom)
+#                     estimated_ln_partition_function = lbp_net(spin_glass_problem)                        
+                else:
+                    estimated_ln_partition_function = lbp_net(spin_glass_problem)            
 #                 exact_ln_partition_function = exact_ln_partition_function.to(device)
                 loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
                 # print("estimated_ln_partition_function:", estimated_ln_partition_function)
