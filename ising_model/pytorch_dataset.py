@@ -60,7 +60,7 @@ class SpinGlassDataset(Dataset):
             print()
 
             cur_ln_Z = cur_sg_model.junction_tree_libdai()
-            sg_as_factor_graph = build_factorgraph_from_SpinGlassModel(cur_sg_model)
+            sg_as_factor_graph = build_factorgraph_from_SpinGlassModel(cur_sg_model, pytorch_geometric=False)
 
             self.spin_glass_problems_FGs.append(sg_as_factor_graph)
             self.ln_partition_functions.append(cur_ln_Z)
@@ -204,12 +204,14 @@ def build_edge_var_indices(sg_model):
     edge_var_indices = torch.tensor([indices_at_source_node, indices_at_destination_node])
     return edge_var_indices
 
-def build_factorgraph_from_SpinGlassModel(sg_model):
+def build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=False):
     '''
     Convert a spin glass model to a factor graph pytorch representation
 
     Inputs:
     - sg_model (SpinGlassModel): defines a sping glass model
+    - pytorch_geometric (bool): if True return to work with pytorch geometric dataloader
+                                if False return to work with standard pytorch dataloader
     Outputs:
     - factorgraph (FactorGraph): 
     '''
@@ -320,11 +322,19 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
 
     ln_Z = sg_model.junction_tree_libdai()
 
-#     factor_graph = FactorGraph(factor_potentials=factor_potentials,
-    factor_graph = FactorGraphData(factor_potentials=factor_potentials,
-                 factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
-                 edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks,
-                 ln_Z=ln_Z)
-#                  ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
+    if pytorch_geometric:
+        factor_graph = FactorGraphData(factor_potentials=factor_potentials,
+                     factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
+                     edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks,
+                     ln_Z=ln_Z)
+    #                  ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
+
+        
+    else:  
+        factor_graph = FactorGraph(factor_potentials=factor_potentials,
+                     factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
+                     edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks,
+                     ln_Z=ln_Z)
+    #                  ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
 
     return factor_graph
