@@ -169,7 +169,7 @@ def build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={}):
 
 def junction_tree(sg_model, verbose=False):
     '''
-    Brute force calculate the partition function of a spin glass model using mrftools
+    Calculate the exact partition function of a spin glass model using the junction tree algorithm
     Inputs:
     - sg_model (SpinGlassModel)
 
