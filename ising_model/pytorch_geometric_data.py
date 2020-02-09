@@ -4,13 +4,13 @@ import torch
 def spinGlass_to_torchGeometric(sg_model):
     '''
     Convert a spin glass model represented as a SpinGlassModel object
-    to pytorch geometric Data
+    to pytorch geometric Data for use with the baseline GNN
     Inputs:
     - sg_model (SpinGlassModel): representation of a spin glass model
     
     Outputs:
     - sg_model_torchGeom (torch_geometric.data.Data): representation of a spin glass model
-        as pytorch geometric Data
+        as pytorch geometric Data for use with the baseline GNN
     '''
     
     edge_index, edge_attr = construct_edges(sg_model)
