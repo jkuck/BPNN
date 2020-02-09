@@ -260,8 +260,8 @@ def run_loopyBP(sg_model, maxiter):
     # specifying the type of updates the BP algorithm should perform and
     # whether they should be done in the real or in the logdomain
     bpopts = opts
-#     bpopts["updates"] = "SEQRND"
-    bpopts["updates"] = "PARALL"
+    bpopts["updates"] = "SEQRND"
+#     bpopts["updates"] = "PARALL"
     bpopts["logdomain"] = "1"
     bpopts["damping"] = ".5"
 
