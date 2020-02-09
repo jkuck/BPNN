@@ -66,8 +66,8 @@ REGENERATE_DATA = True
 DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
 
 
-TRAINING_DATA_SIZE = 50
-VAL_DATA_SIZE = 50#100
+TRAINING_DATA_SIZE = 2
+VAL_DATA_SIZE = 2#100
 TEST_DATA_SIZE = 200
 
 

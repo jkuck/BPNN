@@ -138,45 +138,70 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         if False we take exponent then run mlp then take log
     """
 
-    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True, logspace_mlp=False):
+    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True, logspace_mlp=False, num_mlps=2):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
 
+        assert(num_mlps in [1,2])
+        self.num_mlps = num_mlps
         self.learn_BP = learn_BP
         self.avoid_nans = avoid_nans
         self.logspace_mlp = logspace_mlp
         print("learn_BP:", learn_BP)
         if learn_BP:
-            assert(factor_state_space is not None)
-            # print("factor_state_space:", factor_state_space)
-            # sleep(float)
-            self.linear1 = Linear(factor_state_space, factor_state_space)
-            self.linear2 = Linear(factor_state_space, factor_state_space)
-            self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-            self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-            self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-            self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+            assert(factor_state_space is not None)     
+            if num_mlps == 2:
+                self.linear1 = Linear(factor_state_space, factor_state_space)
+                self.linear2 = Linear(factor_state_space, factor_state_space)
+                self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+                self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+                self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
-            if self.logspace_mlp:
-                self.shifted_relu = shift_func(ReLU(), shift=-50)
-                # self.shifted_relu = shift_func(ReLU(), shift=np.exp(-99))
-
-                self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2)
-
-            else:
                 self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space                
-                self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
-                # self.mlp = Seq(self.linear1, ReLU(), self.linear2)
+                self.mlp1 = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)  
+                
+                
+                self.linear3 = Linear(factor_state_space*2, factor_state_space)
+                self.linear4 = Linear(factor_state_space, factor_state_space)
+                self.linear3.weight = torch.nn.Parameter(torch.cat([torch.eye(factor_state_space), torch.eye(factor_state_space)], 1))
+                self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+                self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
-            # self.relu = ReLU()                
-            # self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
-            # self.mlp = self.linear1
-            # self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
-            # self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
-            # self.mlp = Seq(self.linear1, ReLU(), self.linear2, ReLU())
+                self.shifted_relu1 = shift_func(ReLU(), shift=-50) #allow beliefs less than 0               
+                self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu1)  
+                
+            else:
+                # print("factor_state_space:", factor_state_space)
+                # sleep(float)
+                self.linear1 = Linear(factor_state_space, factor_state_space)
+                self.linear2 = Linear(factor_state_space, factor_state_space)
+                self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+                self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+                self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
-            # self.mlp = Seq(Linear(factor_state_space, factor_state_space),
-            #                ReLU(),
-            #                Linear(factor_state_space, factor_state_space))
+                if self.logspace_mlp:
+                    self.shifted_relu = shift_func(ReLU(), shift=-50)
+                    # self.shifted_relu = shift_func(ReLU(), shift=np.exp(-99))
+
+                    self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2)
+
+                else:
+                    self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space                
+                    self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
+                    # self.mlp = Seq(self.linear1, ReLU(), self.linear2)
+
+                # self.relu = ReLU()                
+                # self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
+                # self.mlp = self.linear1
+                # self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
+                # self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
+                # self.mlp = Seq(self.linear1, ReLU(), self.linear2, ReLU())
+
+                # self.mlp = Seq(Linear(factor_state_space, factor_state_space),
+                #                ReLU(),
+                #                Linear(factor_state_space, factor_state_space))
 
     def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs):
         '''
@@ -258,96 +283,131 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             print("varToFactor_expandedMessages:", torch.exp(varToFactor_expandedMessages))
         #end debug
 
-        factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0], dim_size=factor_graph.numFactors)
+        if not (self.learn_BP and (self.num_mlps == 2)):
+            factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0], dim_size=factor_graph.numFactors)
         
-        assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
+            assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
       
         if debug:
             print("1 factor_beliefs:", torch.exp(factor_beliefs))
         
         if self.learn_BP:
-            
-            normalization_view = [1 for i in range(len(factor_beliefs.shape))]
-            normalization_view[0] = -1
-            factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim=0).view(normalization_view)#normalize factor beliefs
-            
+            if self.num_mlps == 2:
+                
+                normalization_view = [1 for i in range(len(varToFactor_expandedMessages.shape))]
+                normalization_view[0] = -1
+                varToFactor_expandedMessages = varToFactor_expandedMessages - logsumexp_multipleDim(varToFactor_expandedMessages, dim=0).view(normalization_view)#normalize factor beliefs
 
-            # print("factor_beliefs.shape:", factor_beliefs.shape)
-            factor_beliefs_shape = factor_beliefs.shape
-            # print("1 factor_beliefs:", factor_beliefs)
-            # print("factor_beliefs.shape:", factor_beliefs.shape)
-            assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
-            if self.avoid_nans:
-                if self.logspace_mlp: #another try, stay with logspace
-                    # pass
-                    # assert((factor_beliefs==-np.inf).any())
-                    masked_locations = torch.where(factor_graph.factor_potential_masks==1)
-                    # factor_beliefs_neg_inf_locations = torch.where(factor_beliefs==-np.inf)
-                    non_inf_belief_potential_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs!=-np.inf))
-                    neg_inf_belief_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs==-np.inf)) #we set potentials to epsilon, so this is where beliefs are zero in 'valid' (i.e. not extra variable) locations
-                    factor_beliefs_clone = factor_beliefs.clone()
-                    factor_beliefs_clone[masked_locations] = 0
-                    factor_beliefs_clone[neg_inf_belief_locations] = -99
-                    
-                    assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
-                    assert(not (factor_beliefs[non_inf_belief_potential_locations] == -np.inf).any()), factor_beliefs
-                    check_factor_beliefs(factor_beliefs) #debugging
-                    assert(not (factor_beliefs_clone==-np.inf).any()), factor_beliefs_temp
-                    factor_beliefs_temp = self.mlp(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
-                    # assert((factor_beliefs_temp == factor_beliefs_clone).all()), (factor_beliefs_temp, factor_beliefs_clone)
-                    check_factor_beliefs(factor_beliefs) #debugging
-                    assert(not torch.isnan(factor_beliefs_temp).any()), factor_beliefs_temp
-                    
-                    factor_beliefs = -np.inf*torch.ones_like(factor_beliefs)
-                    factor_beliefs[non_inf_belief_potential_locations] = factor_beliefs_temp[non_inf_belief_potential_locations]
+                varToFactor_expandedMessages_shape = varToFactor_expandedMessages.shape
+                assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
+
+                varToFactor_expandedMessages = torch.exp(varToFactor_expandedMessages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                varToFactor_expandedMessages_clone = varToFactor_expandedMessages.clone()
+                varToFactor_expandedMessages_temp = (1-alpha2)*self.mlp1(varToFactor_expandedMessages_clone.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape) + alpha2*varToFactor_expandedMessages_clone
+
+                valid_locations = torch.where((varToFactor_expandedMessages!=-np.inf))
+                # valid_locations = torch.where((varToFactor_expandedMessages!=-np.inf) & (varToFactor_expandedMessages_temp>0))
+                varToFactor_expandedMessages = -np.inf*torch.ones_like(varToFactor_expandedMessages)
+                varToFactor_expandedMessages[valid_locations] = torch.log(varToFactor_expandedMessages_temp[valid_locations])
+
+                assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
+                factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0], dim_size=factor_graph.numFactors)
+
+                print(varToFactor_expandedMessages_clone.view(varToFactor_expandedMessages_shape[0], -1))
+                num_factors = factor_graph.numFactors
+                assert(num_factors == factor_beliefs.shape[0]), (num_factors, varToFactor_expandedMessages.shape[0])
+                assert(num_factors == factor_graph.factor_potentials.shape[0]), (num_factors, factor_graph.factor_potentials.shape[0])
+                
+                factor_beliefs_shape = factor_beliefs.shape
+                factor_beliefs = self.mlp2(torch.cat([factor_beliefs.view(num_factors,-1), factor_graph.factor_potentials.view(num_factors,-1)], 1)).view(factor_beliefs_shape)
+#                 factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
+
+
+
+                
+            else:
+                normalization_view = [1 for i in range(len(factor_beliefs.shape))]
+                normalization_view[0] = -1
+                factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim=0).view(normalization_view)#normalize factor beliefs
+
+
+                # print("factor_beliefs.shape:", factor_beliefs.shape)
+                factor_beliefs_shape = factor_beliefs.shape
+                # print("1 factor_beliefs:", factor_beliefs)
+                # print("factor_beliefs.shape:", factor_beliefs.shape)
+                assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
+                if self.avoid_nans:
+                    if self.logspace_mlp: #another try, stay with logspace
+                        # pass
+                        # assert((factor_beliefs==-np.inf).any())
+                        masked_locations = torch.where(factor_graph.factor_potential_masks==1)
+                        # factor_beliefs_neg_inf_locations = torch.where(factor_beliefs==-np.inf)
+                        non_inf_belief_potential_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs!=-np.inf))
+                        neg_inf_belief_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs==-np.inf)) #we set potentials to epsilon, so this is where beliefs are zero in 'valid' (i.e. not extra variable) locations
+                        factor_beliefs_clone = factor_beliefs.clone()
+                        factor_beliefs_clone[masked_locations] = 0
+                        factor_beliefs_clone[neg_inf_belief_locations] = -99
+
+                        assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
+                        assert(not (factor_beliefs[non_inf_belief_potential_locations] == -np.inf).any()), factor_beliefs
+                        check_factor_beliefs(factor_beliefs) #debugging
+                        assert(not (factor_beliefs_clone==-np.inf).any()), factor_beliefs_temp
+                        factor_beliefs_temp = self.mlp(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
+                        # assert((factor_beliefs_temp == factor_beliefs_clone).all()), (factor_beliefs_temp, factor_beliefs_clone)
+                        check_factor_beliefs(factor_beliefs) #debugging
+                        assert(not torch.isnan(factor_beliefs_temp).any()), factor_beliefs_temp
+
+                        factor_beliefs = -np.inf*torch.ones_like(factor_beliefs)
+                        factor_beliefs[non_inf_belief_potential_locations] = factor_beliefs_temp[non_inf_belief_potential_locations]
+
+                    else:
+                        factor_beliefs = torch.exp(factor_beliefs) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                        factor_beliefs_clone = factor_beliefs.clone()
+
+                        check_factor_beliefs(factor_beliefs) #debugging
+                        factor_beliefs_temp = (1-alpha2)*self.mlp(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) + alpha2*factor_beliefs_clone
+                        # factor_beliefs = factor_beliefs_temp.clone()
+                        # factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
+                        # factor_beliefs[factor_beliefs_neg_inf_locations] = -np.inf
+                        # assert((factor_beliefs>0).all())
+
+                        # factor_beliefs = torch.zeros(factor_beliefs_shape, dtype=factor_beliefs_temp.dtype, layout=factor_beliefs_temp.layout, device=factor_beliefs_temp.device)
+                        # factor_beliefs = torch.zeros_like(factor_beliefs)
+                        # valid_locations = torch.where((factor_beliefs!=-np.inf) & (factor_beliefs_temp>0))
+                        # factor_beliefs[valid_locations] = factor_beliefs_temp[valid_locations]
+                        # factor_beliefs = torch.log(factor_beliefs) #go back to log-space
+
+
+                        valid_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs!=-np.inf))
+                        # valid_locations = torch.where((factor_beliefs!=-np.inf) & (factor_beliefs_temp>0))
+                        factor_beliefs = -np.inf*torch.ones_like(factor_beliefs)
+                        factor_beliefs[valid_locations] = torch.log(factor_beliefs_temp[valid_locations])
+
+                        # check_factor_beliefs(factor_beliefs) #debugging
+                        assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
+                        # factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1)) + .01
+                        # factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
+
 
                 else:
                     factor_beliefs = torch.exp(factor_beliefs) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
-                    factor_beliefs_clone = factor_beliefs.clone()
-                    
-                    check_factor_beliefs(factor_beliefs) #debugging
-                    factor_beliefs_temp = (1-alpha2)*self.mlp(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) + alpha2*factor_beliefs_clone
-                    # factor_beliefs = factor_beliefs_temp.clone()
-                    # factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
-                    # factor_beliefs[factor_beliefs_neg_inf_locations] = -np.inf
-                    # assert((factor_beliefs>0).all())
+                    factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1))
+                    factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
+                    factor_beliefs = torch.log(factor_beliefs) #go back to log-space
 
-                    # factor_beliefs = torch.zeros(factor_beliefs_shape, dtype=factor_beliefs_temp.dtype, layout=factor_beliefs_temp.layout, device=factor_beliefs_temp.device)
-                    # factor_beliefs = torch.zeros_like(factor_beliefs)
-                    # valid_locations = torch.where((factor_beliefs!=-np.inf) & (factor_beliefs_temp>0))
-                    # factor_beliefs[valid_locations] = factor_beliefs_temp[valid_locations]
-                    # factor_beliefs = torch.log(factor_beliefs) #go back to log-space
+                # factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1)) + .01
+                # assert((factor_beliefs>=0).all())
 
+                # factor_beliefs[torch.where(factor_beliefs == 0)] += .000001
+                # print("factor_beliefs:", factor_beliefs)
+                # factor_beliefs[torch.nonzero(factor_beliefs == 0, as_tuple=True)] += .000001
+                # factor_beliefs = self.linear1(factor_beliefs.view(factor_beliefs_shape[0], -1))
+                # print("2 factor_beliefs:", factor_beliefs)
+                # print("factor_beliefs.shape:", factor_beliefs.shape)
+                # sleep(chekc1)
 
-                    valid_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs!=-np.inf))
-                    # valid_locations = torch.where((factor_beliefs!=-np.inf) & (factor_beliefs_temp>0))
-                    factor_beliefs = -np.inf*torch.ones_like(factor_beliefs)
-                    factor_beliefs[valid_locations] = torch.log(factor_beliefs_temp[valid_locations])
-                    
-                    # check_factor_beliefs(factor_beliefs) #debugging
-                    assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
-                    # factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1)) + .01
-                    # factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
-                    
-
-            else:
-                factor_beliefs = torch.exp(factor_beliefs) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
-                factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1))
-                factor_beliefs = factor_beliefs.view(factor_beliefs_shape)
-                factor_beliefs = torch.log(factor_beliefs) #go back to log-space
-                
-            # factor_beliefs = self.mlp(factor_beliefs.view(factor_beliefs_shape[0], -1)) + .01
-            # assert((factor_beliefs>=0).all())
-            
-            # factor_beliefs[torch.where(factor_beliefs == 0)] += .000001
-            # print("factor_beliefs:", factor_beliefs)
-            # factor_beliefs[torch.nonzero(factor_beliefs == 0, as_tuple=True)] += .000001
-            # factor_beliefs = self.linear1(factor_beliefs.view(factor_beliefs_shape[0], -1))
-            # print("2 factor_beliefs:", factor_beliefs)
-            # print("factor_beliefs.shape:", factor_beliefs.shape)
-            # sleep(chekc1)
-
-        factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
+        if not (self.learn_BP and (self.num_mlps == 2)):
+            factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
 
         assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
         if debug:
