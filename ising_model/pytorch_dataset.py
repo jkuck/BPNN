@@ -326,8 +326,8 @@ def build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=False):
         factor_graph = FactorGraphData(factor_potentials=factor_potentials,
                      factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
                      edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks,
-                     ln_Z=ln_Z)
-    #                  ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
+#                      ln_Z=ln_Z)
+                     ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
 
         
     else:  

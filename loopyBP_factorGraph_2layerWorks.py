@@ -380,7 +380,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 # def logsumexp(tensor, dim):
 #     tensor_exp = tor
 
-    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages, debug=False, fast_logsumexp=False):
+    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages, debug=False, fast_logsumexp=True):
         # prv_factor_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_varToFactor_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
         # factor_graph.edge_var_indices has shape [2, E]. 

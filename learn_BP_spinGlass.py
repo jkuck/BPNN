@@ -26,8 +26,8 @@ from parameters import ROOT_DIR
 MODE = "train" #run "test" or "train" mode
 TEST_TRAINED_MODEL = True #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
 
-USE_WANDB = False
-COMPARE_DATA_LOADERS = True
+USE_WANDB = True
+COMPARE_DATA_LOADERS = False
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
@@ -66,8 +66,8 @@ REGENERATE_DATA = True
 DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
 
 
-TRAINING_DATA_SIZE = 3
-VAL_DATA_SIZE = 3#100
+TRAINING_DATA_SIZE = 50
+VAL_DATA_SIZE = 50#100
 TEST_DATA_SIZE = 200
 
 
@@ -127,7 +127,7 @@ def train():
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.002) #used for training on 50
 #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.001)
 #     optimizer = torch.optim.SGD(lbp_net.parameters(), lr=0.001)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5) #multiply lr by gamma every step_size epochs    
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=60, gamma=0.5) #multiply lr by gamma every step_size epochs    
 
     loss_func = torch.nn.MSELoss()
 
@@ -138,21 +138,21 @@ def train():
     sg_data_val, spin_glass_problems_SGMs_val = get_dataset(dataset_type='val')
     val_data_loader = DataLoader(sg_data_val, batch_size=1)
 
-    PYTORCH_GEOMETRIC_DATA_LOADER = False
+    PYTORCH_GEOMETRIC_DATA_LOADER = True
     if PYTORCH_GEOMETRIC_DATA_LOADER:
         train_data_list = [build_factorgraph_from_SpinGlassModel(SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
         # train_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
                                                                 f=np.random.uniform(low=0, high=F_MAX),\
                                                                 c=np.random.uniform(low=0, high=C_MAX),\
                                                                 attractive_field=ATTRACTIVE_FIELD_TRAIN), pytorch_geometric=True) for i in range(TRAINING_DATA_SIZE)]
-        train_data_loader = DataLoader_pytorchGeometric(train_data_list, batch_size=1)
+        train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(train_data_list, batch_size=1)
 
         val_data_list = [build_factorgraph_from_SpinGlassModel(SpinGlassModel(N=random.randint(N_MIN_VAL, N_MAX_VAL),\
         # val_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN_VAL, N_MAX_VAL),\
                                                                 f=np.random.uniform(low=0, high=F_MAX_VAL),\
                                                                 c=np.random.uniform(low=0, high=C_MAX_VAL),\
                                                                 attractive_field=ATTRACTIVE_FIELD_VAL), pytorch_geometric=True) for i in range(VAL_DATA_SIZE)]
-        val_data_loader = DataLoader_pytorchGeometric(val_data_list, batch_size=1)
+        val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(val_data_list, batch_size=1)
     
     
     if COMPARE_DATA_LOADERS:
@@ -174,13 +174,13 @@ def train():
 #         for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(train_data_loader):
 #         for (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in train_data_loader:
 
-        for (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate), spin_glass_problem_pyGeom in zip(train_data_loader, train_data_loader_pytorchGeometric):
-#         for spin_glass_problem_pyGeom in train_data_loader_pytorchGeometric:
+#         for (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate), spin_glass_problem_pyGeom in zip(train_data_loader, train_data_loader_pytorchGeometric):
+        for spin_glass_problem in train_data_loader_pytorchGeometric: #pytorch geometric form
 #         for spin_glass_problem in train_data_loader:
 
 #             print("spin_glass_problem:")
 #             print(spin_glass_problem)
-            spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
+#             spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
 
 
 #             spin_glass_problem.ln_Z = spin_glass_problem.ln_Z.item()
@@ -225,8 +225,8 @@ def train():
 #                 sleep(temp)
             if PYTORCH_GEOMETRIC_DATA_LOADER:
                 exact_ln_partition_function = spin_glass_problem.ln_Z
-                
-#             spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
+            else:
+                spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
             assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
 #             spin_glass_problem.to_device(device)
             
@@ -235,6 +235,8 @@ def train():
 #                 estimated_ln_partition_function = lbp_net(spin_glass_problem)                
             else:
                 estimated_ln_partition_function = lbp_net(spin_glass_problem)
+#                 estimated_ln_partition_function = lbp_net(spin_glass_problem_pyGeom)
+
 
 
             # print("estimated_ln_partition_function:", estimated_ln_partition_function)
@@ -262,18 +264,22 @@ def train():
             val_losses = []
 #             for t, (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate) in enumerate(val_data_loader):
 #             for spin_glass_problem in val_data_loader:
-            for (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate), spin_glass_problem_pyGeom in zip(train_data_loader, train_data_loader_pytorchGeometric):
+#             for (spin_glass_problem, exact_ln_partition_function, lbp_Z_est, mrftools_lbp_Z_estimate), spin_glass_problem_pyGeom in zip(train_data_loader, train_data_loader_pytorchGeometric):
+            for spin_glass_problem in val_data_loader_pytorchGeometric: #pytorch geometric form
+
 
 
                 if PYTORCH_GEOMETRIC_DATA_LOADER:
-                    exact_ln_partition_function = spin_glass_problem.ln_Z                
-                spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
+                    exact_ln_partition_function = spin_glass_problem.ln_Z   
+                else:
+                    spin_glass_problem = FactorGraph.init_from_dictionary(spin_glass_problem, squeeze_tensors=True)
                 assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
 #                 spin_glass_problem.to_device(device)
                 if COMPARE_DATA_LOADERS:
                     estimated_ln_partition_function = lbp_net(spin_glass_problem_pyGeom)
 #                     estimated_ln_partition_function = lbp_net(spin_glass_problem)                        
                 else:
+#                     estimated_ln_partition_function = lbp_net(spin_glass_problem_pyGeom)        
                     estimated_ln_partition_function = lbp_net(spin_glass_problem)            
 #                 exact_ln_partition_function = exact_ln_partition_function.to(device)
                 loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
