@@ -34,7 +34,7 @@ C_MAX_TRAIN = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
 TRAIN_DATA_SIZE = 50
-ATTRACTIVE_FIELD_TRAIN = True
+ATTRACTIVE_FIELD_TRAIN = False
 
 # N_MIN_VAL = 10
 # N_MAX_VAL = 10
@@ -42,10 +42,10 @@ ATTRACTIVE_FIELD_TRAIN = True
 # C_MAX_VAL = 5
 N_MIN_VAL = 10
 N_MAX_VAL = 10
-F_MAX_VAL = 0.1
+F_MAX_VAL = .1
 C_MAX_VAL = 5.0
 VAL_DATA_SIZE = 50
-ATTRACTIVE_FIELD_VAL = True
+ATTRACTIVE_FIELD_VAL = False
 
 SAVE_FREQUENCY = 500
 
@@ -94,9 +94,16 @@ else:
     
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = GIN_Network_withEdgeFeatures(msg_passing_iters=MSG_PASSING_ITERS).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5)
 
+#works well for attractive field
+if ATTRACTIVE_FIELD_TRAIN:
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5)
+else:
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.1) #works for width/hidden_size=4
+#     optimizer = torch.optim.Adam(model.parameters(), lr=0.2)    
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5)
+    
 loss_func = torch.nn.MSELoss(reduction='sum') #sum of squared errors
 
 def train_epoch():
@@ -127,7 +134,7 @@ def train_epoch():
 
 def val_epoch(plot=False, val_mode=False):
     if val_mode:
-        model.load_state_dict(torch.load('./wandb/run-20200206_050548-r30fh08e/model.pt'))
+        model.load_state_dict(torch.load('./wandb/run-20200209_091247-wz2g3fjd/model.pt'))
     model.eval()
     total_loss = 0
     for data in val_loader:
@@ -198,3 +205,5 @@ if __name__ == "__main__":
     elif MODE == "val":
         val_loss = val_epoch(plot=True, val_mode=True)
         print('Val loss: {:.4f}'.format(np.sqrt(val_loss)))
+    else:
+        assert(False), ("Invalid MODE")

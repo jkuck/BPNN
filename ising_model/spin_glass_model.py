@@ -103,15 +103,20 @@ class SpinGlassModel:
         ln_Z = libdai_utils.junction_tree(self)
         return ln_Z
 
-    def loopyBP_libdai(self, maxiter=None):
+    def loopyBP_libdai(self, maxiter=None, updates="SEQRND", damping=None):
         '''
         estimate the partition function of this spin glass model using the 
         loopy belief propagation implementation from libdai
 
+        Inputs:
+        - updates (string): the type of libdai LBP updates to use (see libdai documentation)
+        - damping (string): None -> no damping, or string specifying the damping e.g. ".5"
+            see libdai docs for more details
+            
         Outputs:
         - ln_Z_estimate: estimate of the natural logarithm of the partition function
         '''
-        ln_Z_estimate = libdai_utils.run_loopyBP(self, maxiter)
+        ln_Z_estimate = libdai_utils.run_loopyBP(self, maxiter, updates, damping)
         return ln_Z_estimate
 
     def mean_field_libdai(self, maxiter=None):

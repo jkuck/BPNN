@@ -138,7 +138,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         if False we take exponent then run mlp then take log
     """
 
-    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True, logspace_mlp=False, num_mlps=1):
+    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True, logspace_mlp=False, num_mlps=2):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
 
         assert(num_mlps in [1,2])
@@ -161,14 +161,25 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 self.mlp1 = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)  
                 
                 
-                self.linear3 = Linear(factor_state_space*2, factor_state_space)
+                #add factor potential as part of MLP
+#                 self.linear3 = Linear(factor_state_space*2, factor_state_space)
+#                 self.linear4 = Linear(factor_state_space, factor_state_space)
+#                 self.linear3.weight = torch.nn.Parameter(torch.cat([torch.eye(factor_state_space), torch.eye(factor_state_space)], 1))
+#                 self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+#                 self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+#                 self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+
+#                 self.shifted_relu1 = shift_func(ReLU(), shift=-50) #allow beliefs less than 0    
+
+                #add factor potential after MLP
+                self.linear3 = Linear(factor_state_space, factor_state_space)
                 self.linear4 = Linear(factor_state_space, factor_state_space)
-                self.linear3.weight = torch.nn.Parameter(torch.cat([torch.eye(factor_state_space), torch.eye(factor_state_space)], 1))
+                self.linear3.weight = torch.nn.Parameter(torch.eye(factor_state_space))
                 self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
                 self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
                 self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
-                self.shifted_relu1 = shift_func(ReLU(), shift=-50) #allow beliefs less than 0               
+                self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
                 self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu1)  
                 
             else:
@@ -313,14 +324,28 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
                 factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0], dim_size=factor_graph.numFactors)
 
-                print(varToFactor_expandedMessages_clone.view(varToFactor_expandedMessages_shape[0], -1))
+#                 print(varToFactor_expandedMessages_clone.view(varToFactor_expandedMessages_shape[0], -1))
                 num_factors = factor_graph.numFactors
                 assert(num_factors == factor_beliefs.shape[0]), (num_factors, varToFactor_expandedMessages.shape[0])
                 assert(num_factors == factor_graph.factor_potentials.shape[0]), (num_factors, factor_graph.factor_potentials.shape[0])
                 
                 factor_beliefs_shape = factor_beliefs.shape
-                factor_beliefs = self.mlp2(torch.cat([factor_beliefs.view(num_factors,-1), factor_graph.factor_potentials.view(num_factors,-1)], 1)).view(factor_beliefs_shape)
-#                 factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
+#                 factor_beliefs = self.mlp2(torch.cat([factor_beliefs.view(num_factors,-1), factor_graph.factor_potentials.view(num_factors,-1)], 1)).view(factor_beliefs_shape)
+#                 factor_beliefs = self.mlp2(factor_beliefs.view(num_factors,-1)).view(factor_beliefs_shape)
+                factor_beliefs = torch.exp(factor_beliefs) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                factor_beliefs_clone = factor_beliefs.clone()
+
+                check_factor_beliefs(factor_beliefs) #debugging
+                factor_beliefs_temp = (1-alpha2)*self.mlp2(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) + alpha2*factor_beliefs_clone
+                valid_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs!=-np.inf))
+                # valid_locations = torch.where((factor_beliefs!=-np.inf) & (factor_beliefs_temp>0))
+                factor_beliefs = -np.inf*torch.ones_like(factor_beliefs)
+                factor_beliefs[valid_locations] = torch.log(factor_beliefs_temp[valid_locations])
+                # check_factor_beliefs(factor_beliefs) #debugging
+                assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
+
+
+                factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
 
 
 

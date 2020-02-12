@@ -231,7 +231,7 @@ def junction_tree(sg_model, verbose=False):
         print('Exact log partition sum:', ln_Z)
     return(ln_Z)
 
-def run_loopyBP(sg_model, maxiter):
+def run_loopyBP(sg_model, maxiter, updates="SEQRND", damping=None):
     if maxiter is None:
         maxiter=LIBDAI_LBP_ITERS
     
@@ -260,10 +260,12 @@ def run_loopyBP(sg_model, maxiter):
     # specifying the type of updates the BP algorithm should perform and
     # whether they should be done in the real or in the logdomain
     bpopts = opts
-    bpopts["updates"] = "SEQRND"
+#     bpopts["updates"] = "SEQRND"
 #     bpopts["updates"] = "PARALL"
+    bpopts["updates"] = updates
     bpopts["logdomain"] = "1"
-    bpopts["damping"] = ".5"
+    if damping is not None:
+        bpopts["damping"] = damping
 
     bp = dai.BP( sg_FactorGraph, bpopts )
     # Initialize belief propagation algorithm
