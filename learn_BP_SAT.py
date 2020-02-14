@@ -1,9 +1,10 @@
 import torch
 from torch import autograd
 from nn_models import lbp_message_passing_network
-from sat_data import SatProblems
+from sat_data import SatProblems, get_SATproblems_list
 from factor_graph import FactorGraph
-from torch.utils.data import DataLoader
+# from torch.utils.data import DataLoader
+from torch_geometric.data import DataLoader
 import os
 import matplotlib.pyplot as plt
 import matplotlib
@@ -70,6 +71,7 @@ TRAINING_PROBLEMS_90 = ["90-10-10-q", "90-10-1-q", "90-10-3-q", "90-10-4-q", "90
 #the 39 trainining problems that don't begin with 90-
 TRAINING_PROBLEMS_not90 = ["10.sk_1_46", "27.sk_3_32", "4step", "50-10-10-q", "50-10-5-q", "50-10-7-q", "50-10-8-q", "5step", "75-10-10-q", "75-10-1-q", "75-10-2-q", "75-10-4-q", "75-10-5-q", "75-10-6-q", "75-10-7-q", "75-10-8-q", "75-10-9-q", "75-12-10-q", "75-12-1-q", "75-12-2-q", "75-12-3-q", "75-12-4-q", "75-12-5-q", "75-12-6-q", "75-12-7-q", "75-12-8-q", "75-12-9-q", "75-14-10-q", "75-14-1-q", "75-14-2-q", "75-14-3-q", "75-14-4-q", "75-14-5-q", "75-14-6-q", "75-14-8-q", "75-15-1-q", "75-15-3-q", "75-15-4-q", "75-15-9-q"]
 
+# tiny_set = ["10.sk_1_46", "27.sk_3_32"]
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS)
 # lbp_net.double()
 def train():
@@ -81,29 +83,46 @@ def train():
 
     loss_func = torch.nn.MSELoss()
 
-    sat_data_train = SatProblems(problems_to_load=TRAINING_PROBLEMS_not90,
+    #old, general torch rather than pytorch geometric
+#     sat_data_train = SatProblems(problems_to_load=tiny_set,
+#                counts_dir_name=SOLUTION_COUNTS_DIR,
+#                problems_dir_name=TRAINING_PROBLEMS_DIR,
+#                # dataset_size=100, begin_idx=50, epsilon=EPSILON)
+#                dataset_size=TRAINING_DATA_SIZE, epsilon=EPSILON)
+#     # sleep(temp)
+#     train_data_loader = DataLoader(sat_data_train, batch_size=1)
+    
+#     sat_data_val = SatProblems(problems_to_load=tiny_set,
+#                counts_dir_name=SOLUTION_COUNTS_DIR,
+#                problems_dir_name=VALIDATION_PROBLEMS_DIR,
+#                # dataset_size=50, begin_idx=0, epsilon=EPSILON)
+#                dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON)
+#     val_data_loader = DataLoader(sat_data_val, batch_size=1)
+
+    #pytorch geometric
+    training_SAT_list = get_SATproblems_list(problems_to_load=TRAINING_PROBLEMS_not90,
                counts_dir_name=SOLUTION_COUNTS_DIR,
                problems_dir_name=TRAINING_PROBLEMS_DIR,
                # dataset_size=100, begin_idx=50, epsilon=EPSILON)
                dataset_size=TRAINING_DATA_SIZE, epsilon=EPSILON)
-    # sleep(temp)
-    train_data_loader = DataLoader(sat_data_train, batch_size=1)
-
-    sat_data_val = SatProblems(problems_to_load=TRAINING_PROBLEMS_90,
+    train_data_loader = DataLoader(training_SAT_list, batch_size=1)
+   
+    val_SAT_list = get_SATproblems_list(problems_to_load=TRAINING_PROBLEMS_90,
                counts_dir_name=SOLUTION_COUNTS_DIR,
                problems_dir_name=VALIDATION_PROBLEMS_DIR,
                # dataset_size=50, begin_idx=0, epsilon=EPSILON)
                dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON)
-    val_data_loader = DataLoader(sat_data_val, batch_size=1)
-
+    val_data_loader = DataLoader(val_SAT_list, batch_size=1)
 
     # with autograd.detect_anomaly():
     losses = []
     for e in range(EPOCH_COUNT):
-        for t, (sat_problem, exact_ln_partition_function) in enumerate(train_data_loader):
+#         for t, (sat_problem, exact_ln_partition_function) in enumerate(train_data_loader):
+        for sat_problem in train_data_loader:
+            exact_ln_partition_function = sat_problem.ln_Z
             optimizer.zero_grad()
 
-            sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
+#             sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
             assert(sat_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
             estimated_ln_partition_function = lbp_net(sat_problem)
 
@@ -121,10 +140,14 @@ def train():
 
         if e % PRINT_FREQUENCY == 0:
             print("root mean squared training error =", np.sqrt(np.mean(losses)))
+            
+        if e % 10 == 0:
             losses = []
             val_losses = []
-            for t, (sat_problem, exact_ln_partition_function) in enumerate(val_data_loader):
-                sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
+#             for t, (sat_problem, exact_ln_partition_function) in enumerate(val_data_loader):
+            for sat_problem in val_data_loader:
+                exact_ln_partition_function = sat_problem.ln_Z
+#                 sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
                 assert(sat_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
                 estimated_ln_partition_function = lbp_net(sat_problem)                
                 loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
@@ -206,5 +229,5 @@ def test():
 
 
 if __name__ == "__main__":
-#     train()
-    test()
+    train()
+#     test()

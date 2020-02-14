@@ -33,7 +33,7 @@ F_MAX_TRAIN = .1
 C_MAX_TRAIN = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
-TRAIN_DATA_SIZE = 50
+TRAIN_DATA_SIZE = 500
 ATTRACTIVE_FIELD_TRAIN = False
 
 # N_MIN_VAL = 10
@@ -47,8 +47,8 @@ C_MAX_VAL = 5.0
 VAL_DATA_SIZE = 50
 ATTRACTIVE_FIELD_VAL = False
 
-SAVE_FREQUENCY = 500
-
+SAVE_FREQUENCY = 100
+EPOCH_COUNT = 2500
 
 ######### FOR GETTING THE SAME DATA USED BY BPNN ##############
 USE_BPNN_DATA=True
@@ -100,9 +100,9 @@ if ATTRACTIVE_FIELD_TRAIN:
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5)
 else:
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.1) #works for width/hidden_size=4
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01) #works for width/hidden_size=4
 #     optimizer = torch.optim.Adam(model.parameters(), lr=0.2)    
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.5)
     
 loss_func = torch.nn.MSELoss(reduction='sum') #sum of squared errors
 
@@ -113,6 +113,11 @@ def train_epoch():
     model.train()
     total_loss = 0
     for data in train_loader:
+#         print("data.edge_index.shape:", data.edge_index.shape)
+#         print("data.unary_potentials.shape:", data.unary_potentials.shape)
+#         print("data.ln_Z.shape:", data.ln_Z.shape)        
+#         sleep(shape_check)
+        
         data = data.to(device)
         optimizer.zero_grad()
         pred_ln_Z = model(x=data.x, edge_index=data.edge_index, edge_attr=data.edge_attr, batch=data.batch)
@@ -180,7 +185,7 @@ def val_epoch(plot=False, val_mode=False):
 def train():
     wandb.init(project="gnn_sat")
     wandb.watch(model)
-    for epoch in range(1, 5001):
+    for epoch in range(1, EPOCH_COUNT):
     
     # for epoch in range(1, 501):
         loss = train_epoch()

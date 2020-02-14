@@ -2,7 +2,7 @@ import os
 import math
 from torch.utils.data import Dataset
 from collections import defaultdict
-from factor_graph import FactorGraph
+from factor_graph import FactorGraphData
 from utils import dotdict
 import numpy as np
 from decimal import Decimal
@@ -113,6 +113,116 @@ def parse_dimacs(filename, verbose=False):
         print()
     return n_vars, clauses, load_successful
 
+def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0, verbose=True, epsilon=0, 
+                     max_factor_dimensions=5, return_logZ_list=False):
+    '''
+    Inputs:
+    - problems_to_load (list of strings): problems to load
+    - problems_dir_name (string): directory containing problems in cnf form 
+    - counts_dir_name (string): directory containing .txt files with model counts for problems
+        File name format: problem1.txt
+        File content format: "sharpSAT time_out: False solution_count: 2097152 sharp_sat_time: 0.0"
+
+    - begin_idx: (int) discard the first begin_idx problems, e.g. for validation
+    - epsilon (float): set factor states with potential 0 to epsilon for numerical stability
+    - max_factor_dimensions (int): do not construct a factor graph if the largest factor (clause) contains
+        more than this many variables        
+    '''
+    sat_problems = []
+    log_solution_counts = []
+
+    discarded_count = 0
+
+    load_failure_count = 0 # the number of SAT problems we failed to load properly
+    no_solution_count = 0 # the number of SAT problems with no solutions
+    unsolved_count = 0 # the number of SAT problems that we don't have an exact solution count for
+    factors_to_large_count = 0 # the number of SAT problems with more than max_factor_dimensions variables in a clause
+    dsharp_sharpsat_disagree = 0 # the number of SAT problems where dsharp and sharpsat disagree on the number of satisfying solutions
+
+    problems_in_cnf_dir = os.listdir(problems_dir_name)
+    # print("problems_in_cnf_dir:", problems_in_cnf_dir)
+    problems_in_counts_dir = os.listdir(counts_dir_name)
+
+
+    for problem_name in problems_to_load:
+        if len(sat_problems) == dataset_size:
+            break
+        # problem_file = problem_name[:-19] + '.cnf'
+        problem_file = problem_name + '.cnf.gz.no_w.cnf'
+        if problem_file not in problems_in_cnf_dir:
+            if verbose:
+                print('no corresponding cnf file for', problem_file, "problem_name:", problem_name)
+            continue
+        count_file = problem_name + '.txt'
+        if count_file not in problems_in_counts_dir:
+            if verbose:
+                print('no corresponding sat count file for', count_file, "problem_name:", problem_name)
+            continue            
+
+        with open(counts_dir_name + "/" + count_file, 'r') as f_solution_count:
+            sharpSAT_solution_count = None
+            dsharp_solution_count = None
+            for line in f_solution_count:
+                if line.strip().split(" ")[0] == 'sharpSAT':
+                    sharpSAT_solution_count = Decimal(line.strip().split(" ")[4])
+                    if Decimal.is_nan(sharpSAT_solution_count):
+                        sharpSAT_solution_count = None
+                if line.strip().split(" ")[0] == 'dsharp':
+                    dsharp_solution_count = Decimal(line.strip().split(" ")[4])
+                    if Decimal.is_nan(dsharp_solution_count):
+                        dsharp_solution_count = None 
+
+
+            if (dsharp_solution_count is not None) and (sharpSAT_solution_count is not None):
+                # assert(dsharp_solution_count == sharpSAT_solution_count), (dsharp_solution_count, sharpSAT_solution_count)
+                if dsharp_solution_count != sharpSAT_solution_count:
+                    dsharp_sharpsat_disagree += 1
+                    continue
+            if dsharp_solution_count is not None:
+                solution_count = dsharp_solution_count
+            elif sharpSAT_solution_count is not None:
+                solution_count = sharpSAT_solution_count
+            else:
+                solution_count = None
+
+        # assert(solution_count is not None)
+        if solution_count is None:
+            unsolved_count += 1
+            continue
+
+        if solution_count == 0:
+            no_solution_count += 1
+            continue
+        log_solution_count = float(solution_count.ln())
+        n_vars, clauses, load_successful = parse_dimacs(problems_dir_name + "/" + problem_file)
+        if not load_successful:
+            load_failure_count += 1
+            continue
+        # print("factor_graph:", factor_graph)
+        if discarded_count == begin_idx:
+            # print('using problem:', problem_file)
+            factor_graph = build_factorgraph_from_SATproblem(clauses, epsilon=epsilon, max_factor_dimensions=max_factor_dimensions, ln_Z=log_solution_count)
+            if factor_graph is None: #largest clause contains too many variables
+                factors_to_large_count += 1
+                continue
+            sat_problems.append(factor_graph)
+            log_solution_counts.append(log_solution_count)
+            print("successfully loaded:", problem_name)
+        else:
+            discarded_count += 1
+        assert(discarded_count <= begin_idx)
+    assert(len(log_solution_counts) == len(sat_problems))
+    print(len(log_solution_counts), "SAT problems loaded successfully")
+    print(unsolved_count, "unsolved SAT problems")
+    print(no_solution_count, "SAT problems with no solution (not loaded)")
+    print(load_failure_count, "SAT problems failed to load properly")
+    print(factors_to_large_count, "SAT problems have more than 5 variables in a clause")    
+    if return_logZ_list:
+        return sat_problems, log_solution_counts
+    else:
+        return sat_problems    
+    
+    
 #Pytorch dataset
 class SatProblems(Dataset):
     def __init__(self, problems_to_load, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0, verbose=True, epsilon=0, max_factor_dimensions=5):
@@ -130,94 +240,10 @@ class SatProblems(Dataset):
             more than this many variables        
         '''
         # print("HI!!")
-        self.sat_problems = []
-        self.log_solution_counts = []
-        discarded_count = 0
+        self.sat_problems, self.log_solution_counts = get_SATproblems_list(problems_to_load=problems_to_load, counts_dir_name=counts_dir_name,\
+            problems_dir_name=problems_dir_name, dataset_size=dataset_size, begin_idx=begin_idx, verbose=verbose, epsilon=epsilon, 
+                     max_factor_dimensions=max_factor_dimensions, return_logZ_list=True)
 
-        load_failure_count = 0 # the number of SAT problems we failed to load properly
-        no_solution_count = 0 # the number of SAT problems with no solutions
-        unsolved_count = 0 # the number of SAT problems that we don't have an exact solution count for
-        factors_to_large_count = 0 # the number of SAT problems with more than max_factor_dimensions variables in a clause
-        dsharp_sharpsat_disagree = 0 # the number of SAT problems where dsharp and sharpsat disagree on the number of satisfying solutions
-
-        problems_in_cnf_dir = os.listdir(problems_dir_name)
-        # print("problems_in_cnf_dir:", problems_in_cnf_dir)
-        problems_in_counts_dir = os.listdir(counts_dir_name)
-
-
-        for problem_name in problems_to_load:
-            if len(self.sat_problems) == dataset_size:
-                break
-            # problem_file = problem_name[:-19] + '.cnf'
-            problem_file = problem_name + '.cnf.gz.no_w.cnf'
-            if problem_file not in problems_in_cnf_dir:
-                if verbose:
-                    print('no corresponding cnf file for', problem_file, "problem_name:", problem_name)
-                continue
-            count_file = problem_name + '.txt'
-            if count_file not in problems_in_counts_dir:
-                if verbose:
-                    print('no corresponding sat count file for', count_file, "problem_name:", problem_name)
-                continue            
-
-            with open(counts_dir_name + "/" + count_file, 'r') as f_solution_count:
-                sharpSAT_solution_count = None
-                dsharp_solution_count = None
-                for line in f_solution_count:
-                    if line.strip().split(" ")[0] == 'sharpSAT':
-                        sharpSAT_solution_count = Decimal(line.strip().split(" ")[4])
-                        if Decimal.is_nan(sharpSAT_solution_count):
-                            sharpSAT_solution_count = None
-                    if line.strip().split(" ")[0] == 'dsharp':
-                        dsharp_solution_count = Decimal(line.strip().split(" ")[4])
-                        if Decimal.is_nan(dsharp_solution_count):
-                            dsharp_solution_count = None 
-
-
-                if (dsharp_solution_count is not None) and (sharpSAT_solution_count is not None):
-                    # assert(dsharp_solution_count == sharpSAT_solution_count), (dsharp_solution_count, sharpSAT_solution_count)
-                    if dsharp_solution_count != sharpSAT_solution_count:
-                        dsharp_sharpsat_disagree += 1
-                        continue
-                if dsharp_solution_count is not None:
-                    solution_count = dsharp_solution_count
-                elif sharpSAT_solution_count is not None:
-                    solution_count = sharpSAT_solution_count
-                else:
-                    solution_count = None
-
-            # assert(solution_count is not None)
-            if solution_count is None:
-                unsolved_count += 1
-                continue
-
-            if solution_count == 0:
-                no_solution_count += 1
-                continue
-            log_solution_count = float(solution_count.ln())
-            n_vars, clauses, load_successful = parse_dimacs(problems_dir_name + "/" + problem_file)
-            if not load_successful:
-                load_failure_count += 1
-                continue
-            # print("factor_graph:", factor_graph)
-            if discarded_count == begin_idx:
-                # print('using problem:', problem_file)
-                factor_graph = build_factorgraph_from_SATproblem(clauses, epsilon=epsilon, max_factor_dimensions=max_factor_dimensions)
-                if factor_graph is None: #largest clause contains too many variables
-                    factors_to_large_count += 1
-                    continue
-                self.sat_problems.append(factor_graph)
-                self.log_solution_counts.append(log_solution_count)
-                print("successfully loaded:", problem_name)
-            else:
-                discarded_count += 1
-            assert(discarded_count <= begin_idx)
-        assert(len(self.log_solution_counts) == len(self.sat_problems))
-        print(len(self.log_solution_counts), "SAT problems loaded successfully")
-        print(unsolved_count, "unsolved SAT problems")
-        print(no_solution_count, "SAT problems with no solution (not loaded)")
-        print(load_failure_count, "SAT problems failed to load properly")
-        print(factors_to_large_count, "SAT problems have more than 5 variables in a clause")
 
     def __len__(self):
         return len(self.log_solution_counts)
@@ -299,7 +325,7 @@ def test_build_edge_var_indices():
     print(expected_edge_var_indices)
 
 def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilon=0, max_factor_dimensions=5,
-                                      local_state_dim=False):
+                                      local_state_dim=False, ln_Z=None):
     '''
     Take a SAT problem in CNF form (specified by clauses) and return a factor graph representation
     whose partition function is the number of satisfying solutions
@@ -314,18 +340,29 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilo
     - local_state_dim (bool): if True, then the number of dimensions in each factor is set to the number of 
         variables in the largest clause in /this/ problem.  If False, then the number of dimensions in each factor
         is set to max_factor_dimensions for compatibility with other SAT problems.
+    - ln_Z : natural logarithm of the partition function
+
 
     Outputs:
-    - factorgraph (FactorGraph): or None if there is a clause containing more than max_factor_dimensions variables
+    - FactorGraphData (FactorGraphData): or None if there is a clause containing more than max_factor_dimensions variables
     '''
     num_factors = len(clauses)
+    #list of [factor_idx, var_idx] for each edge factor to variable edge
     factorToVar_edge_index_list = []
     dictionary_of_vars = defaultdict(int)
+    
+    # factorToVar_double_list[i] is a list of all variables that factor with index i shares an edge with
+    # factorToVar_double_list[i][j] is the index of the jth variable that the factor with index i shares an edge with
+    factorToVar_double_list = []
+    
     for clause_idx, clause in enumerate(clauses):
+        cur_clause_variable_indices = []
         for literal in clause:
             var_node_idx = np.abs(literal) - 1
             factorToVar_edge_index_list.append([clause_idx, var_node_idx])
             dictionary_of_vars[np.abs(literal)] += 1
+            cur_clause_variable_indices.append(var_node_idx)
+        factorToVar_double_list.append(cur_clause_variable_indices)
 
     # print("a")
 
@@ -396,9 +433,10 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilo
 
 
 
-    factor_graph = FactorGraph(factor_potentials=torch.log(factor_potentials),
+    factor_graph = FactorGraphData(factor_potentials=torch.log(factor_potentials),
                  factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=N, numFactors=num_factors, 
-                 edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks)
+                 edge_var_indices=edge_var_indices, state_dimensions=state_dimensions,
+                 factor_potential_masks=factor_potential_masks, ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
 
     return factor_graph
 

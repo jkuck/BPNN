@@ -179,7 +179,8 @@ class FactorGraphData(Data):
                  edge_var_indices, state_dimensions, factor_potential_masks, ln_Z=None,
                  factorToVar_double_list=None):
         '''
-        
+        Inputs:
+        - ln_Z : natural logarithm of the partition function
         - factorToVar_double_list (list of lists): 
             factorToVar_double_list[i] is a list of all variables that factor with index i shares an edge with
             factorToVar_double_list[i][j] is the index of the jth variable that the factor with index i shares an edge with
@@ -209,6 +210,7 @@ class FactorGraphData(Data):
         else:
             self.facToVar_edge_idx = factorToVar_edge_index
 
+        self.edge_index = self.facToVar_edge_idx
         # print("factorToVar_edge_index.shape:", factorToVar_edge_index.shape)
         # print("factorToVar_edge_index.shape:", factorToVar_edge_index.shape)
 

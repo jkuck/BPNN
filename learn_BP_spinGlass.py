@@ -8,7 +8,7 @@ from nn_models import lbp_message_passing_network, GIN_Network_withEdgeFeatures
 from ising_model.pytorch_dataset import SpinGlassDataset, build_factorgraph_from_SpinGlassModel
 from ising_model.spin_glass_model import SpinGlassModel
 from factor_graph import FactorGraph, FactorGraphData
-from torch.utils.data import DataLoader
+# from torch.utils.data import DataLoader
 from torch_geometric.data import DataLoader as DataLoader_pytorchGeometric
 from ising_model.pytorch_geometric_data import spinGlass_to_torchGeometric
 
@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
 import parameters
-from parameters import ROOT_DIR
+from parameters import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, BETHE_MLP, NUM_MLPS
 
 ##########################
 ##### Run me on Atlas
@@ -26,11 +26,11 @@ from parameters import ROOT_DIR
 # $ source bin/activate
 
 
-MODE = "train" #run "test" or "train" mode
+MODE = "test" #run "test" or "train" mode
 
 #####Testing parameters
 TEST_TRAINED_MODEL = True #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
-EXPERIMENT_NAME = 'trained_mixedField_30layer_2MLPs/' #used for saving results when MODE='test'
+EXPERIMENT_NAME = 'trained_mixedField_10layer_2MLPs_finalBetheMLP/' #used for saving results when MODE='test'
 # 10 layer models
 # BPNN_trained_model_path = './wandb/run-20200209_071429-l8jike8k/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True
 # BPNN_trained_model_path = './wandb/run-20200211_233743-tpiv47ws/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True, 2MLPs per layer, weight sharing across layers
@@ -39,7 +39,11 @@ EXPERIMENT_NAME = 'trained_mixedField_30layer_2MLPs/' #used for saving results w
 # BPNN_trained_model_path = './wandb/run-20200209_201644-cj5b13c2/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False
 # BPNN_trained_model_path = './wandb/run-20200211_222445-7ky0ix4y/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False, 2MLPs per layer
 # BPNN_trained_model_path = './wandb/run-20200211_234428-ylbhlu1o/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False, 2MLPs per layer, weight sharing across layers
+BPNN_trained_model_path = './wandb/run-20200213_092753-4jdedu1x/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False, 2MLPs per layer, final Bethe MLP
+
 # GNN_trained_model_path = './wandb/run-20200209_203009-o8owzdjv/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=False
+GNN_trained_model_path = './wandb/run-20200213_225352-eqnnbg3v/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=False, final MLP gets summed features from all layers, width 4
+
 
 #15 layer models
 # BPNN_trained_model_path = './wandb/run-20200211_083434-fimwr6fw/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True
@@ -47,18 +51,18 @@ EXPERIMENT_NAME = 'trained_mixedField_30layer_2MLPs/' #used for saving results w
 
 #30 layer models
 # BPNN_trained_model_path = './wandb/run-20200211_093808-qrddyif3/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True
-GNN_trained_model_path = './wandb/run-20200211_093445-xbcslpve/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=True
-BPNN_trained_model_path = './wandb/run-20200212_055535-s8qnrxjq/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False, 2MLPs per layer, no weight sharing across layers
+# GNN_trained_model_path = './wandb/run-20200211_093445-xbcslpve/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=True
+# BPNN_trained_model_path = './wandb/run-20200212_055535-s8qnrxjq/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False, 2MLPs per layer, no weight sharing across layers
 
 
 
 
 USE_WANDB = True
-os.environ['WANDB_MODE'] = 'dryrun'
+# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 ##########################
 ####### Training PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 5 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 10 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -93,18 +97,51 @@ REGENERATE_DATA = False
 DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
 
 
-TRAINING_DATA_SIZE = 3
-VAL_DATA_SIZE = 3#100
+TRAINING_DATA_SIZE = 100
+VAL_DATA_SIZE = 50#100
 TEST_DATA_SIZE = 200
 
 
-EPOCH_COUNT = 100
+EPOCH_COUNT = 5000
 PRINT_FREQUENCY = 1
 VAL_FREQUENCY = 10
 SAVE_FREQUENCY = 1
 
 TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' datasets
+
+##### Optimizer parameters #####
+STEP_SIZE=200
+LR_DECAY=.5
+if ATTRACTIVE_FIELD_TRAIN == True:
+    #works well for training on attractive field
+        LEARNING_RATE = 0.0005
+#     LEARNING_RATE = 0.00005 #10layer with Bethe_mlp
+else:
+    #think this works for mixed fields
+#         LEARNING_RATE = 0.005 #10layer        
+#         LEARNING_RATE = 0.001 #30layer trial 
+    LEARNING_RATE = 0.0005 #10layer with Bethe_mlp
 ##########################
+wandb.init(project="gnn_sat")
+wandb.config.epochs = EPOCH_COUNT
+wandb.config.N_MIN_TRAIN = N_MIN_TRAIN
+wandb.config.N_MAX_TRAIN = N_MAX_TRAIN
+wandb.config.F_MAX_TRAIN = F_MAX_TRAIN
+wandb.config.C_MAX_TRAIN = C_MAX_TRAIN
+wandb.config.ATTRACTIVE_FIELD_TRAIN = ATTRACTIVE_FIELD_TRAIN
+wandb.config.TRAINING_DATA_SIZE = TRAINING_DATA_SIZE
+wandb.config.alpha = alpha
+wandb.config.alpha2 = alpha2
+wandb.config.SHARE_WEIGHTS = SHARE_WEIGHTS
+wandb.config.BETHE_MLP = BETHE_MLP
+wandb.config.MSG_PASSING_ITERS = MSG_PASSING_ITERS
+wandb.config.STEP_SIZE = STEP_SIZE
+wandb.config.LR_DECAY = LR_DECAY
+wandb.config.LEARNING_RATE = LEARNING_RATE
+wandb.config.NUM_MLPS = NUM_MLPS
+
+
+
 
 
 def get_dataset(dataset_type):
@@ -158,42 +195,26 @@ lbp_net = lbp_net.to(device)
 # lbp_net.double()
 def train():
     if USE_WANDB:
-        wandb.init(project="gnn_sat")
+        
         wandb.watch(lbp_net)
     
     lbp_net.train()
-
     # Initialize optimizer
-    if ATTRACTIVE_FIELD_TRAIN == True:
-        #works well for training on attractive field
-        optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0005) 
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5) #multiply lr by gamma every step_size epochs    
-    else:
-        #think this works for mixed fields
-#         optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.005) #10layer
-        optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.001) #30layer trial 
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5) #multiply lr by gamma every step_size epochs    
-
-
-#     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.05) 
-#     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5) #multiply lr by gamma every step_size epochs    
-
-
-    #     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.002) #used for training on 50
-
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=LEARNING_RATE)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=LR_DECAY) #multiply lr by gamma every step_size epochs    
     loss_func = torch.nn.MSELoss()
 
 
     spin_glass_models_list_train = get_dataset(dataset_type='train')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
     sg_models_fg_form_train = [build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=True) for sg_model in spin_glass_models_list_train]
-    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_form_train, batch_size=2)
+    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_form_train, batch_size=1)
 
     
     spin_glass_models_list_val = get_dataset(dataset_type='val')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
     sg_models_fg_form_val = [build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=True) for sg_model in spin_glass_models_list_val]
-    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_form_val, batch_size=2)
+    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_form_val, batch_size=1)
     
     # with autograd.detect_anomaly():
     for e in range(EPOCH_COUNT):
@@ -201,9 +222,18 @@ def train():
         optimizer.zero_grad()
         losses = []
         for spin_glass_problem in train_data_loader_pytorchGeometric: #pytorch geometric form
+#             print("spin_glass_problem.ln_Z.shape:", spin_glass_problem.ln_Z.shape)
+#             print("spin_glass_problem.factor_potentials.shape:", spin_glass_problem.factor_potentials.shape)
+#             print("spin_glass_problem.facToVar_edge_idx.shape:", spin_glass_problem.facToVar_edge_idx.shape)
+#             print("spin_glass_problem.factor_potentials.shape:", spin_glass_problem.factor_potentials.shape)
+#             print("spin_glass_problem.edge_index.shape:", spin_glass_problem.edge_index.shape)
+#             print("-"*80)
+#             sleep(shape_check)
+            spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index
+
 #             spin_glass_problem = spin_glass_problem.to(device)
             exact_ln_partition_function = spin_glass_problem.ln_Z
-            assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
+            assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
             
             estimated_ln_partition_function = lbp_net(spin_glass_problem)
 

@@ -5,17 +5,18 @@ from torch_geometric.nn import global_add_pool
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import reset
 from torch_geometric.utils import remove_self_loops
-
+import numpy as np
 from torch.nn import Sequential as Seq, Linear, ReLU
-from utils import neg_inf_to_zero
+from utils import neg_inf_to_zero, shift_func
 
 import math
 # from loopyBP_factorGraph import FactorGraphMsgPassingLayer_NoDoubleCounting
 from loopyBP_factorGraph_2layerWorks import FactorGraphMsgPassingLayer_NoDoubleCounting
+from parameters import SHARE_WEIGHTS, BETHE_MLP
 
 class lbp_message_passing_network(nn.Module):
-    def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=False,
-                bethe_MLP=True):
+    def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
+                bethe_MLP=BETHE_MLP):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -40,7 +41,28 @@ class lbp_message_passing_network(nn.Module):
         if bethe_MLP:
             var_states = 2 #2 for binary variables
             mlp_size =  2*msg_passing_iters*(2**max_factor_state_dimensions) + msg_passing_iters*var_states
-            self.final_mlp = Seq(Linear(mlp_size, mlp_size), ReLU(), Linear(mlp_size, 1))
+#             self.final_mlp = Seq(Linear(mlp_size, mlp_size), ReLU(), Linear(mlp_size, 1))
+        
+            self.linear1 = Linear(mlp_size, mlp_size)
+            self.linear2 = Linear(mlp_size, 1)
+            self.linear1.weight = torch.nn.Parameter(torch.eye(mlp_size))
+            self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+            weight_initialization = torch.zeros((1,mlp_size))
+            num_ones = (2*(2**max_factor_state_dimensions)+var_states)
+            weight_initialization[0,-num_ones:] = 1
+#             print("self.linear2.weight:", self.linear2.weight)
+#             print("self.linear2.weight.shape:", self.linear2.weight.shape)
+
+            
+#             print("weight_initialization:", weight_initialization)
+            self.linear2.weight = torch.nn.Parameter(weight_initialization)
+            self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape)) 
+            self.shifted_relu = shift_func(ReLU(), shift=-500)
+            self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)  
+#             self.final_mlp = Seq(self.linear1, self.linear2)  
+
+
+        
         
         
     def forward(self, factor_graph):
@@ -48,6 +70,12 @@ class lbp_message_passing_network(nn.Module):
         prv_varToFactor_messages = factor_graph.prv_varToFactor_messages
         prv_factorToVar_messages = factor_graph.prv_factorToVar_messages
         prv_factor_beliefs = factor_graph.prv_factor_beliefs
+#         print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
+#         print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
+#         print("factor_graph.facToVar_edge_idx.shape:", factor_graph.facToVar_edge_idx.shape)
+
+        
+        pooled_states = []
         
         if self.share_weights:
             for iter in range(self.msg_passing_iters):
@@ -62,14 +90,28 @@ class lbp_message_passing_network(nn.Module):
                                           prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
     #                 message_passing_layer(factor_graph, prv_varToFactor_messages=factor_graph.prv_varToFactor_messages,
     #                                       prv_factorToVar_messages=factor_graph.prv_factorToVar_messages, prv_factor_beliefs=factor_graph.prv_factor_beliefs) 
-
+                if self.bethe_MLP:
+                    cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+#                     print("cur_pooled_states.shape:", cur_pooled_states.shape)
+                    pooled_states.append(cur_pooled_states)
 
                         
-          
-        bethe_free_energy = self.compute_bethe_free_energy_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-        estimated_ln_partition_function = -bethe_free_energy
-        return estimated_ln_partition_function
-    
+        if self.bethe_MLP:
+#             print("torch.cat(pooled_states).shape:", torch.cat(pooled_states).shape)
+#             print("torch.cat(pooled_states):", torch.cat(pooled_states))
+            estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states))
+            
+            bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+            estimated_ln_partition_function_orig = -bethe_free_energy
+#             print("estimated_ln_partition_function_orig:", estimated_ln_partition_function_orig)
+#             print("estimated_ln_partition_function:", estimated_ln_partition_function)        
+#             assert(np.isclose(estimated_ln_partition_function_orig.detach().numpy(), estimated_ln_partition_function.detach().numpy(), rtol=1e-03, atol=1e-03)), (estimated_ln_partition_function_orig, estimated_ln_partition_function)
+            return estimated_ln_partition_function
+        
+        else:
+            bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+            estimated_ln_partition_function = -bethe_free_energy
+            return estimated_ln_partition_function            
   
 
 
@@ -89,31 +131,23 @@ class lbp_message_passing_network(nn.Module):
         
         factor_beliefs_shape = factor_beliefs.shape
         #should implement this with global_add_pool(x, batch) for batch processing!
-#         print((torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)).view(factor_beliefs_shape[0], -1).shape)
-#         sleep(shapecheck)
-        bethe_average_energy = -torch.sum(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)) #elementwise multiplication, then sum
-        # print("bethe_average_energy:", bethe_average_energy)
-        return bethe_average_energy
+        pooled_fac_beleifPotentials = torch.sum((torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)).view(factor_beliefs_shape[0], -1), dim=0)
+        return pooled_fac_beleifPotentials #negate and sum to get average bethe energy
+
 
     def compute_bethe_entropy_MLP(self, factor_beliefs, var_beliefs, numVars, var_degrees):
         '''
         Equation (38) in:
         https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
         '''
-        bethe_entropy = -torch.sum(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs)) #elementwise multiplication, then sum
+        #should implement this with global_add_pool(x, batch) for batch processing!
+        factor_beliefs_shape = factor_beliefs.shape
+        pooled_fac_beliefs = -torch.sum((torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs)).view(factor_beliefs_shape[0], -1), dim=0)
+        var_beliefs_shape = var_beliefs.shape
+        pooled_var_beliefs = torch.sum(torch.exp(var_beliefs)*neg_inf_to_zero(var_beliefs)*(var_degrees.float() - 1).view(var_beliefs_shape[0], -1), dim=0)
+        return pooled_fac_beliefs, pooled_var_beliefs
 
-        assert(var_beliefs.shape == torch.Size([numVars, 2])), (var_beliefs.shape, [numVars, 2])
-        # sum_{x_i} b_i(x_i)*ln(b_i(x_i))
-        inner_sum = torch.einsum('ij,ij->i', [torch.exp(var_beliefs), neg_inf_to_zero(var_beliefs)])
-        # sum_{i=1}^N (d_i - 1)*inner_sum
-        outer_sum = torch.sum((var_degrees.float() - 1) * inner_sum)
-        # outer_sum = torch.einsum('i,i->', [var_degrees - 1, inner_sum])
-
-        bethe_entropy += outer_sum
-        # print("bethe_entropy:", bethe_entropy)
-        return bethe_entropy
-
-    def compute_bethe_free_energy_MLP(self, factor_beliefs, var_beliefs, factor_graph):
+    def compute_bethe_free_energy_pooledStates_MLP(self, factor_beliefs, var_beliefs, factor_graph):
         '''
         Compute the Bethe approximation of the free energy.
         - free energy = -ln(Z)
@@ -131,8 +165,9 @@ class lbp_message_passing_network(nn.Module):
                 print(val)
         assert(not torch.isnan(factor_beliefs).any()), (factor_beliefs, torch.where(factor_beliefs == torch.tensor(float('nan'))), torch.where(var_beliefs == torch.tensor(float('nan'))))
         assert(not torch.isnan(var_beliefs).any()), var_beliefs
-        return (self.compute_bethe_average_energy_MLP(factor_beliefs=factor_beliefs, factor_potentials=factor_graph.factor_potentials)\
-                - self.compute_bethe_entropy_MLP(factor_beliefs=factor_beliefs, var_beliefs=var_beliefs, numVars=factor_graph.numVars, var_degrees=factor_graph.var_degrees))
+        pooled_fac_beleifPotentials = self.compute_bethe_average_energy_MLP(factor_beliefs=factor_beliefs, factor_potentials=factor_graph.factor_potentials)
+        pooled_fac_beliefs, pooled_var_beliefs = self.compute_bethe_entropy_MLP(factor_beliefs=factor_beliefs, var_beliefs=var_beliefs, numVars=factor_graph.numVars, var_degrees=factor_graph.var_degrees)
+        return torch.cat([pooled_fac_beleifPotentials, pooled_fac_beliefs, pooled_var_beliefs])
 
 
 
@@ -149,7 +184,7 @@ def compute_bethe_average_energy(factor_beliefs, factor_potentials, debug=False)
         print("torch.exp(factor_beliefs):", torch.exp(factor_beliefs))
         print("neg_inf_to_zero(factor_potentials):", neg_inf_to_zero(factor_potentials))
     bethe_average_energy = -torch.sum(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)) #elementwise multiplication, then sum
-    # print("bethe_average_energy:", bethe_average_energy)
+#     print("bethe_average_energy:", bethe_average_energy)
     return bethe_average_energy
 
 def compute_bethe_entropy(factor_beliefs, var_beliefs, numVars, var_degrees):
@@ -167,7 +202,7 @@ def compute_bethe_entropy(factor_beliefs, var_beliefs, numVars, var_degrees):
     # outer_sum = torch.einsum('i,i->', [var_degrees - 1, inner_sum])
 
     bethe_entropy += outer_sum
-    # print("bethe_entropy:", bethe_entropy)
+#     print("bethe_entropy:", bethe_entropy)
     return bethe_entropy
 
 def compute_bethe_free_energy(factor_beliefs, var_beliefs, factor_graph):
