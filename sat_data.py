@@ -163,10 +163,13 @@ def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, d
             sharpSAT_solution_count = None
             dsharp_solution_count = None
             for line in f_solution_count:
-                if line.strip().split(" ")[0] == 'sharpSAT':
-                    sharpSAT_solution_count = Decimal(line.strip().split(" ")[4])
-                    if Decimal.is_nan(sharpSAT_solution_count):
-                        sharpSAT_solution_count = None
+                #Only use dsharp counts because dsharp and sharpSAT seem to disagree on some benchmarks
+                #dsharp is consistent with randomized hashing methods while sharpSAT is not
+                #this is with sampling sets removed, not sure what is going on with sharpSAT
+#                 if line.strip().split(" ")[0] == 'sharpSAT':
+#                     sharpSAT_solution_count = Decimal(line.strip().split(" ")[4])
+#                     if Decimal.is_nan(sharpSAT_solution_count):
+#                         sharpSAT_solution_count = None
                 if line.strip().split(" ")[0] == 'dsharp':
                     dsharp_solution_count = Decimal(line.strip().split(" ")[4])
                     if Decimal.is_nan(dsharp_solution_count):
@@ -388,6 +391,7 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilo
         if len(clause) > max_clause_degree:
             max_clause_degree = len(clause)
     if max_clause_degree > max_factor_dimensions:
+        print("max_clause_degree too large:", max_clause_degree)
         return None
     # state_dimensions = max(max_clause_degree, max_var_degree)
     if local_state_dim:
