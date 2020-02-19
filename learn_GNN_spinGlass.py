@@ -33,8 +33,8 @@ F_MAX_TRAIN = .1
 C_MAX_TRAIN = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
-TRAIN_DATA_SIZE = 500
-ATTRACTIVE_FIELD_TRAIN = False
+TRAIN_DATA_SIZE = 50
+ATTRACTIVE_FIELD_TRAIN = True
 
 # N_MIN_VAL = 10
 # N_MAX_VAL = 10
@@ -45,10 +45,10 @@ N_MAX_VAL = 10
 F_MAX_VAL = .1
 C_MAX_VAL = 5.0
 VAL_DATA_SIZE = 50
-ATTRACTIVE_FIELD_VAL = False
+ATTRACTIVE_FIELD_VAL = True
 
 SAVE_FREQUENCY = 100
-EPOCH_COUNT = 2500
+EPOCH_COUNT = 5000
 
 ######### FOR GETTING THE SAME DATA USED BY BPNN ##############
 USE_BPNN_DATA=True
@@ -102,7 +102,9 @@ if ATTRACTIVE_FIELD_TRAIN:
 else:
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01) #works for width/hidden_size=4
 #     optimizer = torch.optim.Adam(model.parameters(), lr=0.2)    
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.5)
+#     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.5)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5)
+
     
 loss_func = torch.nn.MSELoss(reduction='sum') #sum of squared errors
 

@@ -1,7 +1,8 @@
 import torch
 from torch import autograd
 from nn_models import lbp_message_passing_network
-from sat_data import SatProblems, get_SATproblems_list
+from sat_helpers.sat_data import SatProblems, get_SATproblems_list, parse_dimacs
+from sat_helpers.libdai_utils_sat import run_loopyBP
 from factor_graph import FactorGraph
 # from torch.utils.data import DataLoader
 from torch_geometric.data import DataLoader
@@ -9,6 +10,13 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
+from data.SAT_train_test_split import ALL_TRAIN_PROBLEMS, ALL_TEST_PROBLEMS
+import wandb
+from parameters import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, BETHE_MLP, NUM_MLPS
+import random
+import resource
+import time
+import json
 
 ##########################
 ##### Run me on Atlas
@@ -35,89 +43,178 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 
 ##########################################################################################################
 #contains CNF files for training/validation/test problems
-# TRAINING_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved/"
-TRAINING_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
+# # TRAINING_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved/"
+# TRAINING_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 
-# VALIDATION_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved/"
-VALIDATION_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
+# # VALIDATION_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/SAT_problems_under_5k/training_generated/SAT_problems_solved/"
+# VALIDATION_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 
-# TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/test_SAT_problems/"
-TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
+# # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/test_SAT_problems/"
+# TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
+SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 100
-VAL_DATA_SIZE = 50#100
+TRAINING_DATA_SIZE = 1000
+VAL_DATA_SIZE = 1000#100
 TEST_DATA_SIZE = 1000
 
+########## info by problem groups and categories ##########
+# problem counts reflect total number of problems before train/test split
+##### network grid_problems
+#20 problems in category problems_75 with <= 5 variables in the largest clause, min time: 0.024 max time: 236.78 mean time: 52.03439999999999
+#107 problems in category problems_90 with <= 5 variables in the largest clause, min time: 0.004 max time: 479.892 mean time: 18.39442293457944
+
+##### Network/DQMR problems
+#150 problems in category or_50_problems with <= 5 variables in the largest clause, min time: 0.0 max time: 52.224000000000004 mean time: 4.153307146666667
+#121 problems in category or_60_problems with <= 5 variables in the largest clause, min time: 0.0 max time: 79.148 mean time: 4.328342016528927
+#111 problems in category or_70_problems with <= 5 variables in the largest clause, min time: 0.0 max time: 52.19457800000001 mean time: 4.2739784144144135
+#138 problems in category or_100_problems with <= 5 variables in the largest clause, min time: 0.0 max time: 57.18000000000001 mean time: 3.1975750362318798
+
+##### bit-blasted versions of SMTLIB benchmarks [guess based on](https://scholarship.rice.edu/bitstream/handle/1911/96419/TR16-03.pdf?sequence=1&isAllowed=y)
+#147 problems in category blasted_problems with <= 5 variables in the largest clause, min time: 0.0 max time: 1390.756 mean time: 33.70159707482993
+
+##### [Plan Recognition problems](https://sites.google.com/site/marcthurley/sharpsat/benchmarks/collected-model-counts)
+#2 problems in category log_problems with <= 5 variables in the largest clause, min time: 0.019999999999999997 max time: 16.764 mean time: 8.392
+#4 problems in category tire_problems with <= 5 variables in the largest clause, min time: 0.027536999999999996 max time: 0.19199999999999998 mean time: 0.09579425
+#1 problems in category problem_4step with <= 5 variables in the largest clause, min time: 0.0 max time: 0.0 mean time: 0.0
+
+##### Representations of circuits with a subset ofoutputs randomly xor-ed, see cnf files for this info
+#68 problems in category s_problems with <= 5 variables in the largest clause, min time: 0.0 max time: 101.812 mean time: 3.836794382352941
+
+##### Unkown origin
+#9 problems in category sk_problems with <= 5 variables in the largest clause, min time: 0.0 max time: 6.483999999999999 mean time: 0.779111111111111
+
+
+# PROBLEM_CATEGORY_TRAIN = ['or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems', 'blasted_problems', 's_problems', 'problems_75', 'problems_90'] #['problems_75', 'problems_90']#'problems_75'#
+# PROBLEM_CATEGORY_TRAIN = ['or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems', 'blasted_problems', 'problems_75', 'problems_90'] #['problems_75', 'problems_90']#'problems_75'#
+# PROBLEM_CATEGORY_TRAIN = ['problems_75', 'problems_90', 'blasted_problems']
+
+# PROBLEM_CATEGORY_TRAIN = ['problems_75']
+PROBLEM_CATEGORY_TRAIN = ['problems_90']
+# PROBLEM_CATEGORY_TRAIN = ['or_50_problems']
+# PROBLEM_CATEGORY_TRAIN = ['or_60_problems']
+# PROBLEM_CATEGORY_TRAIN = ['or_70_problems']
+# PROBLEM_CATEGORY_TRAIN = ['or_100_problems']
+# PROBLEM_CATEGORY_TRAIN = ['blasted_problems']
+# PROBLEM_CATEGORY_TRAIN = ['s_problems']
+
+
+
+# PROBLEM_CATEGORY_VAL =  ['or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems']#['problems_75', 'problems_90', 'blasted_problems', 's_problems']
+# PROBLEM_CATEGORY_VAL = ['or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems', 'blasted_problems', 'problems_75', 'problems_90']
+# PROBLEM_CATEGORY_VAL = ['or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems', 'blasted_problems', 's_problems', 'problems_75', 'problems_90'] #['or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems', 'blasted_problems', 's_problems']#PROBLEM_CATEGORY_TRAIN#
+PROBLEM_CATEGORY_VAL = PROBLEM_CATEGORY_TRAIN
+
+PROBLEM_CATEGORY_TEST = 'or_60_problems'
+
 #contains .txt files for each sat probolem with solution counts
-SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_counts_uai/"
+# SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_counts_uai/"
+SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/exact_SAT_counts_noIndSets/"
 # SOLUTION_COUNTS_DIR = TRAINING_DATA_DIR + "SAT_problems_solved"
 
 
-EPOCH_COUNT = 40
+EPOCH_COUNT = 1000
 PRINT_FREQUENCY = 1
 SAVE_FREQUENCY = 10
+VAL_FREQUENCY = 10
+##########################
+##### Optimizer parameters #####
+STEP_SIZE=100
+LR_DECAY=.5 
+LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
 ##########################
 
-#need to deal with independent sets?
-#left out 54.sk_12_97.cnf.gz.no_w.cnf and 54.sk_12_97.cnf.gz.no_w.no_independent_set.cnf
-TRAINING_SAT_PROBLEM_NAMES = ["01A-1","01B-1","01B-2","01B-3","01B-4","01B-5","02A-1","02A-2","02A-3","02B-1","02B-2","02B-3","02B-4","02B-5","03A-1","03A-2","03B-1","03B-2","03B-3","03B-4","04A-1","04A-2","04A-3","04B-1","04B-2","04B-3","04B-4","05A-1","05A-2","05B-1","05B-2","05B-3","06A-1","06A-2","06A-3","06A-4","06B-1","06B-2","06B-3","06B-4","07A-1","07A-2","07A-3","07A-4","07A-5","07B-1","07B-2","07B-3","07B-4","07B-5","07B-6","08A-1","08A-2","08A-3","08A-4","08B-1","08B-2","08B-3","08B-4","09A-1","09A-2","09A-3","09B-1","09B-2","09B-3","09B-4","09B-5","09B-6","107.sk_3_90","109.sk_4_36","10A-1","10A-2","10A-3","10A-4","10B-10","10B-11","10B-1","10B-2","10B-3","10B-4","10B-5","10B-6","10B-7","10B-8","10B-9","10.sk_1_46","110.sk_3_88","111.sk_2_36","11A-1","11A-2","11A-3","11A-4","11B-1","11B-2","11B-3","11B-4","11B-5","12A-1","12A-2","12A-3","12A-4","12B-1","12B-2","12B-3","12B-4","12B-5","12B-6","13A-1","13A-2","13A-3","13A-4","13B-1","13B-2","13B-3","13B-4","13B-5","14A-1","14A-2","14A-3","15A-1","15A-2","15A-3","15A-4","15B-1","15B-2","15B-3","15B-4","15B-5","17A-1","17A-2","17A-3","17A-4","17A-5","17A-6","17B-1","17B-2","17B-3","17B-4","17B-5","17.sk_3_45","18A-1","18A-2","18A-3","18A-4","19.sk_3_48","20.sk_1_51","27.sk_3_32","29.sk_3_45","30.sk_5_76","32.sk_4_38","35.sk_3_52","36.sk_3_77","4step","50-10-10-q","50-10-1-q","50-10-2-q","50-10-3-q","50-10-4-q","50-10-5-q","50-10-6-q","50-10-7-q","50-10-8-q","50-10-9-q","50-12-10-q","50-12-1-q","50-12-2-q","50-12-3-q","50-12-4-q","50-12-5-q","50-12-6-q","50-12-7-q","50-12-8-q","50-12-9-q","50-14-10-q","50-14-1-q","50-14-2-q","50-14-3-q","50-14-4-q","50-14-5-q","50-14-6-q","50-14-7-q","50-14-8-q","50-14-9-q","50-16-10-q","50-16-1-q","50-16-2-q","50-16-3-q","50-16-4-q","50-16-5-q","50-16-6-q","50-16-7-q","50-16-8-q","50-16-9-q","50-18-10-q","50-18-1-q","50-18-2-q","50-18-3-q","50-18-4-q","50-18-5-q","50-18-6-q","50-18-7-q","50-18-8-q","50-18-9-q","50-20-10-q","50-20-1-q","50-20-2-q","50-20-3-q","50-20-4-q","50-20-5-q","50-20-6-q","50-20-7-q","50-20-8-q","50-20-9-q","51.sk_4_38","53.sk_4_32","55.sk_3_46","56.sk_6_38","57.sk_4_64","5step","63.sk_3_64","70.sk_3_40","71.sk_3_65","75-10-10-q","75-10-1-q","75-10-2-q","75-10-3-q","75-10-4-q","75-10-5-q","75-10-6-q","75-10-7-q","75-10-8-q","75-10-9-q","75-12-10-q","75-12-1-q","75-12-2-q","75-12-3-q","75-12-4-q","75-12-5-q","75-12-6-q","75-12-7-q","75-12-8-q","75-12-9-q","75-14-10-q","75-14-1-q","75-14-2-q","75-14-3-q","75-14-4-q","75-14-5-q","75-14-6-q","75-14-7-q","75-14-8-q","75-14-9-q","75-15-10-q","75-15-1-q","75-15-2-q","75-15-3-q","75-15-4-q","75-15-5-q","75-15-6-q","75-15-7-q","75-15-8-q","75-15-9-q","75-16-10-q","75-16-1-q","75-16-2-q","75-16-3-q","75-16-4-q","75-16-5-q","75-16-6-q","75-16-7-q","75-16-8-q","75-16-9-q","75-17-10-q","75-17-1-q","75-17-2-q","75-17-3-q","75-17-4-q","75-17-5-q","75-17-6-q","75-17-7-q","75-17-8-q","75-17-9-q","75-18-10-q","75-18-1-q","75-18-2-q","75-18-3-q","75-18-4-q","75-18-5-q","75-18-6-q","75-18-7-q","75-18-8-q","75-18-9-q","75-19-10-q","75-19-1-q","75-19-2-q","75-19-3-q","75-19-4-q","75-19-5-q","75-19-6-q","75-19-7-q","75-19-8-q","75-19-9-q","75-20-10-q","75-20-1-q","75-20-2-q","75-20-3-q","75-20-4-q","75-20-5-q","75-20-6-q","75-20-7-q","75-20-8-q","75-20-9-q","75-21-10-q","75-21-1-q","75-21-2-q","75-21-3-q","75-21-4-q","75-21-5-q","75-21-6-q","75-21-7-q","75-21-8-q","75-21-9-q","75-22-10-q","75-22-1-q","75-22-2-q","75-22-3-q","75-22-4-q","75-22-5-q","75-22-6-q","75-22-7-q","75-22-8-q","75-22-9-q","75-23-10-q","75-23-1-q","75-23-2-q","75-23-3-q","75-23-4-q","75-23-5-q","75-23-6-q","75-23-7-q","75-23-8-q","75-23-9-q","75-24-10-q","75-24-1-q","75-24-2-q","75-24-3-q","75-24-4-q","75-24-5-q","75-24-6-q","75-24-7-q","75-24-8-q","75-24-9-q","75-25-10-q","75-25-1-q","75-25-2-q","75-25-3-q","75-25-4-q","75-25-5-q","75-25-6-q","75-25-7-q","75-25-8-q","75-25-9-q","75-26-10-q","75-26-1-q","75-26-2-q","75-26-3-q","75-26-4-q","75-26-5-q","75-26-6-q","75-26-7-q","75-26-8-q","75-26-9-q","77.sk_3_44","79.sk_4_40","7.sk_4_50","80.sk_2_48","81.sk_5_51","84.sk_4_77","90-10-10-q","90-10-1-q","90-10-2-q","90-10-3-q","90-10-4-q","90-10-5-q","90-10-6-q","90-10-7-q","90-10-8-q","90-10-9-q","90-12-10-q","90-12-1-q","90-12-2-q","90-12-3-q","90-12-4-q","90-12-5-q","90-12-6-q","90-12-7-q","90-12-8-q","90-12-9-q","90-14-10-q","90-14-1-q","90-14-2-q","90-14-3-q","90-14-4-q","90-14-5-q","90-14-6-q","90-14-7-q","90-14-8-q","90-14-9-q","90-15-10-q","90-15-1-q","90-15-2-q","90-15-3-q","90-15-4-q","90-15-5-q","90-15-6-q","90-15-7-q","90-15-8-q","90-15-9-q","90-16-10-q","90-16-1-q","90-16-2-q","90-16-3-q","90-16-4-q","90-16-5-q","90-16-6-q","90-16-7-q","90-16-8-q","90-16-9-q","90-17-10-q","90-17-1-q","90-17-2-q","90-17-3-q","90-17-4-q","90-17-5-q","90-17-6-q","90-17-7-q","90-17-8-q","90-17-9-q","90-18-10-q","90-18-1-q","90-18-2-q","90-18-3-q","90-18-4-q","90-18-5-q","90-18-6-q","90-18-7-q","90-18-8-q","90-18-9-q","90-19-10-q","90-19-1-q","90-19-2-q","90-19-3-q","90-19-4-q","90-19-5-q","90-19-6-q","90-19-7-q","90-19-8-q","90-19-9-q","90-20-10-q","90-20-1-q","90-20-2-q","90-20-3-q","90-20-4-q","90-20-5-q","90-20-6-q","90-20-7-q","90-20-8-q","90-20-9-q","90-21-10-q","90-21-1-q","90-21-2-q","90-21-3-q","90-21-4-q","90-21-5-q","90-21-6-q","90-21-7-q","90-21-8-q","90-21-9-q","90-22-10-q","90-22-1-q","90-22-2-q","90-22-3-q","90-22-4-q","90-22-5-q","90-22-6-q","90-22-7-q","90-22-8-q","90-22-9-q","90-23-10-q","90-23-1-q","90-23-2-q","90-23-3-q","90-23-4-q","90-23-5-q","90-23-6-q","90-23-7-q","90-23-8-q","90-23-9-q","90-24-10-q","90-24-1-q","90-24-2-q","90-24-3-q","90-24-4-q","90-24-5-q","90-24-6-q","90-24-7-q","90-24-8-q","90-24-9-q","90-25-10-q","90-25-1-q","90-25-2-q","90-25-3-q","90-25-4-q","90-25-5-q","90-25-6-q","90-25-7-q","90-25-8-q","90-25-9-q","90-26-10-q","90-26-1-q","90-26-2-q","90-26-3-q","90-26-4-q","90-26-5-q","90-26-6-q","90-26-7-q","90-26-8-q","90-26-9-q","90-30-10-q","90-30-1-q","90-30-2-q","90-30-3-q","90-30-4-q","90-30-5-q","90-30-6-q","90-30-7-q","90-30-8-q","90-30-9-q","90-34-10-q","90-34-1-q","90-34-2-q","90-34-3-q","90-34-4-q","90-34-5-q","90-34-6-q","90-34-7-q","90-34-8-q","90-34-9-q","90-38-10-q","90-38-1-q","90-38-2-q","90-38-3-q","90-38-4-q","90-38-5-q","90-38-6-q","90-38-7-q","90-38-8-q","90-38-9-q","90-42-10-q","90-42-1-q","90-42-2-q","90-42-3-q","90-42-4-q","90-42-5-q","90-42-6-q","90-42-7-q","90-42-8-q","90-42-9-q","90-46-10-q","90-46-1-q","90-46-2-q","90-46-3-q","90-46-4-q","90-46-5-q","90-46-6-q","90-46-7-q","90-46-8-q","90-46-9-q","90-50-10-q","90-50-1-q","90-50-2-q","90-50-3-q","90-50-4-q","90-50-5-q","90-50-6-q","90-50-7-q","90-50-8-q","90-50-9-q","ActivityService2.sk_10_27","ActivityService.sk_11_27"]
+# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
+# wandb.init(project="learn_BP_sat2")
+wandb.init(project="test")
+wandb.config.epochs = EPOCH_COUNT
+wandb.config.train_val_split = "easyTrain_hardVal"#"random_shuffle"#'separate_categories'#
+wandb.config.PROBLEM_CATEGORY_TRAIN = PROBLEM_CATEGORY_TRAIN
+wandb.config.PROBLEM_CATEGORY_VAL = PROBLEM_CATEGORY_VAL
+# wandb.config.TRAINING_DATA_SIZE = TRAINING_DATA_SIZE
+wandb.config.alpha = alpha
+wandb.config.alpha2 = alpha2
+wandb.config.SHARE_WEIGHTS = SHARE_WEIGHTS
+wandb.config.BETHE_MLP = BETHE_MLP
+wandb.config.MSG_PASSING_ITERS = MSG_PASSING_ITERS
+wandb.config.STEP_SIZE = STEP_SIZE
+wandb.config.LR_DECAY = LR_DECAY
+wandb.config.LEARNING_RATE = LEARNING_RATE
+wandb.config.NUM_MLPS = NUM_MLPS
 
-#all 159 training problems that we have solution counts for and have max variable degree <= 5 (there are 44 others with variable degree > 5)
-TRAINING_SAT_PROBLEMS_WITH_SOLUTIONS = ["10.sk_1_46", "27.sk_3_32", "4step", "50-10-10-q", "50-10-5-q", "50-10-7-q", "50-10-8-q", "5step", "75-10-10-q", "75-10-1-q", "75-10-2-q", "75-10-4-q", "75-10-5-q", "75-10-6-q", "75-10-7-q", "75-10-8-q", "75-10-9-q", "75-12-10-q", "75-12-1-q", "75-12-2-q", "75-12-3-q", "75-12-4-q", "75-12-5-q", "75-12-6-q", "75-12-7-q", "75-12-8-q", "75-12-9-q", "75-14-10-q", "75-14-1-q", "75-14-2-q", "75-14-3-q", "75-14-4-q", "75-14-5-q", "75-14-6-q", "75-14-8-q", "75-15-1-q", "75-15-3-q", "75-15-4-q", "75-15-9-q", "90-10-10-q", "90-10-1-q", "90-10-3-q", "90-10-4-q", "90-10-5-q", "90-10-7-q", "90-10-9-q", "90-12-10-q", "90-12-1-q", "90-12-2-q", "90-12-3-q", "90-12-4-q", "90-12-5-q", "90-12-6-q", "90-12-7-q", "90-12-8-q", "90-14-10-q", "90-14-1-q", "90-14-2-q", "90-14-3-q", "90-14-5-q", "90-14-6-q", "90-14-7-q", "90-14-8-q", "90-14-9-q", "90-15-10-q", "90-15-1-q", "90-15-2-q", "90-15-3-q", "90-15-4-q", "90-15-5-q", "90-15-6-q", "90-15-7-q", "90-15-8-q", "90-16-10-q", "90-16-1-q", "90-16-2-q", "90-16-3-q", "90-16-4-q", "90-16-5-q", "90-16-6-q", "90-16-7-q", "90-16-9-q", "90-17-10-q", "90-17-1-q", "90-17-3-q", "90-17-4-q", "90-17-5-q", "90-17-6-q", "90-17-8-q", "90-17-9-q", "90-18-10-q", "90-18-1-q", "90-18-2-q", "90-18-3-q", "90-18-4-q", "90-18-5-q", "90-18-6-q", "90-18-7-q", "90-18-8-q", "90-18-9-q", "90-19-10-q", "90-19-1-q", "90-19-2-q", "90-19-4-q", "90-19-6-q", "90-19-7-q", "90-19-8-q", "90-20-10-q", "90-20-1-q", "90-20-2-q", "90-20-3-q", "90-20-4-q", "90-20-5-q", "90-20-6-q", "90-20-7-q", "90-20-8-q", "90-20-9-q", "90-21-10-q", "90-21-1-q", "90-21-2-q", "90-21-3-q", "90-21-5-q", "90-21-7-q", "90-21-9-q", "90-22-10-q", "90-22-1-q", "90-22-2-q", "90-22-3-q", "90-22-4-q", "90-22-5-q", "90-22-6-q", "90-22-7-q", "90-22-9-q", "90-23-10-q", "90-23-3-q", "90-23-4-q", "90-23-5-q", "90-23-6-q", "90-23-7-q", "90-23-8-q", "90-24-10-q", "90-24-2-q", "90-24-3-q", "90-24-4-q", "90-24-5-q", "90-24-7-q", "90-24-8-q", "90-24-9-q", "90-25-10-q", "90-25-1-q", "90-25-2-q", "90-25-3-q", "90-25-5-q", "90-25-6-q", "90-25-7-q", "90-25-8-q", "90-26-10-q", "90-26-4-q", "90-26-5-q"]
-
-#the 120 trainining problems beginning with 90-
-TRAINING_PROBLEMS_90 = ["90-10-10-q", "90-10-1-q", "90-10-3-q", "90-10-4-q", "90-10-5-q", "90-10-7-q", "90-10-9-q", "90-12-10-q", "90-12-1-q", "90-12-2-q", "90-12-3-q", "90-12-4-q", "90-12-5-q", "90-12-6-q", "90-12-7-q", "90-12-8-q", "90-14-10-q", "90-14-1-q", "90-14-2-q", "90-14-3-q", "90-14-5-q", "90-14-6-q", "90-14-7-q", "90-14-8-q", "90-14-9-q", "90-15-10-q", "90-15-1-q", "90-15-2-q", "90-15-3-q", "90-15-4-q", "90-15-5-q", "90-15-6-q", "90-15-7-q", "90-15-8-q", "90-16-10-q", "90-16-1-q", "90-16-2-q", "90-16-3-q", "90-16-4-q", "90-16-5-q", "90-16-6-q", "90-16-7-q", "90-16-9-q", "90-17-10-q", "90-17-1-q", "90-17-3-q", "90-17-4-q", "90-17-5-q", "90-17-6-q", "90-17-8-q", "90-17-9-q", "90-18-10-q", "90-18-1-q", "90-18-2-q", "90-18-3-q", "90-18-4-q", "90-18-5-q", "90-18-6-q", "90-18-7-q", "90-18-8-q", "90-18-9-q", "90-19-10-q", "90-19-1-q", "90-19-2-q", "90-19-4-q", "90-19-6-q", "90-19-7-q", "90-19-8-q", "90-20-10-q", "90-20-1-q", "90-20-2-q", "90-20-3-q", "90-20-4-q", "90-20-5-q", "90-20-6-q", "90-20-7-q", "90-20-8-q", "90-20-9-q", "90-21-10-q", "90-21-1-q", "90-21-2-q", "90-21-3-q", "90-21-5-q", "90-21-7-q", "90-21-9-q", "90-22-10-q", "90-22-1-q", "90-22-2-q", "90-22-3-q", "90-22-4-q", "90-22-5-q", "90-22-6-q", "90-22-7-q", "90-22-9-q", "90-23-10-q", "90-23-3-q", "90-23-4-q", "90-23-5-q", "90-23-6-q", "90-23-7-q", "90-23-8-q", "90-24-10-q", "90-24-2-q", "90-24-3-q", "90-24-4-q", "90-24-5-q", "90-24-7-q", "90-24-8-q", "90-24-9-q", "90-25-10-q", "90-25-1-q", "90-25-2-q", "90-25-3-q", "90-25-5-q", "90-25-6-q", "90-25-7-q", "90-25-8-q", "90-26-10-q", "90-26-4-q", "90-26-5-q"]
-
-#the 39 trainining problems that don't begin with 90-
-TRAINING_PROBLEMS_not90 = ["10.sk_1_46", "27.sk_3_32", "4step", "50-10-10-q", "50-10-5-q", "50-10-7-q", "50-10-8-q", "5step", "75-10-10-q", "75-10-1-q", "75-10-2-q", "75-10-4-q", "75-10-5-q", "75-10-6-q", "75-10-7-q", "75-10-8-q", "75-10-9-q", "75-12-10-q", "75-12-1-q", "75-12-2-q", "75-12-3-q", "75-12-4-q", "75-12-5-q", "75-12-6-q", "75-12-7-q", "75-12-8-q", "75-12-9-q", "75-14-10-q", "75-14-1-q", "75-14-2-q", "75-14-3-q", "75-14-4-q", "75-14-5-q", "75-14-6-q", "75-14-8-q", "75-15-1-q", "75-15-3-q", "75-15-4-q", "75-15-9-q"]
 
 # tiny_set = ["10.sk_1_46", "27.sk_3_32"]
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS)
 # lbp_net.double()
+
+
+if True:#train val from the same distribution
+#     train_problems_helper = [benchmark['problem'] for benchmark in ALL_TRAIN_PROBLEMS[PROBLEM_CATEGORY_TRAIN]]
+    train_problems_helper = []
+    for cur_train_category in PROBLEM_CATEGORY_TRAIN:
+        print("cur_train_category:", cur_train_category)
+        print("PROBLEM_CATEGORY_TRAIN:", PROBLEM_CATEGORY_TRAIN)
+
+
+        train_problems_helper += [benchmark['problem'] for benchmark in ALL_TRAIN_PROBLEMS[cur_train_category]]
+
+
+    # val_problems_helper = [benchmark['problem'] for benchmark in ALL_TRAIN_PROBLEMS[PROBLEM_CATEGORY_VAL]]
+    # train_problems = train_problems_helper[:TRAINING_DATA_SIZE]
+    # val_problems = val_problems_helper[:VAL_DATA_SIZE]
+    if wandb.config.train_val_split == "random_shuffle":
+        print("shuffling data")
+        random.shuffle(train_problems_helper)
+    else:
+        assert(wandb.config.train_val_split == "easyTrain_hardVal")
+    train_problems = train_problems_helper[:len(train_problems_helper)*7//10]
+    val_problems = train_problems_helper[len(train_problems_helper)*7//10:]
+    wandb.config.TRAINING_DATA_SIZE = len(train_problems_helper)*7//10
+    wandb.config.VAL_DATA_SIZE = len(train_problems_helper) - len(train_problems_helper)*7//10
+elif False: #use multiple categories for validation and train, using all problems from the categories
+    assert(wandb.config.train_val_split == "separate_categories")
+    train_problems = []
+    for cur_train_category in PROBLEM_CATEGORY_TRAIN:
+        train_problems += [benchmark['problem'] for benchmark in ALL_TRAIN_PROBLEMS[cur_train_category]]
+
+    val_problems = []
+    for cur_val_category in PROBLEM_CATEGORY_VAL:
+        val_problems += [benchmark['problem'] for benchmark in ALL_TRAIN_PROBLEMS[cur_val_category]]
+
+    wandb.config.TRAINING_DATA_SIZE = len(train_problems)
+    wandb.config.VAL_DATA_SIZE = len(val_problems)
 def train():
+    wandb.watch(lbp_net)
+    
     lbp_net.train()
 
     # Initialize optimizer
-    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=0.0001)
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1) #multiply lr by gamma every step_size epochs    
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=LEARNING_RATE)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=LR_DECAY) #multiply lr by gamma every step_size epochs    
 
     loss_func = torch.nn.MSELoss()
 
-    #old, general torch rather than pytorch geometric
-#     sat_data_train = SatProblems(problems_to_load=tiny_set,
-#                counts_dir_name=SOLUTION_COUNTS_DIR,
-#                problems_dir_name=TRAINING_PROBLEMS_DIR,
-#                # dataset_size=100, begin_idx=50, epsilon=EPSILON)
-#                dataset_size=TRAINING_DATA_SIZE, epsilon=EPSILON)
-#     # sleep(temp)
-#     train_data_loader = DataLoader(sat_data_train, batch_size=1)
-    
-#     sat_data_val = SatProblems(problems_to_load=tiny_set,
-#                counts_dir_name=SOLUTION_COUNTS_DIR,
-#                problems_dir_name=VALIDATION_PROBLEMS_DIR,
-#                # dataset_size=50, begin_idx=0, epsilon=EPSILON)
-#                dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON)
-#     val_data_loader = DataLoader(sat_data_val, batch_size=1)
-
     #pytorch geometric
-    training_SAT_list = get_SATproblems_list(problems_to_load=TRAINING_PROBLEMS_not90,
+    training_SAT_list = get_SATproblems_list(problems_to_load=train_problems,
                counts_dir_name=SOLUTION_COUNTS_DIR,
-               problems_dir_name=TRAINING_PROBLEMS_DIR,
+               problems_dir_name=SAT_PROBLEMS_DIR,
                # dataset_size=100, begin_idx=50, epsilon=EPSILON)
-               dataset_size=TRAINING_DATA_SIZE, epsilon=EPSILON)
+               dataset_size=TRAINING_DATA_SIZE, epsilon=EPSILON,
+               max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
     train_data_loader = DataLoader(training_SAT_list, batch_size=1)
    
-    val_SAT_list = get_SATproblems_list(problems_to_load=TRAINING_PROBLEMS_90,
+    val_SAT_list = get_SATproblems_list(problems_to_load=val_problems,
                counts_dir_name=SOLUTION_COUNTS_DIR,
-               problems_dir_name=VALIDATION_PROBLEMS_DIR,
+               problems_dir_name=SAT_PROBLEMS_DIR,
                # dataset_size=50, begin_idx=0, epsilon=EPSILON)
-               dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON)
+               dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON,
+               max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
     val_data_loader = DataLoader(val_SAT_list, batch_size=1)
 
     # with autograd.detect_anomaly():
-    losses = []
+    
     for e in range(EPOCH_COUNT):
 #         for t, (sat_problem, exact_ln_partition_function) in enumerate(train_data_loader):
+        losses = []
         for sat_problem in train_data_loader:
             exact_ln_partition_function = sat_problem.ln_Z
             optimizer.zero_grad()
@@ -141,8 +238,7 @@ def train():
         if e % PRINT_FREQUENCY == 0:
             print("root mean squared training error =", np.sqrt(np.mean(losses)))
             
-        if e % 10 == 0:
-            losses = []
+        if e % VAL_FREQUENCY == 0:
             val_losses = []
 #             for t, (sat_problem, exact_ln_partition_function) in enumerate(val_data_loader):
             for sat_problem in val_data_loader:
@@ -158,51 +254,123 @@ def train():
                 val_losses.append(loss.item())
             print("root mean squared validation error =", np.sqrt(np.mean(val_losses)))
             print()
-
+            wandb.log({"RMSE_val": np.sqrt(np.mean(val_losses)), "RMSE_training": np.sqrt(np.mean(losses))})   
+        else:
+            wandb.log({"RMSE_training": np.sqrt(np.mean(losses))})
+            
+            
         if e % SAVE_FREQUENCY == 0:
             if not os.path.exists(TRAINED_MODELS_DIR):
                 os.makedirs(TRAINED_MODELS_DIR)
             torch.save(lbp_net.state_dict(), TRAINED_MODELS_DIR + MODEL_NAME)
-
-        # scheduler.step()
+            torch.save(lbp_net.state_dict(), os.path.join(wandb.run.dir, 'model.pt'))
+            
+        scheduler.step()
 
     if not os.path.exists(TRAINED_MODELS_DIR):
         os.makedirs(TRAINED_MODELS_DIR)
     torch.save(lbp_net.state_dict(), TRAINED_MODELS_DIR + MODEL_NAME)
 
 def test():
-    # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
+#     lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
     # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "simple_4layer_firstWorking.pth"))
     # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "trained39non90_2layer.pth"))
+#     lbp_net.load_state_dict(torch.load('wandb/run-20200217_073858-skhvebeh/model.pt'))
+#     lbp_net.load_state_dict(torch.load('wandb/run-20200217_071515-yix18urv/model.pt'))
+
+    BPNN_trained_model_path = './wandb/run-20200217_221927-i4etpbs7/model.pt' #3 layer on all training data except 's' (best)
+#     BPNN_trained_model_path = './wandb/run-20200217_221935-41r0m2ou//model.pt' #2 layer on all training data except 's' (faster)
+
+    runtimes_dir = '/atlas/u/jkuck/learn_BP/data/SAT_BPNN_runtimes/'
+    if not os.path.exists(runtimes_dir):
+        os.makedirs(runtimes_dir)
+#     lbp_net.load_state_dict(torch.load(BPNN_trained_model_path))
 
 
+    PROBLEM_CATEGORY_TEST = ['or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems', 'blasted_problems', 'problems_75', 'problems_90']
+    test_problems = []
+    for cur_train_category in PROBLEM_CATEGORY_TEST:
+        print("cur_train_category:", cur_train_category)
+        print("PROBLEM_CATEGORY_TRAIN:", PROBLEM_CATEGORY_TRAIN)
+        test_problems += [benchmark['problem'] for benchmark in ALL_TEST_PROBLEMS[cur_train_category]]    
+#     test_problems = [benchmark['problem'] for benchmark in ALL_TRAIN_PROBLEMS[PROBLEM_CATEGORY_TEST]]
+#     test_problems = [benchmark['problem'] for benchmark in ALL_TEST_PROBLEMS[PROBLEM_CATEGORY_TEST]]
+
+
+    
     lbp_net.eval()
 
-    sat_data = SatProblems(problems_to_load=TRAINING_PROBLEMS_not90,
-               counts_dir_name=SOLUTION_COUNTS_DIR,
-               problems_dir_name=TEST_PROBLEMS_DIR,
-               dataset_size=TEST_DATA_SIZE, begin_idx=0, epsilon=EPSILON)
+#     sat_data = SatProblems(problems_to_load=problems_solved_over2,
+#                counts_dir_name=SOLUTION_COUNTS_DIR,
+#                problems_dir_name=TEST_PROBLEMS_DIR,
+#                dataset_size=TEST_DATA_SIZE, begin_idx=0, epsilon=EPSILON)
 
-    data_loader = DataLoader(sat_data, batch_size=1)
+#     data_loader = DataLoader(sat_data, batch_size=1)
+    test_SAT_list = get_SATproblems_list(problems_to_load=test_problems,
+               counts_dir_name=SOLUTION_COUNTS_DIR,
+               problems_dir_name=SAT_PROBLEMS_DIR,
+               # dataset_size=50, begin_idx=0, epsilon=EPSILON)
+#                dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON,
+               dataset_size=3, begin_idx=0, epsilon=EPSILON,
+               max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
+    test_data_loader = DataLoader(test_SAT_list, batch_size=1)
     loss_func = torch.nn.MSELoss()
 
     exact_solution_counts = []
-    lbp_estimated_counts = []
+    squared_errors = []
+    BPNN_estimated_counts = []
     losses = []
-    for sat_problem, exact_ln_partition_function in data_loader:
+    problem_names = []
+#     for sat_problem, exact_ln_partition_function in test_data_loader:
+    runtimes = []
+    for idx, sat_problem in enumerate(test_data_loader):
+        problem_names.append(test_problems[idx])
+        runLBP = False
+        if runLBP:
+            print("about to parse dimacs")
+            n_vars, clauses, load_successful = parse_dimacs(filename = SAT_PROBLEMS_DIR + "/" + test_problems[idx] + '.cnf.gz.no_w.cnf')
+            print("about to run_loopyBP")
+            lbp_estimate = run_loopyBP(clauses, n_vars, maxiter=10, updates="SEQRND", damping='.5')
+            print("LBP:", lbp_estimate)
+        exact_ln_partition_function = sat_problem.ln_Z
         # sat_problem.compute_bethe_free_energy()
-        sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
+#         sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
+        t0 = resource.getrusage(resource.RUSAGE_CHILDREN).ru_utime
+        ta = time.time()
+        print("about to run BPNN")
         estimated_ln_partition_function = lbp_net(sat_problem)
-        lbp_estimated_counts.append(estimated_ln_partition_function)
-        exact_solution_counts.append(exact_ln_partition_function)
+        print("done to run BPNN")        
+        t1 = resource.getrusage(resource.RUSAGE_CHILDREN).ru_utime
+        tb = time.time()
+        
+        print("timing good?:", t1-t0)
+        print("timing bad?:", tb-ta)
+        runtimes.append(tb-ta)
+
+        
+        
+        if runLBP:
+            print("sat problem:", test_problems[idx], "exact ln_Z:", exact_ln_partition_function, "estimate:", estimated_ln_partition_function, "LBP:", lbp_estimate)        
+        BPNN_estimated_counts.append(estimated_ln_partition_function.item())
+        exact_solution_counts.append(exact_ln_partition_function.item())
         loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
         losses.append(loss.item())
-
+        squared_errors.append((estimated_ln_partition_function.item() - exact_ln_partition_function.float().squeeze().item())**2)
         print("estimated_ln_partition_function:", estimated_ln_partition_function)
         print("exact_ln_partition_function:", exact_ln_partition_function)
         print()
 
-    plt.plot(exact_solution_counts, lbp_estimated_counts, 'x', c='b', label='Negative Bethe Free Energy, %d iters, RMSE=%.2f' % (MSG_PASSING_ITERS, np.sqrt(np.mean(losses))))
+#     runtimes_json_string = json.dumps(runtimes)
+    results = {'squared_errors': squared_errors, 'runtimes': runtimes, 
+               'BPNN_estimated_ln_counts': BPNN_estimated_counts, 
+               'exact_ln_solution_counts': exact_solution_counts,
+               'problem_names': problem_names}
+#     with open(runtimes_dir + PROBLEM_CATEGORY_TEST + "_runtimes.json", 'w') as outfile:
+    with open(runtimes_dir + "testSet_runtimesAndErrors.json", 'w') as outfile:
+        json.dump(results, outfile)
+        
+        
+    plt.plot(exact_solution_counts, BPNN_estimated_counts, 'x', c='b', label='Negative Bethe Free Energy, %d iters, RMSE=%.2f' % (MSG_PASSING_ITERS, np.sqrt(np.mean(losses))))
     plt.plot([min(exact_solution_counts), max(exact_solution_counts)], [min(exact_solution_counts), max(exact_solution_counts)], '-', c='g', label='Exact Estimate')
 
     # plt.axhline(y=math.log(2)*log_2_Z[PROBLEM_NAME], color='y', label='Ground Truth ln(Set Size)') 
@@ -220,7 +388,8 @@ def test():
     #                 box.width, box.height * 0.9])
     #fig.savefig('/Users/jkuck/Downloads/temp.png', bbox_extra_artists=(lgd,), bbox_inches='tight')    
 
-    plot_name = 'trained=%s_dataset=%s%d_%diters_alpha%f.png' % (TEST_TRAINED_MODEL, TEST_DATSET, len(data_loader), MSG_PASSING_ITERS, parameters.alpha)
+#     plot_name = 'trained=%s_dataset=%s%d_%diters_alpha%f.png' % (TEST_TRAINED_MODEL, TEST_DATSET, len(data_loader), MSG_PASSING_ITERS, parameters.alpha)
+    plot_name = 'quick_plot.png'
     plt.savefig(ROOT_DIR + 'sat_plots/' + plot_name)    
 #     plt.show()
 
@@ -229,5 +398,5 @@ def test():
 
 
 if __name__ == "__main__":
-    train()
-#     test()
+#     train()
+    test()

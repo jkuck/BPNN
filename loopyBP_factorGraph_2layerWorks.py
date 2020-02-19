@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
 from torch_scatter import scatter_logsumexp
 from factor_graph import FactorGraph
-from sat_data import parse_dimacs, SatProblems, build_factorgraph_from_SATproblem
+from sat_helpers.sat_data import parse_dimacs, SatProblems, build_factorgraph_from_SATproblem
 from utils import dotdict, logminusexp, shift_func
 import matplotlib.pyplot as plt
 import matplotlib

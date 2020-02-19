@@ -30,19 +30,29 @@ MODE = "test" #run "test" or "train" mode
 
 #####Testing parameters
 TEST_TRAINED_MODEL = True #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
-EXPERIMENT_NAME = 'trained_mixedField_10layer_2MLPs_finalBetheMLP/' #used for saving results when MODE='test'
+# EXPERIMENT_NAME = 'trained_mixedField_10layer_2MLPs_finalBetheMLP/' #used for saving results when MODE='test'
+EXPERIMENT_NAME = 'trained_attrField_10layer_2MLPs_noFinalBetheMLP/' #used for saving results when MODE='test'
+
+
 # 10 layer models
 # BPNN_trained_model_path = './wandb/run-20200209_071429-l8jike8k/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True
 # BPNN_trained_model_path = './wandb/run-20200211_233743-tpiv47ws/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True, 2MLPs per layer, weight sharing across layers
+BPNN_trained_model_path = './wandb/run-20200219_090032-11077pcu/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True, 2MLPs per layer [wandb results](https://app.wandb.ai/jdkuck/learnBP_spinGlass/runs/11077pcu)
+
+
+
 # GNN_trained_model_path = './wandb/run-20200209_091247-wz2g3fjd/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=True
+GNN_trained_model_path = './wandb/run-20200219_051810-bp7hke44/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=True, final MLP takes concatenation of all layers summed node features
+
+
 
 # BPNN_trained_model_path = './wandb/run-20200209_201644-cj5b13c2/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False
 # BPNN_trained_model_path = './wandb/run-20200211_222445-7ky0ix4y/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False, 2MLPs per layer
 # BPNN_trained_model_path = './wandb/run-20200211_234428-ylbhlu1o/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False, 2MLPs per layer, weight sharing across layers
-BPNN_trained_model_path = './wandb/run-20200213_092753-4jdedu1x/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False, 2MLPs per layer, final Bethe MLP
+# BPNN_trained_model_path = './wandb/run-20200213_092753-4jdedu1x/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False, 2MLPs per layer, final Bethe MLP
 
 # GNN_trained_model_path = './wandb/run-20200209_203009-o8owzdjv/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=False
-GNN_trained_model_path = './wandb/run-20200213_225352-eqnnbg3v/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=False, final MLP gets summed features from all layers, width 4
+# GNN_trained_model_path = './wandb/run-20200213_225352-eqnnbg3v/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=False, final MLP gets summed features from all layers, width 4
 
 
 #15 layer models
@@ -55,7 +65,7 @@ GNN_trained_model_path = './wandb/run-20200213_225352-eqnnbg3v/model.pt' #locati
 # BPNN_trained_model_path = './wandb/run-20200212_055535-s8qnrxjq/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False, 2MLPs per layer, no weight sharing across layers
 
 
-
+# BPNN_trained_model_path = './wandb/run-20200219_020545-j2ef9bvp/model.pt'
 
 USE_WANDB = True
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
@@ -84,25 +94,25 @@ F_MAX_TRAIN = .1
 C_MAX_TRAIN = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
-ATTRACTIVE_FIELD_TRAIN = False
+ATTRACTIVE_FIELD_TRAIN = True
 
 N_MIN_VAL = 10
 N_MAX_VAL = 10
 F_MAX_VAL = .1
 C_MAX_VAL = 5.0
-ATTRACTIVE_FIELD_VAL = False
+ATTRACTIVE_FIELD_VAL = True
 # ATTRACTIVE_FIELD_TEST = True
 
 REGENERATE_DATA = False
 DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
 
 
-TRAINING_DATA_SIZE = 100
+TRAINING_DATA_SIZE = 50
 VAL_DATA_SIZE = 50#100
 TEST_DATA_SIZE = 200
 
 
-EPOCH_COUNT = 5000
+EPOCH_COUNT = 300
 PRINT_FREQUENCY = 1
 VAL_FREQUENCY = 10
 SAVE_FREQUENCY = 1
@@ -110,19 +120,23 @@ SAVE_FREQUENCY = 1
 TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' datasets
 
 ##### Optimizer parameters #####
-STEP_SIZE=200
+STEP_SIZE=300
 LR_DECAY=.5
 if ATTRACTIVE_FIELD_TRAIN == True:
     #works well for training on attractive field
         LEARNING_RATE = 0.0005
+#         LEARNING_RATE = 0.001 #testing
 #     LEARNING_RATE = 0.00005 #10layer with Bethe_mlp
 else:
     #think this works for mixed fields
 #         LEARNING_RATE = 0.005 #10layer        
 #         LEARNING_RATE = 0.001 #30layer trial 
     LEARNING_RATE = 0.0005 #10layer with Bethe_mlp
+#     LEARNING_RATE = 0.0000005 #c_max = .5
+
+
 ##########################
-wandb.init(project="gnn_sat")
+wandb.init(project="learnBP_spinGlass")
 wandb.config.epochs = EPOCH_COUNT
 wandb.config.N_MIN_TRAIN = N_MIN_TRAIN
 wandb.config.N_MAX_TRAIN = N_MAX_TRAIN
@@ -371,10 +385,10 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
             GNN_losses.append(gnn_loss.item())
             
 #         libdai_lbp_Z_5 = sg_problem_SGM.loopyBP_libdai(maxiter=5)
-        libdai_lbp_Z_10 = exact_ln_partition_function-99 #sg_problem_SGM.loopyBP_libdai(maxiter=10, updates="PARALL", damping=".5")
-        libdai_lbp_Z_100 = exact_ln_partition_function-99 #sg_problem_SGM.loopyBP_libdai(maxiter=30, updates="PARALL", damping=".5")
-        libdai_lbp_Z_1000 = exact_ln_partition_function-99 #sg_problem_SGM.loopyBP_libdai(maxiter=1000, updates="PARALL", damping=".5")
-        libdai_lbp_Z_1000Seq = exact_ln_partition_function-99 #sg_problem_SGM.loopyBP_libdai(maxiter=1000, updates="SEQRND", damping=None)
+        libdai_lbp_Z_10 = sg_problem_SGM.loopyBP_libdai(maxiter=10, updates="PARALL", damping=".5")
+        libdai_lbp_Z_100 = sg_problem_SGM.loopyBP_libdai(maxiter=100, updates="PARALL", damping=".5")
+        libdai_lbp_Z_1000 = sg_problem_SGM.loopyBP_libdai(maxiter=1000, updates="PARALL", damping=".5")
+        libdai_lbp_Z_1000Seq = sg_problem_SGM.loopyBP_libdai(maxiter=1000, updates="SEQRND", damping=None)
 #         libdai_lbp_Z_5k = sg_problem_SGM.loopyBP_libdai(maxiter=5000)
 
 #         LBPlibdai_5iters_estimated_counts.append(libdai_lbp_Z_5-exact_ln_partition_function)
@@ -423,7 +437,7 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
     
     plt.plot(exact_solution_counts, LBPlibdai_10iters_estimated_counts, '+', label='LBP 10 iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_10iters))))
     
-    plt.plot(exact_solution_counts, LBPlibdai_100iters_estimated_counts, '+', label='LBP 30 iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_100iters))))
+    plt.plot(exact_solution_counts, LBPlibdai_100iters_estimated_counts, '+', label='LBP 100 iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_100iters))))
     
     plt.plot(exact_solution_counts, LBPlibdai_1000iters_estimated_counts, '+', label='LBP 1000 iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_1000iters))))
     
@@ -491,7 +505,8 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
 
 def test(skip_our_model=False):
     if TEST_TRAINED_MODEL:
-        lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
+#         lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
+        lbp_net.load_state_dict(torch.load(BPNN_trained_model_path))
         # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "simple_4layer_firstWorking.pth"))
         # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "trained39non90_2layer.pth"))
 
@@ -592,7 +607,7 @@ def test(skip_our_model=False):
 
 def create_many_ising_model_figures(results_dir=ROOT_DIR + '/data/experiments/' + EXPERIMENT_NAME, exp_file='ising_model_OOD.pkl'):
     all_results = {}
-    for attractive_field in [False, True]:
+    for attractive_field in [True, False]:
         for n in [10, 14]:
             for f_max in [.1, .2, 1.0]:
                 for c_max in [5.0, 10.0, 50.0]:
