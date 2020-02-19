@@ -311,7 +311,7 @@ def test():
                problems_dir_name=SAT_PROBLEMS_DIR,
                # dataset_size=50, begin_idx=0, epsilon=EPSILON)
 #                dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON,
-               dataset_size=3, begin_idx=0, epsilon=EPSILON,
+               dataset_size=10000, begin_idx=0, epsilon=EPSILON,
                max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
     test_data_loader = DataLoader(test_SAT_list, batch_size=1)
     loss_func = torch.nn.MSELoss()
