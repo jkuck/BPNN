@@ -27,7 +27,7 @@ import json
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 5 #number of variables in the largest factor -> factor has 2^MAX_FACTOR_STATE_DIMENSIONS states
-MSG_PASSING_ITERS = 2 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 3 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -281,20 +281,28 @@ def test():
     BPNN_trained_model_path = './wandb/run-20200217_221927-i4etpbs7/model.pt' #3 layer on all training data except 's' (best)
 #     BPNN_trained_model_path = './wandb/run-20200217_221935-41r0m2ou//model.pt' #2 layer on all training data except 's' (faster)
 
+#     BPNN_trained_model_path = './wandb/run-20200217_223828-1ur43pn3/model.pt' #2 layer on all training data except 's' (faster)
+
+    
+     
     runtimes_dir = '/atlas/u/jkuck/learn_BP/data/SAT_BPNN_runtimes/'
     if not os.path.exists(runtimes_dir):
         os.makedirs(runtimes_dir)
-#     lbp_net.load_state_dict(torch.load(BPNN_trained_model_path))
+    lbp_net.load_state_dict(torch.load(BPNN_trained_model_path))
 
 
     PROBLEM_CATEGORY_TEST = ['or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems', 'blasted_problems', 'problems_75', 'problems_90']
     test_problems = []
     for cur_train_category in PROBLEM_CATEGORY_TEST:
         print("cur_train_category:", cur_train_category)
-        print("PROBLEM_CATEGORY_TRAIN:", PROBLEM_CATEGORY_TRAIN)
-        test_problems += [benchmark['problem'] for benchmark in ALL_TEST_PROBLEMS[cur_train_category]]    
+#         print("PROBLEM_CATEGORY_TRAIN:", PROBLEM_CATEGORY_TRAIN)
+        test_problems += [benchmark['problem'] for benchmark in ALL_TEST_PROBLEMS[cur_train_category]]   
+        
 #     test_problems = [benchmark['problem'] for benchmark in ALL_TRAIN_PROBLEMS[PROBLEM_CATEGORY_TEST]]
 #     test_problems = [benchmark['problem'] for benchmark in ALL_TEST_PROBLEMS[PROBLEM_CATEGORY_TEST]]
+
+#     PROBLEM_CATEGORY_TEST = 'or_100_problems'
+#     test_problems = [benchmark['problem'] for benchmark in ALL_TRAIN_PROBLEMS[PROBLEM_CATEGORY_TEST]]
 
 
     
@@ -355,6 +363,8 @@ def test():
         exact_solution_counts.append(exact_ln_partition_function.item())
         loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
         losses.append(loss.item())
+        print("squared error:", (estimated_ln_partition_function.item() - exact_ln_partition_function.float().squeeze().item())**2)
+        print("loss:", (estimated_ln_partition_function.item() - exact_ln_partition_function.float().squeeze().item())**2)
         squared_errors.append((estimated_ln_partition_function.item() - exact_ln_partition_function.float().squeeze().item())**2)
         print("estimated_ln_partition_function:", estimated_ln_partition_function)
         print("exact_ln_partition_function:", exact_ln_partition_function)
@@ -366,6 +376,8 @@ def test():
                'exact_ln_solution_counts': exact_solution_counts,
                'problem_names': problem_names}
 #     with open(runtimes_dir + PROBLEM_CATEGORY_TEST + "_runtimes.json", 'w') as outfile:
+#         json.dump(runtimes, outfile)
+
     with open(runtimes_dir + "testSet_runtimesAndErrors.json", 'w') as outfile:
         json.dump(results, outfile)
         
