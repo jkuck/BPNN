@@ -14,7 +14,8 @@ Run learn_BP_spinGlass.py with mode="test"
 - Set BPNN_trained_model_path and GNN_trained_model_path to the appropriate trained model paths
 - create latex table with data/experiments/make_latex_table.py
 
-SAT table
+SAT table/figures
 - Make the SAT tables in latex form from wandb results using data/wandbCSV_to_latexTable.py
+- run data/compare_BPNNvsHashing_runtimes.py
 
 

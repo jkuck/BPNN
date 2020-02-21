@@ -27,7 +27,7 @@ import json
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 5 #number of variables in the largest factor -> factor has 2^MAX_FACTOR_STATE_DIMENSIONS states
-MSG_PASSING_ITERS = 3 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 2 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -278,11 +278,15 @@ def test():
 #     lbp_net.load_state_dict(torch.load('wandb/run-20200217_073858-skhvebeh/model.pt'))
 #     lbp_net.load_state_dict(torch.load('wandb/run-20200217_071515-yix18urv/model.pt'))
 
-    BPNN_trained_model_path = './wandb/run-20200217_221927-i4etpbs7/model.pt' #3 layer on all training data except 's' (best)
+#     BPNN_trained_model_path = './wandb/run-20200217_221927-i4etpbs7/model.pt' #3 layer on all training data except 's' (best)
 #     BPNN_trained_model_path = './wandb/run-20200217_221935-41r0m2ou//model.pt' #2 layer on all training data except 's' (faster)
 
 #     BPNN_trained_model_path = './wandb/run-20200217_223828-1ur43pn3/model.pt' #2 layer on all training data except 's' (faster)
 
+    BPNN_trained_model_path = './wandb/run-20200217_104742-n4d8lxp1/model.pt' #2 layer on random sampling of 'or_50' data
+
+    
+    
     
      
     runtimes_dir = '/atlas/u/jkuck/learn_BP/data/SAT_BPNN_runtimes/'
@@ -291,12 +295,15 @@ def test():
     lbp_net.load_state_dict(torch.load(BPNN_trained_model_path))
 
 
-    PROBLEM_CATEGORY_TEST = ['or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems', 'blasted_problems', 'problems_75', 'problems_90']
+#     PROBLEM_CATEGORY_TEST = ['or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems', 'blasted_problems', 'problems_75', 'problems_90']
+    PROBLEM_CATEGORY_TEST = ['or_50_problems']
+
+
     test_problems = []
     for cur_train_category in PROBLEM_CATEGORY_TEST:
         print("cur_train_category:", cur_train_category)
 #         print("PROBLEM_CATEGORY_TRAIN:", PROBLEM_CATEGORY_TRAIN)
-        test_problems += [benchmark['problem'] for benchmark in ALL_TEST_PROBLEMS[cur_train_category]]   
+        test_problems += [benchmark['problem'] for benchmark in ALL_TRAIN_PROBLEMS[cur_train_category]]   
         
 #     test_problems = [benchmark['problem'] for benchmark in ALL_TRAIN_PROBLEMS[PROBLEM_CATEGORY_TEST]]
 #     test_problems = [benchmark['problem'] for benchmark in ALL_TEST_PROBLEMS[PROBLEM_CATEGORY_TEST]]
@@ -378,7 +385,7 @@ def test():
 #     with open(runtimes_dir + PROBLEM_CATEGORY_TEST + "_runtimes.json", 'w') as outfile:
 #         json.dump(runtimes, outfile)
 
-    with open(runtimes_dir + "testSet_runtimesAndErrors.json", 'w') as outfile:
+    with open(runtimes_dir + "or50_trainSet_runtimesAndErrors_3layer.json", 'w') as outfile:
         json.dump(results, outfile)
         
         
