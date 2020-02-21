@@ -19,3 +19,7 @@ SAT table/figures
 - run data/compare_BPNNvsHashing_runtimes.py
 
 
+## SAT data info
+- data/sat_problems_noIndSets contains SAT problems stripped of sampling sets and independent sets
+- data/sat_problems_IndSetsRecomputed contains SAT problems stripped of sampling sets and with independent sets recomputed with a timeout of 1000 seconds
+
