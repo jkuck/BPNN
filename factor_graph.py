@@ -210,7 +210,7 @@ class FactorGraphData(Data):
         else:
             self.facToVar_edge_idx = factorToVar_edge_index
 
-        self.edge_index = self.facToVar_edge_idx
+        self.edge_index = self.facToVar_edge_idx #hack for batching, see learn_BP_spinGlass.py
         # print("factorToVar_edge_index.shape:", factorToVar_edge_index.shape)
         # print("factorToVar_edge_index.shape:", factorToVar_edge_index.shape)
 

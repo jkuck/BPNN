@@ -26,7 +26,7 @@ from parameters import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, BETHE_MLP, NUM_ML
 # $ source bin/activate
 
 
-MODE = "test" #run "test" or "train" mode
+MODE = "train" #run "test" or "train" mode
 
 #####Testing parameters
 TEST_TRAINED_MODEL = True #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
@@ -68,7 +68,7 @@ GNN_trained_model_path = './wandb/run-20200219_051810-bp7hke44/model.pt' #locati
 # BPNN_trained_model_path = './wandb/run-20200219_020545-j2ef9bvp/model.pt'
 
 USE_WANDB = True
-# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
+os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 ##########################
 ####### Training PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
@@ -243,7 +243,7 @@ def train():
 #             print("spin_glass_problem.edge_index.shape:", spin_glass_problem.edge_index.shape)
 #             print("-"*80)
 #             sleep(shape_check)
-            spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index
+            spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
 
 #             spin_glass_problem = spin_glass_problem.to(device)
             exact_ln_partition_function = spin_glass_problem.ln_Z

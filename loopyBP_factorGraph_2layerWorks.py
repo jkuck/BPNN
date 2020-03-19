@@ -6,7 +6,8 @@ from torch_geometric.utils import scatter_
 from torch_scatter import scatter_logsumexp
 from factor_graph import FactorGraph
 from sat_helpers.sat_data import parse_dimacs, SatProblems, build_factorgraph_from_SATproblem
-from utils import dotdict, logminusexp, shift_func
+from utils import dotdict, logminusexp, shift_func #wrote a helper function that is not used in this file: log_normalize
+
 import matplotlib.pyplot as plt
 import matplotlib
 import mrftools
@@ -43,12 +44,12 @@ def map_beliefs(beliefs, factor_graph, map_type):
         mapped_beliefs = beliefs.clone()
 
 #     if size is not None and size[idx] != mapped_beliefs.size(0):
-        # print("factor_graph:", factor_graph)
-        # print("beliefs:", beliefs)
-        # print("beliefs.shape:", beliefs.shape)
-        # print("size:", size)
-        # print("idx:", idx)
-        # print("mapped_beliefs.size(0):", mapped_beliefs.size(0))
+#         print("factor_graph:", factor_graph)
+#         print("beliefs:", beliefs)
+#         print("beliefs.shape:", beliefs.shape)
+#         print("size:", size)
+#         print("idx:", idx)
+#         print("mapped_beliefs.size(0):", mapped_beliefs.size(0))
 #         raise ValueError(__size_error_msg__)
 
 #     print(type(beliefs), type(mapped_beliefs), type(factor_graph.facToVar_edge_idx))
@@ -238,8 +239,17 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                                (1 - alpha)*prv_factorToVar_messages
         assert(not torch.isnan(factorToVar_messages).any()), prv_factor_beliefs
 
-#         print("factor_graph.numVars:", factor_graph.numVars)
-        var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1], dim_size=factor_graph.numVars)
+        print("factor_graph.numVars:", factor_graph.numVars)
+#         sleep(temp)
+
+        #works with batch_size=1
+#         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1], dim_size=factor_graph.numVars)
+        #debugging batch_size>1
+        print("factorToVar_messages:", factorToVar_messages)
+        print("factor_graph.facToVar_edge_idx[1]:", factor_graph.facToVar_edge_idx[1])
+        print("factor_graph.facToVar_edge_idx:", factor_graph.facToVar_edge_idx)
+        var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1])#, dim_size=torch.sum(factor_graph.numVars))
+        print("var_beliefs:", var_beliefs)
         if debug:
             print("var_beliefs pre norm:", torch.exp(var_beliefs))
         assert(len(var_beliefs.shape) == 2)
