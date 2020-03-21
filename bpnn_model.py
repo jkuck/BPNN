@@ -4,7 +4,6 @@ import numpy as np
 from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
 from torch_scatter import scatter_logsumexp
-from factor_graph import FactorGraph
 from sat_helpers.sat_data import parse_dimacs, SatProblems, build_factorgraph_from_SATproblem
 from utils import dotdict, logminusexp, shift_func
 import matplotlib.pyplot as plt
@@ -24,7 +23,7 @@ def map_beliefs(beliefs, factor_graph, map_type):
     See https://pytorch-geometric.readthedocs.io/en/latest/notes/create_gnn.html
     Inputs:
     - beliefs (tensor): factor_beliefs or var_beliefs, matching map_type
-    - factor_graph: (FactorGraph, defined in factor_graph.py) the factor graph whose beliefs we are mapping
+    - factor_graph: (FactorGraphData, defined in factor_graph.py) the factor graph whose beliefs we are mapping
     - map_type: (string) 'factor' or 'var' denotes mapping factor or variable beliefs respectively
     '''
 
@@ -204,7 +203,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs):
         '''
         Inputs:
-        - factor_graph: (FactorGraph, defined in factor_graph.py) the factor graph we will perform one
+        - factor_graph: (FactorGraphData, defined in factor_graph.py) the factor graph we will perform one
             iteration of message passing on.
         '''
         # Step 3-5: Start propagating messages.
@@ -217,7 +216,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         from variables to factors.
 
         Inputs:
-        - factor_graph: (FactorGraph, defined in factor_graph.py) the factor graph we will perform one
+        - factor_graph: (FactorGraphData, defined in factor_graph.py) the factor graph we will perform one
             iteration of message passing on.
         - prv_varToFactor_messages (tensor): varToFactor_messages from the last message passing iteration
         - prv_factor_beliefs (tensor): factor beliefs from the last message passing iteration

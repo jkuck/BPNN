@@ -3,7 +3,7 @@ from torch.utils.data import Dataset
 import numpy as np
 import torch
 
-from factor_graph import FactorGraph, FactorGraphData
+from factor_graph import FactorGraphData
 from .spin_glass_model import SpinGlassModel
 
 
@@ -40,7 +40,7 @@ class SpinGlassDataset(Dataset):
         Inputs:
         - return_sg_objects (bool): if True, return the spin glass models as SpinGlassModel's        
         '''
-        self.spin_glass_problems_FGs = [] #stored as FactorGraph's
+        self.spin_glass_problems_FGs = [] #stored as FactorGraphData's
         spin_glass_problems_SGMs = [] #stored as SpinGlassModel's
         self.ln_partition_functions = []
         self.lpb_partition_function_estimates = []
@@ -76,7 +76,7 @@ class SpinGlassDataset(Dataset):
     def __getitem__(self, index):
         '''
         Outputs:
-        - sg_problem (FactorGraph, defined in factor_graph.py): factor graph representation of spin glass problem
+        - sg_problem (FactorGraphData, defined in factor_graph.py): factor graph representation of spin glass problem
         - ln_Z (float): natural logarithm(partition function of sg_problem)
         '''
         sg_problem = self.spin_glass_problems_FGs[index]
@@ -212,7 +212,7 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
     - sg_model (SpinGlassModel): defines a sping glass model
 
     Outputs:
-    - factorgraph (FactorGraph): 
+    - factorgraph (FactorGraphData): 
     '''
     state_dimensions = 2
     N = sg_model.N

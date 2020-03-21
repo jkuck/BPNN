@@ -7,7 +7,7 @@ import random
 from nn_models import lbp_message_passing_network, GIN_Network_withEdgeFeatures
 from ising_model.pytorch_dataset import SpinGlassDataset, build_factorgraph_from_SpinGlassModel
 from ising_model.spin_glass_model import SpinGlassModel
-from factor_graph import FactorGraph, FactorGraphData
+from factor_graph import FactorGraphData
 # from torch.utils.data import DataLoader
 from torch_geometric.data import DataLoader as DataLoader_pytorchGeometric
 from ising_model.pytorch_geometric_data import spinGlass_to_torchGeometric

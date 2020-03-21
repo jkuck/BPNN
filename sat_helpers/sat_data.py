@@ -254,7 +254,7 @@ class SatProblems(Dataset):
     def __getitem__(self, index):
         '''
         Outputs:
-        - sat_problem (FactorGraph, defined in factor_graph.py): factor graph representation of sat problem
+        - sat_problem (FactorGraphData, defined in factor_graph.py): factor graph representation of sat problem
         - ln_solution_count (float): ln(# of satisfying solutions to the sat problem)
         '''
         sat_problem = self.sat_problems[index]
