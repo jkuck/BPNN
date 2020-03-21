@@ -614,7 +614,10 @@ def plot_lbp_vs_exactCount(dataset_size=10, verbose=True, lbp_iters=4):
     lbp_estimated_counts = []
     for sat_problem, log_solution_count in data_loader:
         # sat_problem.compute_bethe_free_energy()
-        sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
+
+        # switched from FactorGraph to FactorGraphData.  Removed this line, might be a bug somewhere because of this though
+        # sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
+
         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = sat_problem.get_initial_beliefs_and_messages()
         assert(sat_problem.state_dimensions == 5)
         exact_solution_counts.append(log_solution_count)
