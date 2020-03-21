@@ -1,5 +1,12 @@
 # learn_BP
 
+## Integrating SBM todo's
+- finish StochasticBlockModel (see "add code here for sampling node labels") in community_detection/sbm_data.py
+- make sure wandb is set up.  this is helpful for looking at experimental results and is how i save models as well.
+- finish learn_BP/learn_BP_communityDetection.py 
+	- edit the loss function
+	- other minor changes
+- make a network that doesn't have a Bethe final layer, instead just apply loss to final variable beliefs and gt node labels
 
 ## Training the BPNN on Ising models
 Run learn_BP_spinGlass.py with mode="train"

@@ -67,7 +67,7 @@ GNN_trained_model_path = './wandb/run-20200219_051810-bp7hke44/model.pt' #locati
 
 # BPNN_trained_model_path = './wandb/run-20200219_020545-j2ef9bvp/model.pt'
 
-USE_WANDB = True
+USE_WANDB = False
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 ##########################
 ####### Training PARAMETERS #######
@@ -137,23 +137,24 @@ else:
 
 
 ##########################
-wandb.init(project="learnBP_spinGlass")
-wandb.config.epochs = EPOCH_COUNT
-wandb.config.N_MIN_TRAIN = N_MIN_TRAIN
-wandb.config.N_MAX_TRAIN = N_MAX_TRAIN
-wandb.config.F_MAX_TRAIN = F_MAX_TRAIN
-wandb.config.C_MAX_TRAIN = C_MAX_TRAIN
-wandb.config.ATTRACTIVE_FIELD_TRAIN = ATTRACTIVE_FIELD_TRAIN
-wandb.config.TRAINING_DATA_SIZE = TRAINING_DATA_SIZE
-wandb.config.alpha = alpha
-wandb.config.alpha2 = alpha2
-wandb.config.SHARE_WEIGHTS = SHARE_WEIGHTS
-wandb.config.BETHE_MLP = BETHE_MLP
-wandb.config.MSG_PASSING_ITERS = MSG_PASSING_ITERS
-wandb.config.STEP_SIZE = STEP_SIZE
-wandb.config.LR_DECAY = LR_DECAY
-wandb.config.LEARNING_RATE = LEARNING_RATE
-wandb.config.NUM_MLPS = NUM_MLPS
+if USE_WANDB:
+    wandb.init(project="learnBP_spinGlass")
+    wandb.config.epochs = EPOCH_COUNT
+    wandb.config.N_MIN_TRAIN = N_MIN_TRAIN
+    wandb.config.N_MAX_TRAIN = N_MAX_TRAIN
+    wandb.config.F_MAX_TRAIN = F_MAX_TRAIN
+    wandb.config.C_MAX_TRAIN = C_MAX_TRAIN
+    wandb.config.ATTRACTIVE_FIELD_TRAIN = ATTRACTIVE_FIELD_TRAIN
+    wandb.config.TRAINING_DATA_SIZE = TRAINING_DATA_SIZE
+    wandb.config.alpha = alpha
+    wandb.config.alpha2 = alpha2
+    wandb.config.SHARE_WEIGHTS = SHARE_WEIGHTS
+    wandb.config.BETHE_MLP = BETHE_MLP
+    wandb.config.MSG_PASSING_ITERS = MSG_PASSING_ITERS
+    wandb.config.STEP_SIZE = STEP_SIZE
+    wandb.config.LR_DECAY = LR_DECAY
+    wandb.config.LEARNING_RATE = LEARNING_RATE
+    wandb.config.NUM_MLPS = NUM_MLPS
 
 
 

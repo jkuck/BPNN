@@ -152,7 +152,7 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
     #   - horizontal coupling factors: factor between [row_idx, col_idx] and [row_idx, col_idx+1] has index (N**2 + row_idx*(N-1) + col_idx)
     #   - vertical coupling factors: factor between [row_idx, col_idx] and [row_idx+1, col_idx] has index (N**2 + N*(N-1) + row_idx*N + col_idx)
     
-    #list of [factor_idx, var_idx] for each edge factor to variable edge
+    #list of [factor_idx, var_idx] for each edge
     factorToVar_edge_index_list = []
     # factorToVar_double_list[i] is a list of all variables that factor with index i shares an edge with
     # factorToVar_double_list[i][j] is the index of the jth variable that the factor with index i shares an edge with

@@ -11,7 +11,7 @@ class FactorGraphData(Data):
     '''
     def __init__(self, factor_potentials, factorToVar_edge_index, numVars, numFactors, 
                  edge_var_indices, state_dimensions, factor_potential_masks, ln_Z=None,
-                 factorToVar_double_list=None):
+                 factorToVar_double_list=None, gt_variable_labels=None):
         '''
         Inputs:
         - factor_potentials (torch tensor): represents all factor potentials (log base e space) and has 
@@ -38,6 +38,7 @@ class FactorGraphData(Data):
         - factorToVar_double_list (list of lists): 
             factorToVar_double_list[i] is a list of all variables that factor with index i shares an edge with
             factorToVar_double_list[i][j] is the index of the jth variable that the factor with index i shares an edge with
+        - gt_variable_labels (torch tensor): shape (# variables).  ground truth labels for each variable in the stochastic block model
         '''
         print("factor_potential_masks:", factor_potential_masks)
         print("type(factor_potential_masks):", type(factor_potential_masks))
@@ -45,6 +46,8 @@ class FactorGraphData(Data):
         print("type(edge_var_indices):", type(edge_var_indices))
         sleep(shape_check)
         super().__init__()
+        if gt_variable_labels is not None:
+            self.gt_variable_labels = gt_variable_labels
         if ln_Z is not None:
 #             print("check ln_Z:", ln_Z)
             self.ln_Z = torch.tensor([ln_Z], dtype=float)
