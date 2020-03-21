@@ -10,8 +10,7 @@ from torch.nn import Sequential as Seq, Linear, ReLU
 from utils import neg_inf_to_zero, shift_func
 
 import math
-# from loopyBP_factorGraph import FactorGraphMsgPassingLayer_NoDoubleCounting
-from loopyBP_factorGraph_2layerWorks import FactorGraphMsgPassingLayer_NoDoubleCounting
+from loopyBP_factorGraph import FactorGraphMsgPassingLayer_NoDoubleCounting
 from parameters import SHARE_WEIGHTS, BETHE_MLP
 
 class lbp_message_passing_network(nn.Module):
