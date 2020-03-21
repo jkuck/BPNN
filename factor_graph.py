@@ -14,11 +14,36 @@ class FactorGraphData(Data):
                  factorToVar_double_list=None):
         '''
         Inputs:
+        - factor_potentials (torch tensor): represents all factor potentials (log base e space) and has 
+            shape (num_factors, var_states, ..., var_states), where var_states is the number 
+            of states a variable can take (e.g. 2 for an ising model or 3 for community detection
+            with 3 communities).  Has state_dimensions + 1 total dimensions (where state_dimensions
+            is the number of dimenions in the largest factor), e.g. 3 total 
+            dimensions when the largest factor contains 2 variables.  Factors with fewer than 
+            state_dimensions dimensions have unused states set to -infinitiy (0 probability)
+        - factorToVar_edge_index (torch tensor): shape (2, num_edges), represents all edges in the factor graph.
+            factorToVar_edge_index[0, i] is the index of the factor connected by the ith edge
+            factorToVar_edge_index[1, i] is the index of the variable connected by the ith edge
+        - numVars (int): number of variables in the factor graph
+        - numFactors (int): number of factors in the factor graph
+        - edge_var_indices (torch tensor): shape (2, num_edges)
+            [0, i] indicates the index (0 to factor_degree - 1) of edge i, among all edges originating at the factor which edge i begins at
+            [1, i] IS CURRENTLY UNUSED AND BROKEN, BUT IN GENERAL FOR PYTORCH GEOMETRIC SHOULD indicate the index (0 to var_degree - 1) of edge i, among all edges ending at the variable which edge i ends at
+        - state_dimensions (int): the number of variables in the largest factor
+        - factor_potential_masks (torch tensor): same shape as factor_potentials.  All entries are 0 or 1.
+            0: represents that the corresponding location in factor_potentials is valid
+            1: represents that the corresponding location in factor_potentials is invalid and should be masked,
+               e.g. the factor has fewer than state_dimensions dimensions
         - ln_Z : natural logarithm of the partition function
         - factorToVar_double_list (list of lists): 
             factorToVar_double_list[i] is a list of all variables that factor with index i shares an edge with
             factorToVar_double_list[i][j] is the index of the jth variable that the factor with index i shares an edge with
         '''
+        print("factor_potential_masks:", factor_potential_masks)
+        print("type(factor_potential_masks):", type(factor_potential_masks))
+        print("edge_var_indices.shape:", edge_var_indices.shape)
+        print("type(edge_var_indices):", type(edge_var_indices))
+        sleep(shape_check)
         super().__init__()
         if ln_Z is not None:
 #             print("check ln_Z:", ln_Z)
