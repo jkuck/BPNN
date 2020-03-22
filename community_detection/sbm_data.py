@@ -11,7 +11,7 @@
 #this is equivalent to SpinGlassModel in learn_BP/ising_model/spin_glass_model.py
 class StochasticBlockModel:
     def __init__(self, N, P, Q, C, community_probs=None):
-    	'''
+        '''
         Sample a stochastic block model
         
         Inputs:
@@ -20,16 +20,37 @@ class StochasticBlockModel:
         - Q (float): the probability of an edge between vertices in different communities
         - C (int): the number of communities
         - community_probs (torch tensor): shape # communities, give the probability that
-        	each node belongs to each community.  Set to uniform if None is given 
-        '''    	
+			each node belongs to each community.  Set to uniform if None is given 
+        '''
         self.N = N
-		self.P = P
-		self.Q = Q
-		self.C = C
-		if community_probs is None:
-			self.community_probs = torch.tensor([1.0/C for i in range(C)])
-		# add code here for sampling node labels
-		# self.gt_variable_labels = 
+        self.p = P
+        self.q = Q
+        self.C = C
+        if community_probs is None:
+            self.community_probs = torch.tensor([1.0/C for i in range(C)])
+        labs = np.random.choice(np.arange(C), N, replace = True, p = community_probs.numpy())
+        diff_inds = np.array(list(combinations(np.arange(N), 2)))
+        lab_dct = collections.defaultdict(list)
+        ind_dct = {}
+        for i in range(N):
+            lab_dct[labs[i]].append(i)
+            ind_dct[i] = labs[i]
+        diff_inds = np.array([x for x in diff_inds if ind_dct[x[0]] != ind_dct[x[1]]])
+        same_lst = [np.array(list(combinations(lab_dct[curr], 2))) for curr in lab_dct]
+        same_inds = reduce(lambda x,y: np.concatenate((x,y), axis = 0), same_lst)
+        same_edges = same_inds[np.random.binomial(1, P, same_inds.shape[0]) == 1]
+        diff_edges = diff_inds[np.random.binomial(1, Q, diff_inds.shape[0]) == 1]
+        edges = np.sort(np.concatenate((same_edges, diff_edges), axis = 0), axis = 0)
+        #edges = np.concatenate((edges, np.flip(edges, axis = 1)), axis = 0)
+        edge_index = np.flip(edges.T, axis = 0)
+        count = collections.Counter(edge_index[1])
+        deg_lst = []
+        for i in range(num):
+            deg_lst.append([count[i]])
+
+        self.edge_index = edge_index
+        self.deg_lst = np.array(deg_lst)
+        self.gt_variable_labels = labs
 
 ######### Convert SBM to FactorGraphData #########
 # convert StochasticBlockModel to FactorGraphData representation
@@ -37,7 +58,7 @@ class StochasticBlockModel:
 # in learn_BP/ising_model/pytorch_dataset.py
 def build_factorgraph_from_sbm(sbm_model):
     '''
-    Convert a spin glass model to a factor graph pytorch representation
+    Convert a sbm model to a factor graph pytorch representation
 
     Inputs:
     - sbm_model (StochasticBlockModel): defines a stochastic block model
@@ -115,8 +136,9 @@ def build_factorgraph_from_sbm(sbm_model):
         
     return factor_graph
 
+
 def build_unary_factor(community_probs, state_dimensions, C):
-    '''
+    ''' 
     helper function for build_factorgraph_from_sbm
     create single variable factor for pytorch
 
@@ -129,13 +151,13 @@ def build_unary_factor(community_probs, state_dimensions, C):
     - factor (torch.tensor): the factor (already in logspace)
     - mask (torch.tensor): set to 0 for used locations ([:, 0, 0, ..., 0])
          set to 1 for all other unused locations
-    '''
+    ''' 
     #only use 1 dimension for a single variable factor 
     used_dimension_count = 1
     #initialize to all 0's, -infinity in log space
     factor_potential = -np.inf*torch.ones([C for i in range(state_dimensions)])
     mask = torch.zeros([C for i in range(state_dimensions)])
-
+   
 
     # set factor_potential[:, 0, 0, ..., 0] = [-f, f]
     # set all values of mask to 1, except for mask[:, 0, 0, ..., 0]
@@ -167,8 +189,8 @@ def build_pairwise_factor(p, q, state_dimensions, C):
     - factor (torch.tensor): the factor (already in logspace)
     - mask (torch.tensor): set to 0 for used locations ([:, :, 0, ..., 0])
          set to 1 for all other unused locations
-
     '''
+    
     assert(C==2), "build_pairwise_factor not implemented for > 2 communities!"
     #only use 1 dimension for a single variable factor 
     used_dimension_count = 2
@@ -178,7 +200,7 @@ def build_pairwise_factor(p, q, state_dimensions, C):
 
 
     # set factor_potential[:, :, 0, ..., 0] = [[ln(p/(2p+2q)), ln(2/(2p+2q))],
-    #                               		   [ln(q/(2p+2q)), ln(p/(2p+2q))]]
+    #										   [ln(q/(2p+2q)), ln(p/(2p+2q))]]
     # set all values of mask to 1, except for mask[:, :, 0, 0, ..., 0]
     for indices in np.ndindex(factor_potential.shape):
         junk_location = False
@@ -224,5 +246,5 @@ def build_edge_var_indices(sbm_model):
 
     edge_var_indices = torch.tensor([indices_at_source_node, indices_at_destination_node])
     return edge_var_indices
-
+'''
 
