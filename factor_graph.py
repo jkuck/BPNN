@@ -44,7 +44,6 @@ class FactorGraphData(Data):
         print("type(factor_potential_masks):", type(factor_potential_masks))
         print("edge_var_indices.shape:", edge_var_indices.shape)
         print("type(edge_var_indices):", type(edge_var_indices))
-        sleep(shape_check)
         super().__init__()
         if gt_variable_labels is not None:
             self.gt_variable_labels = gt_variable_labels
