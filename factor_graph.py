@@ -40,10 +40,6 @@ class FactorGraphData(Data):
             factorToVar_double_list[i][j] is the index of the jth variable that the factor with index i shares an edge with
         - gt_variable_labels (torch tensor): shape (# variables).  ground truth labels for each variable in the stochastic block model
         '''
-        print("factor_potential_masks:", factor_potential_masks)
-        print("type(factor_potential_masks):", type(factor_potential_masks))
-        print("edge_var_indices.shape:", edge_var_indices.shape)
-        print("type(edge_var_indices):", type(edge_var_indices))
         super().__init__()
         if gt_variable_labels is not None:
             self.gt_variable_labels = gt_variable_labels
