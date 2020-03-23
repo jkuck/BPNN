@@ -8,6 +8,12 @@
 	- other minor changes
 - make a network that doesn't have a Bethe final layer, instead just apply loss to final variable beliefs and gt node labels
 
+## Dependencies
+[mrftools](https://bitbucket.org/berthuang/mrftools/src/master/) (not required, can comment out imports)
+[https://github.com/dbtsai/libDAI](libDAI) used with Ising model experiments:
+- junction tree algorithm for obtaining the exact partition function
+- loopy belief propagation for comparison
+
 ## Training the BPNN on Ising models
 Run learn_BP_spinGlass.py with mode="train"
 
