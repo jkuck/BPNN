@@ -10,7 +10,8 @@
 
 ## Dependencies
 [mrftools](https://bitbucket.org/berthuang/mrftools/src/master/) (not required, can comment out imports)
-[https://github.com/dbtsai/libDAI](libDAI) used with Ising model experiments:
+
+[libDAI](https://github.com/dbtsai/libDAI) used with Ising model experiments:
 - junction tree algorithm for obtaining the exact partition function
 - loopy belief propagation for comparison
 
