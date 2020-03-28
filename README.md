@@ -31,6 +31,7 @@ SAT table/figures
 - Make the SAT tables in latex form from wandb results using data/wandbCSV_to_latexTable.py
 - run data/compare_BPNNvsHashing_runtimes.py
 
+Make Fig 1, aggregating BPNN/GNN/BP comparison with data/experiments/make_figure_from_table.py
 
 ## SAT data info
 - data/sat_problems_noIndSets contains SAT problems stripped of sampling sets and independent sets
