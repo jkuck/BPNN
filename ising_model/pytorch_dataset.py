@@ -3,87 +3,10 @@ from torch.utils.data import Dataset
 import numpy as np
 import torch
 
-from factor_graph import FactorGraph, FactorGraphData
+from factor_graph import FactorGraphData
 from .spin_glass_model import SpinGlassModel
 
 
-class SpinGlassDataset(Dataset):
-    #Pytorch dataset, for use with belief propagation neural networks, in learn_BP_spinGlass.py
-    def __init__(self, dataset_size, N_min, N_max, f_max, c_max, attractive_field):
-        '''
-        Inputs:
-        - N_min, N_max: ints, each model in the dataset will be a grid with shape (NxN), where 
-            N is sampled uniformly from [N_min, N_min+1, ..., N_max]
-        - f_max: float, local field parameters (theta_i) for each model in the dataset
-            will be drawn uniformly at random from [-f, f] for each node in the grid.  
-            f (for each model in the dataset) is drawn uniformly at random from [0, f_max]
-        - c: float, coupling parameters (theta_ij) for each model in the dataset
-             will be drawn uniformly at random from [0, c) for each edge in 
-             the grid. c (for each model in the dataset) is drawn uniformly at random
-             from [0, c_max]
-
-        '''
-        
-        self.dataset_size = dataset_size
-        self.N_min = N_min
-        self.N_max = N_max
-        self.f_max = f_max
-        self.c_max = c_max
-        self.attractive_field = attractive_field
-        
-        
-    def generate_problems(self, return_sg_objects):
-        '''
-        Moved to a separate function from __init__() so that we can return problems as 
-        a list of SpinGlassModels
-        
-        Inputs:
-        - return_sg_objects (bool): if True, return the spin glass models as SpinGlassModel's        
-        '''
-        self.spin_glass_problems_FGs = [] #stored as FactorGraph's
-        spin_glass_problems_SGMs = [] #stored as SpinGlassModel's
-        self.ln_partition_functions = []
-        self.lpb_partition_function_estimates = []
-        self.mrftools_lpb_partition_function_estimates = []
-        for idx in range(self.dataset_size):
-            print("creating spin glass problem", idx)
-            cur_N = random.randint(self.N_min, self.N_max)
-            cur_f = np.random.uniform(low=0, high=self.f_max)
-            cur_c = np.random.uniform(low=0, high=self.c_max)
-            cur_sg_model = SpinGlassModel(N=cur_N, f=cur_f, c=cur_c, attractive_field=self.attractive_field)
-            spin_glass_problems_SGMs.append(cur_sg_model)
-            lbp_Z_estimate = cur_sg_model.loopyBP_libdai()
-
-            mrftools_lbp_Z_estimate = cur_sg_model.loopyBP_mrftools()
-            self.mrftools_lpb_partition_function_estimates.append(mrftools_lbp_Z_estimate)
-            print("lbp libdai:", lbp_Z_estimate, "lbp mrftools:", mrftools_lbp_Z_estimate)
-            print()
-
-            cur_ln_Z = cur_sg_model.junction_tree_libdai()
-            sg_as_factor_graph = build_factorgraph_from_SpinGlassModel(cur_sg_model, pytorch_geometric=False)
-
-            self.spin_glass_problems_FGs.append(sg_as_factor_graph)
-            self.ln_partition_functions.append(cur_ln_Z)
-            self.lpb_partition_function_estimates.append(lbp_Z_estimate)
-        assert(self.dataset_size == len(self.spin_glass_problems_FGs))            
-        assert(self.dataset_size == len(self.ln_partition_functions))
-        if return_sg_objects:
-            return spin_glass_problems_SGMs
-    
-    def __len__(self):
-        return len(self.ln_partition_functions)
-
-    def __getitem__(self, index):
-        '''
-        Outputs:
-        - sg_problem (FactorGraph, defined in factor_graph.py): factor graph representation of spin glass problem
-        - ln_Z (float): natural logarithm(partition function of sg_problem)
-        '''
-        sg_problem = self.spin_glass_problems_FGs[index]
-        ln_Z = self.ln_partition_functions[index]
-        lbp_Z_estimate = self.lpb_partition_function_estimates[index]
-        mrftools_lbp_Z_estimate = self.mrftools_lpb_partition_function_estimates[index]
-        return sg_problem, ln_Z, lbp_Z_estimate, mrftools_lbp_Z_estimate
 
 def build_unary_factor(f, state_dimensions):
     '''
@@ -204,16 +127,15 @@ def build_edge_var_indices(sg_model):
     edge_var_indices = torch.tensor([indices_at_source_node, indices_at_destination_node])
     return edge_var_indices
 
-def build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=False):
+def build_factorgraph_from_SpinGlassModel(sg_model):
     '''
     Convert a spin glass model to a factor graph pytorch representation
 
     Inputs:
     - sg_model (SpinGlassModel): defines a sping glass model
-    - pytorch_geometric (bool): if True return to work with pytorch geometric dataloader
-                                if False return to work with standard pytorch dataloader
+
     Outputs:
-    - factorgraph (FactorGraph): 
+    - factorgraph (FactorGraphData): 
     '''
     state_dimensions = 2
     N = sg_model.N
@@ -230,7 +152,7 @@ def build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=False):
     #   - horizontal coupling factors: factor between [row_idx, col_idx] and [row_idx, col_idx+1] has index (N**2 + row_idx*(N-1) + col_idx)
     #   - vertical coupling factors: factor between [row_idx, col_idx] and [row_idx+1, col_idx] has index (N**2 + N*(N-1) + row_idx*N + col_idx)
     
-    #list of [factor_idx, var_idx] for each edge factor to variable edge
+    #list of [factor_idx, var_idx] for each edge
     factorToVar_edge_index_list = []
     # factorToVar_double_list[i] is a list of all variables that factor with index i shares an edge with
     # factorToVar_double_list[i][j] is the index of the jth variable that the factor with index i shares an edge with
@@ -322,22 +244,11 @@ def build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=False):
 
     ln_Z = sg_model.junction_tree_libdai()
 
-#     sg_model.loopyBP_libdai()
-    
-    
-    if pytorch_geometric:
-        factor_graph = FactorGraphData(factor_potentials=factor_potentials,
-                     factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
-                     edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks,
+    factor_graph = FactorGraphData(factor_potentials=factor_potentials,
+                 factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
+                 edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks,
 #                      ln_Z=ln_Z)
-                     ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
+                 ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
 
         
-    else:  
-        factor_graph = FactorGraph(factor_potentials=factor_potentials,
-                     factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
-                     edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks,
-                     ln_Z=ln_Z)
-    #                  ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
-
     return factor_graph

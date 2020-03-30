@@ -3,7 +3,6 @@ from torch import autograd
 from nn_models import lbp_message_passing_network
 from sat_helpers.sat_data import SatProblems, get_SATproblems_list, parse_dimacs
 from sat_helpers.libdai_utils_sat import run_loopyBP
-from factor_graph import FactorGraph
 # from torch.utils.data import DataLoader
 from torch_geometric.data import DataLoader
 import os
@@ -219,7 +218,6 @@ def train():
             exact_ln_partition_function = sat_problem.ln_Z
             optimizer.zero_grad()
 
-#             sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
             assert(sat_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
             estimated_ln_partition_function = lbp_net(sat_problem)
 
@@ -243,7 +241,6 @@ def train():
 #             for t, (sat_problem, exact_ln_partition_function) in enumerate(val_data_loader):
             for sat_problem in val_data_loader:
                 exact_ln_partition_function = sat_problem.ln_Z
-#                 sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
                 assert(sat_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
                 estimated_ln_partition_function = lbp_net(sat_problem)                
                 loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
@@ -349,7 +346,6 @@ def test():
             print("LBP:", lbp_estimate)
         exact_ln_partition_function = sat_problem.ln_Z
         # sat_problem.compute_bethe_free_energy()
-#         sat_problem = FactorGraph.init_from_dictionary(sat_problem, squeeze_tensors=True)
         t0 = resource.getrusage(resource.RUSAGE_CHILDREN).ru_utime
         ta = time.time()
         print("about to run BPNN")

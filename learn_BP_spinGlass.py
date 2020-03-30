@@ -5,9 +5,9 @@ import wandb
 import random
 
 from nn_models import lbp_message_passing_network, GIN_Network_withEdgeFeatures
-from ising_model.pytorch_dataset import SpinGlassDataset, build_factorgraph_from_SpinGlassModel
+from ising_model.pytorch_dataset import build_factorgraph_from_SpinGlassModel
 from ising_model.spin_glass_model import SpinGlassModel
-from factor_graph import FactorGraph, FactorGraphData
+from factor_graph import FactorGraphData
 # from torch.utils.data import DataLoader
 from torch_geometric.data import DataLoader as DataLoader_pytorchGeometric
 from ising_model.pytorch_geometric_data import spinGlass_to_torchGeometric
@@ -89,27 +89,28 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # N_MAX = 11
 # F_MAX = 5.0
 # C_MAX = 5.0
-N_MIN_TRAIN = 10
-N_MAX_TRAIN = 10
+N_MIN_TRAIN = 3
+N_MAX_TRAIN = 3
 F_MAX_TRAIN = .1
 C_MAX_TRAIN = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
 ATTRACTIVE_FIELD_TRAIN = True
 
-N_MIN_VAL = 10
-N_MAX_VAL = 10
+N_MIN_VAL = 3
+N_MAX_VAL = 3
 F_MAX_VAL = .1
 C_MAX_VAL = 5.0
 ATTRACTIVE_FIELD_VAL = True
 # ATTRACTIVE_FIELD_TEST = True
 
-REGENERATE_DATA = False
-DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
+REGENERATE_DATA = True
+# DATA_DIR = "/atlas/u/jkuck/learn_BP/data/spin_glass/"
+DATA_DIR = "./data/spin_glass/"
 
 
-TRAINING_DATA_SIZE = 50
-VAL_DATA_SIZE = 50#100
+TRAINING_DATA_SIZE = 2
+VAL_DATA_SIZE = 2#100
 TEST_DATA_SIZE = 200
 
 
@@ -223,14 +224,14 @@ def train():
 
     spin_glass_models_list_train = get_dataset(dataset_type='train')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_form_train = [build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=True) for sg_model in spin_glass_models_list_train]
-    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_form_train, batch_size=50)
+    sg_models_fg_from_train = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list_train]
+    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=50)
 
     
     spin_glass_models_list_val = get_dataset(dataset_type='val')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_form_val = [build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=True) for sg_model in spin_glass_models_list_val]
-    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_form_val, batch_size=50)
+    sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list_val]
+    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=50)
     
 #     with autograd.detect_anomaly():
     for e in range(EPOCH_COUNT):
@@ -368,8 +369,8 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
     #data loader for BPNN
     spin_glass_models_list = get_dataset(dataset_type=TEST_DATSET)
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_form = [build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=True) for sg_model in spin_glass_models_list]
-    data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_form, batch_size=1, shuffle=False)
+    sg_models_fg_from = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list]
+    data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from, batch_size=1, shuffle=False)
 
     #data loader for GNN
     val_data_list_GNN = [spinGlass_to_torchGeometric(sg_problem) for sg_problem in spin_glass_models_list]
@@ -564,8 +565,8 @@ def test(skip_our_model=False):
 
     spin_glass_models_list = get_dataset(dataset_type=TEST_DATSET)
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_form = [build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=True) for sg_model in spin_glass_models_list]
-    data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_form, batch_size=1)
+    sg_models_fg_from = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list]
+    data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from, batch_size=1)
     
     
     loss_func = torch.nn.MSELoss()
