@@ -3,9 +3,8 @@ import torch
 import numpy as np
 from collections import defaultdict
 from utils import dotdict, neg_inf_to_zero
-from torch_geometric.data import Data
-
-
+from torch_geometric.data import Data, Batch
+import torch_geometric
 
 
 def create_scatter_indices_helper(expansion_index, variable_cardinality, state_dimensions, offset):
@@ -375,6 +374,164 @@ def test_create_factorStates_to_varIndices(factorToVar_double_list=[[2,1], [2,3]
     print("test, factorToVar_edge_index:", factorToVar_edge_index)
     print("test, factorToVar_edge_index.shape:", factorToVar_edge_index.shape)
     
+    
+class Batch_custom(Data):
+    def __init__(self, **kwargs):
+        super(Batch_custom, self).__init__(**kwargs)
 
+    @staticmethod
+    def from_data_list(data_list, follow_batch=[]):
+        r"""Constructs a batch object from a python list holding
+        :class:`torch_geometric.data.Data` objects.
+        The assignment vector :obj:`batch` is created on the fly.
+        Additionally, creates assignment batch vectors for each key in
+        :obj:`follow_batch`."""
+
+        keys = [set(data.keys) for data in data_list]
+        keys = list(set.union(*keys))
+        assert 'batch' not in keys
+
+        batch = Batch()
+        batch.__data_class__ = data_list[0].__class__
+        batch.__slices__ = {key: [0] for key in keys}
+
+        for key in keys:
+            batch[key] = []
+
+        for key in follow_batch:
+            batch['{}_batch'.format(key)] = []
+
+        cumsum = {key: 0 for key in keys}
+        batch.batch = []
+        # we have a bipartite graph, so keep track of batches for each set of nodes
+        batch.batch_factors = [] #for factor beliefs
+        batch.batch_vars = [] #for variable beliefs
+        junk_bin_val = 0
+        for i, data in enumerate(data_list):
+            for key in data.keys:
+                item = data[key]
+                if torch.is_tensor(item) and item.dtype != torch.bool:
+#                     print("key:", key)
+#                     print("item:", item)
+#                     print("cumsum[key]:", cumsum[key])
+#                     print()
+
+                    if key == "facStates_to_varIdx":
+#                         print("a item:", item)
+#                         print("a item.shape:", item.shape)
+#                         print("cumsum[key]:", cumsum[key])                
+#                         print("cumsum[key].shape:", cumsum[key].shape)
+#                         item = item + cumsum[key]
+                        item = item.clone() #without this we edit the data for the next epoch, causing errors
+                        item[torch.where(item != -1)] = item[torch.where(item != -1)] + cumsum[key]
+#                         print("b item:", item)    
+#                         print("b item.shape:", item.shape)    
+                    else:
+                        item = item + cumsum[key]
+                if torch.is_tensor(item):
+                    size = item.size(data.__cat_dim__(key, data[key]))
+                else:
+                    size = 1
+                batch.__slices__[key].append(size + batch.__slices__[key][-1])
+                if key == "facStates_to_varIdx":
+                    num_edges_times2 = data.__inc__(key, item)
+                    junk_bin_val += num_edges_times2
+                    cumsum[key] += num_edges_times2
+                else:
+                    cumsum[key] += data.__inc__(key, item)
+                batch[key].append(item)
+                
+#                 if key == 'edge_index' or key == 'facToVar_edge_idx':
+#                     print("key:", key)
+#                     print("cumsum[key]:", cumsum[key])
+#                     print()
+                    
+                if key in follow_batch:
+                    item = torch.full((size, ), i, dtype=torch.long)
+                    batch['{}_batch'.format(key)].append(item)
+
+            num_nodes = data.num_nodes
+            if num_nodes is not None:
+                item = torch.full((num_nodes, ), i, dtype=torch.long)
+                batch.batch.append(item)
+                
+            batch.batch_factors.append(torch.full((data.numFactors, ), i, dtype=torch.long))
+            batch.batch_vars.append(torch.full((data.numVars, ), i, dtype=torch.long))            
+
+        if num_nodes is None:
+            batch.batch = None
+
+        for key in batch.keys:
+            item = batch[key][0]
+            if torch.is_tensor(item):
+#                 if key == 'edge_index' or key == 'facToVar_edge_idx':
+#                     print("1")    
+#                     print("A batch[key]:", batch[key])     
+#                     print("data_list[0].__cat_dim__(key, item):", data_list[0].__cat_dim__(key, item))
+                batch[key] = torch.cat(batch[key],
+                                       dim=data_list[0].__cat_dim__(key, item))
+                if key == "facStates_to_varIdx":
+                    batch[key][torch.where(batch[key] == -1)] = junk_bin_val
+#                 if key == 'edge_index' or key == 'facToVar_edge_idx':
+#                     print("key:", key)
+#                     print("batch[key]:", batch[key])     
+            elif isinstance(item, int) or isinstance(item, float):
+                batch[key] = torch.tensor(batch[key])
+#                 if key == 'edge_index' or key == 'facToVar_edge_idx':
+#                     print("2")
+#                     print("key:", key)
+#                     print("batch[key]:", batch[key])                
+            else:
+                raise ValueError('Unsupported attribute type')
+                
+#             if key == 'edge_index' or key == 'facToVar_edge_idx':
+#                 print("key:", key)
+#                 print("batch[key]:", batch[key])
+#                 print()                
+
+        # Copy custom data functions to batch (does not work yet):
+        # if data_list.__class__ != Data:
+        #     org_funcs = set(Data.__dict__.keys())
+        #     funcs = set(data_list[0].__class__.__dict__.keys())
+        #     batch.__custom_funcs__ = funcs.difference(org_funcs)
+        #     for func in funcs.difference(org_funcs):
+        #         setattr(batch, func, getattr(data_list[0], func))
+
+        if torch_geometric.is_debug_enabled():
+            batch.debug()
+
+        return batch.contiguous()
+
+    
+class DataLoader_custom(torch.utils.data.DataLoader):
+    #copied from pytorch-geometric, only changed to call Batch_custom
+    r"""Data loader which merges data objects from a
+    :class:`torch_geometric.data.dataset` to a mini-batch.
+
+    Args:
+        dataset (Dataset): The dataset from which to load the data.
+        batch_size (int, optional): How many samples per batch to load.
+            (default: :obj:`1`)
+        shuffle (bool, optional): If set to :obj:`True`, the data will be
+            reshuffled at every epoch. (default: :obj:`False`)
+        follow_batch (list or tuple, optional): Creates assignment batch
+            vectors for each key in the list. (default: :obj:`[]`)
+    """
+
+    def __init__(self,
+                 dataset,
+                 batch_size=1,
+                 shuffle=False,
+                 follow_batch=[],
+                 **kwargs):
+        super(DataLoader_custom, self).__init__(
+            dataset,
+            batch_size,
+            shuffle,
+            collate_fn=lambda data_list: Batch_custom.from_data_list(
+                data_list, follow_batch),
+            **kwargs)
+
+    
 if __name__ == "__main__":
     test_create_factorStates_to_varIndices()

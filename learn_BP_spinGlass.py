@@ -9,7 +9,9 @@ from ising_model.pytorch_dataset import build_factorgraph_from_SpinGlassModel
 from ising_model.spin_glass_model import SpinGlassModel
 from factor_graph import FactorGraphData
 # from torch.utils.data import DataLoader
-from torch_geometric.data import DataLoader as DataLoader_pytorchGeometric
+# from torch_geometric.data import DataLoader as DataLoader_pytorchGeometric
+from factor_graph import DataLoader_custom as DataLoader_pytorchGeometric
+
 from ising_model.pytorch_geometric_data import spinGlass_to_torchGeometric
 
 
