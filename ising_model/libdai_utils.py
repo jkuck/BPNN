@@ -3,6 +3,10 @@ import numpy as np
 
 # Atlas
 LIBDAI_SWIG_DIRECTORY = '/atlas/u/jkuck/libdai2/swig/'
+# LIBDAI_SWIG_DIRECTORY = '/atlas/u/jkuck/libdai_reproduce2/swig/'
+
+
+
 # Local
 # LIBDAI_SWIG_DIRECTORY = '/Users/jkuck/research/libdai/swig'
 sys.path.insert(0, LIBDAI_SWIG_DIRECTORY)
@@ -275,6 +279,11 @@ def run_loopyBP(sg_model, maxiter, updates="SEQRND", damping=None):
 
     # Report log partition sum of sg_FactorGraph, approximated by the belief propagation algorithm
     ln_z_estimate = bp.logZ()
+    
+#     print(type(bp.belief(sg_FactorGraph.var(0))))
+#     print(bp.belief(sg_FactorGraph.var(0))[0])
+#     sleep(aslfkdj)
+    
     return ln_z_estimate
 
 

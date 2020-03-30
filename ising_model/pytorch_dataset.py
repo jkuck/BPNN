@@ -322,6 +322,9 @@ def build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=False):
 
     ln_Z = sg_model.junction_tree_libdai()
 
+#     sg_model.loopyBP_libdai()
+    
+    
     if pytorch_geometric:
         factor_graph = FactorGraphData(factor_potentials=factor_potentials,
                      factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
