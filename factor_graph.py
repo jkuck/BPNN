@@ -1,3 +1,4 @@
+import re
 import torch
 import numpy as np
 from collections import defaultdict
@@ -170,6 +171,37 @@ class FactorGraph(dotdict):
 
 #######################
 
+def create_scatter_indices_helper(expansion_index, variable_cardinality, state_dimensions, offset):
+    '''
+    Inputs:
+    - expansion_index (int): 
+    - 
+    - 
+    - offset (int): add this value to every index
+    '''
+    l = torch.tensor([i + offset for i in range(variable_cardinality**state_dimensions)])
+    l_shape = [variable_cardinality for i in range(state_dimensions)]
+    l = l.reshape(l_shape)
+    t = torch.tensor(l)
+    t = t.transpose(expansion_index, 0)
+    return t.flatten()
+
+def create_scatter_indices_varToFactorMsgs(original_indices, variable_cardinality=2, state_dimensions=2):
+    #When sending variable to factor messages, variable beliefs must be expanded to have extra redundant dimensions.
+    #The approach is to expand all variable beliefs in all outgoing messages, then transpose each belief appropriately 
+    #so that the variable it represents lines up in the correct dimension of the factor each message is sent to.
+    #This function creates indices, to be used with torch_scatter, to perform this functionality.
+    assert((original_indices < state_dimensions).all())
+    scatter_indices_list = []
+    for position, index in enumerate(original_indices):
+        cur_offset = position*(variable_cardinality**state_dimensions)
+        cur_indices = create_scatter_indices_helper(expansion_index=index, variable_cardinality=variable_cardinality, 
+                          state_dimensions=state_dimensions, offset=cur_offset)
+        scatter_indices_list.append(cur_indices)
+    scatter_indices = torch.cat(scatter_indices_list)
+    return scatter_indices
+
+
 class FactorGraphData(Data):
     '''
     Representation of a factor graph
@@ -210,6 +242,9 @@ class FactorGraphData(Data):
         else:
             self.facToVar_edge_idx = factorToVar_edge_index
 
+#         print("facStates_to_varIdx.shape:", self.facStates_to_varIdx.shape)
+#         print("facToVar_edge_idx.shape:", self.facToVar_edge_idx.shape)
+#         sleep(temp)
         self.edge_index = self.facToVar_edge_idx #hack for batching, see learn_BP_spinGlass.py
         # print("factorToVar_edge_index.shape:", factorToVar_edge_index.shape)
         # print("factorToVar_edge_index.shape:", factorToVar_edge_index.shape)
@@ -236,7 +271,7 @@ class FactorGraphData(Data):
         self.edge_var_indices = edge_var_indices
         assert(self.facToVar_edge_idx.shape == self.edge_var_indices.shape)
         
-
+        self.varToFactorMsg_scatter_indices = create_scatter_indices_varToFactorMsgs(original_indices=self.edge_var_indices[0, :], variable_cardinality=2, state_dimensions=state_dimensions)
 
         #1 signifies an invalid location (e.g. a dummy dimension in a factor), 0 signifies a valid location 
         self.factor_potential_masks = factor_potential_masks
@@ -247,6 +282,9 @@ class FactorGraphData(Data):
         self.prv_factorToVar_messages = prv_factorToVar_messages
         self.prv_factor_beliefs = prv_factor_beliefs
         self.prv_var_beliefs = prv_var_beliefs
+        
+        assert(self.prv_factor_beliefs.size(0) == self.numFactors)
+        assert(self.prv_var_beliefs.size(0) == self.numVars)        
 #         print("added prv_varToFactor_messages!!1234")
 #         print("prv_varToFactor_messages:", prv_varToFactor_messages)
 #         sleep(temp23)
@@ -256,6 +294,41 @@ class FactorGraphData(Data):
 #             else:
 #                 print(attr, value)
 #         sleep(check_types)
+
+
+    def __inc__(self, key, value):
+#         if bool(re.search('(index|face)', key)):
+#             print('re evaluated True, key:', key)#, 'value:', value)
+#         else:
+#             print('re evaluated False, key:', key)#, 'value:', value)            
+#         return self.num_nodes if bool(re.search('(index|face)', key)) else 0
+        if key == 'facStates_to_varIdx':
+            return torch.tensor([2*self.edge_var_indices.size(1)]) #2*(number of edges)
+        elif key == 'varToFactorMsg_scatter_indices':
+            return torch.tensor([self.varToFactorMsg_scatter_indices.size(0)])
+        elif key == 'edge_index' or key == 'facToVar_edge_idx':
+#             return torch.tensor([self.numFactors, self.numVars])
+#             print('hi1, key:', key)
+            return torch.tensor([self.prv_factor_beliefs.size(0), self.prv_var_beliefs.size(0)]).unsqueeze(dim=1)
+#         elif key == 'state_dimensions':
+#             return torch.tensor([0]).unsqueeze(dim=1)
+        elif key == 'edge_var_indices':
+#             print("hi")
+#             sleep(whew)
+            return torch.tensor([0, 0]).unsqueeze(dim=1)
+
+        else:
+#             print('hi2, key:', key)
+            return super(FactorGraphData, self).__inc__(key, value)
+
+    def __cat_dim__(self, key, value):
+        if key == 'facToVar_edge_idx' or key == 'edge_var_indices':
+            return -1
+        else:
+            return super(FactorGraphData, self).__cat_dim__(key, value)
+
+
+
 
     def create_factorStates_to_varIndices(self, factorToVar_double_list):
         '''
@@ -282,7 +355,8 @@ class FactorGraphData(Data):
         factorStates_to_varIndices_list = []
         factorToVar_edge_index_list = []
         
-        junk_bin = 2*numMsgs
+#         junk_bin = 2*numMsgs
+        junk_bin = -1 #new junk bin for batching
         zeros_vec = torch.zeros(2**self.state_dimensions)
         
         msg_idx = 0

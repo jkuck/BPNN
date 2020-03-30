@@ -19,6 +19,7 @@ import matplotlib
 import numpy as np
 import parameters
 from parameters import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, BETHE_MLP, NUM_MLPS
+import cProfile 
 
 ##########################
 ##### Run me on Atlas
@@ -67,7 +68,7 @@ GNN_trained_model_path = './wandb/run-20200219_051810-bp7hke44/model.pt' #locati
 
 # BPNN_trained_model_path = './wandb/run-20200219_020545-j2ef9bvp/model.pt'
 
-USE_WANDB = True
+USE_WANDB = False
 os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 ##########################
 ####### Training PARAMETERS #######
@@ -136,23 +137,24 @@ else:
 
 
 ##########################
-wandb.init(project="learnBP_spinGlass")
-wandb.config.epochs = EPOCH_COUNT
-wandb.config.N_MIN_TRAIN = N_MIN_TRAIN
-wandb.config.N_MAX_TRAIN = N_MAX_TRAIN
-wandb.config.F_MAX_TRAIN = F_MAX_TRAIN
-wandb.config.C_MAX_TRAIN = C_MAX_TRAIN
-wandb.config.ATTRACTIVE_FIELD_TRAIN = ATTRACTIVE_FIELD_TRAIN
-wandb.config.TRAINING_DATA_SIZE = TRAINING_DATA_SIZE
-wandb.config.alpha = alpha
-wandb.config.alpha2 = alpha2
-wandb.config.SHARE_WEIGHTS = SHARE_WEIGHTS
-wandb.config.BETHE_MLP = BETHE_MLP
-wandb.config.MSG_PASSING_ITERS = MSG_PASSING_ITERS
-wandb.config.STEP_SIZE = STEP_SIZE
-wandb.config.LR_DECAY = LR_DECAY
-wandb.config.LEARNING_RATE = LEARNING_RATE
-wandb.config.NUM_MLPS = NUM_MLPS
+if USE_WANDB:
+    wandb.init(project="learnBP_spinGlass")
+    wandb.config.epochs = EPOCH_COUNT
+    wandb.config.N_MIN_TRAIN = N_MIN_TRAIN
+    wandb.config.N_MAX_TRAIN = N_MAX_TRAIN
+    wandb.config.F_MAX_TRAIN = F_MAX_TRAIN
+    wandb.config.C_MAX_TRAIN = C_MAX_TRAIN
+    wandb.config.ATTRACTIVE_FIELD_TRAIN = ATTRACTIVE_FIELD_TRAIN
+    wandb.config.TRAINING_DATA_SIZE = TRAINING_DATA_SIZE
+    wandb.config.alpha = alpha
+    wandb.config.alpha2 = alpha2
+    wandb.config.SHARE_WEIGHTS = SHARE_WEIGHTS
+    wandb.config.BETHE_MLP = BETHE_MLP
+    wandb.config.MSG_PASSING_ITERS = MSG_PASSING_ITERS
+    wandb.config.STEP_SIZE = STEP_SIZE
+    wandb.config.LR_DECAY = LR_DECAY
+    wandb.config.LEARNING_RATE = LEARNING_RATE
+    wandb.config.NUM_MLPS = NUM_MLPS
 
 
 
@@ -199,10 +201,10 @@ def get_dataset(dataset_type):
             spin_glass_models_list = pickle.load(f)
     return spin_glass_models_list
  
-device = torch.device('cpu')
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS,\
-                                      msg_passing_iters=MSG_PASSING_ITERS, device=None)
+                                      msg_passing_iters=MSG_PASSING_ITERS, device=None).to(device)
 
 lbp_net = lbp_net.to(device)
 
@@ -222,20 +224,42 @@ def train():
     spin_glass_models_list_train = get_dataset(dataset_type='train')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
     sg_models_fg_form_train = [build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=True) for sg_model in spin_glass_models_list_train]
-    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_form_train, batch_size=1)
+    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_form_train, batch_size=50)
 
     
     spin_glass_models_list_val = get_dataset(dataset_type='val')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
     sg_models_fg_form_val = [build_factorgraph_from_SpinGlassModel(sg_model, pytorch_geometric=True) for sg_model in spin_glass_models_list_val]
-    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_form_val, batch_size=1)
+    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_form_val, batch_size=50)
     
-    # with autograd.detect_anomaly():
+#     with autograd.detect_anomaly():
     for e in range(EPOCH_COUNT):
         epoch_loss = 0
         optimizer.zero_grad()
         losses = []
+        count = 0
         for spin_glass_problem in train_data_loader_pytorchGeometric: #pytorch geometric form
+#             print("spin_glass_problem.ln_Z:", spin_glass_problem.ln_Z)
+#             print("spin_glass_problem.state_dimensions:", spin_glass_problem.state_dimensions)
+#             print("spin_glass_problem.factor_potentials :", spin_glass_problem.factor_potentials )
+#             print("spin_glass_problem.facStates_to_varIdx:", spin_glass_problem.facStates_to_varIdx)
+#             print("spin_glass_problem.facToVar_edge_idx:", spin_glass_problem.facToVar_edge_idx)
+#             print("spin_glass_problem.edge_index :", spin_glass_problem.edge_index )
+#             print("spin_glass_problem.factor_degrees:", spin_glass_problem.factor_degrees)
+#             print("spin_glass_problem.var_degrees:", spin_glass_problem.var_degrees)
+#             print("spin_glass_problem.numVars:", spin_glass_problem.numVars)
+#             print("spin_glass_problem.numFactors:", spin_glass_problem.numFactors)
+#             print("spin_glass_problem.edge_var_indices:", spin_glass_problem.edge_var_indices)
+#             print("spin_glass_problem.factor_potential_masks :", spin_glass_problem.factor_potential_masks )
+#             print("spin_glass_problem.prv_varToFactor_messages:", spin_glass_problem.prv_varToFactor_messages)
+#             print("spin_glass_problem.prv_factorToVar_messages:", spin_glass_problem.prv_factorToVar_messages)
+#             print("spin_glass_problem.prv_factor_beliefs:", spin_glass_problem.prv_factor_beliefs)
+#             print("spin_glass_problem.prv_var_beliefs:", spin_glass_problem.prv_var_beliefs)
+#             count += 1
+#             if count == 1:
+#                 sleep(debug)
+            
+            
 #             print("spin_glass_problem.ln_Z.shape:", spin_glass_problem.ln_Z.shape)
 #             print("spin_glass_problem.factor_potentials.shape:", spin_glass_problem.factor_potentials.shape)
 #             print("spin_glass_problem.facToVar_edge_idx.shape:", spin_glass_problem.facToVar_edge_idx.shape)
@@ -243,46 +267,71 @@ def train():
 #             print("spin_glass_problem.edge_index.shape:", spin_glass_problem.edge_index.shape)
 #             print("-"*80)
 #             sleep(shape_check)
-            spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
 
+#             print("spin_glass_problem.edge_index.shape:", spin_glass_problem.edge_index.shape)  
+#             print("spin_glass_problem.facToVar_edge_idx.shape:", spin_glass_problem.facToVar_edge_idx.shape)
+#             sleep(tempaslkdfjsal)
+
+            spin_glass_problem = spin_glass_problem.to(device)
+#             spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
+            spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
+        
 #             spin_glass_problem = spin_glass_problem.to(device)
             exact_ln_partition_function = spin_glass_problem.ln_Z
             assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
-            
+
             estimated_ln_partition_function = lbp_net(spin_glass_problem)
 
-            # print("estimated_ln_partition_function:", estimated_ln_partition_function)
-            # print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
-            # print("exact_ln_partition_function:", exact_ln_partition_function)
+#             print("estimated_ln_partition_function:", estimated_ln_partition_function)
+#             print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
+
+#             print("exact_ln_partition_function:", exact_ln_partition_function)
             # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
 #             print(estimated_ln_partition_function.device, exact_ln_partition_function.device)
-            loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
-            epoch_loss += loss
+
+#             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
+            loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
+#             print("loss:", loss)
+#             sleep(check_loss)
+            debug = False
+            if debug:
+                for idx, val in enumerate(estimated_ln_partition_function):
+                    cur_loss = loss_func(val, exact_ln_partition_function.float()[idx])
+#                     print("cur_loss between", val, "and", exact_ln_partition_function.float()[idx], "is:", cur_loss)
+                    epoch_loss += cur_loss
+            else:
+                epoch_loss += loss
             # print("loss:", loss)
             # print()
             losses.append(loss.item())
-            
+
         epoch_loss.backward()
         # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
         optimizer.step()
         scheduler.step()
-                    
-        
+
+
         if e % PRINT_FREQUENCY == 0:
+            print("epoch loss =", epoch_loss)
             print("root mean squared training error =", np.sqrt(np.mean(losses)))
-     
+
         if e % VAL_FREQUENCY == 0:
             val_losses = []
             for spin_glass_problem in val_data_loader_pytorchGeometric: #pytorch geometric form
-#                 spin_glass_problem = spin_glass_problem.to(device)
+                spin_glass_problem = spin_glass_problem.to(device)
+                spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
+
+
                 exact_ln_partition_function = spin_glass_problem.ln_Z   
-                assert(spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
-
+                assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all()), (spin_glass_problem.state_dimensions, MAX_FACTOR_STATE_DIMENSIONS)
+                spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
+                
                 estimated_ln_partition_function = lbp_net(spin_glass_problem)            
-                loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
-                # print("estimated_ln_partition_function:", estimated_ln_partition_function)
-                # print("exact_ln_partition_function:", exact_ln_partition_function)
-
+                loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
+#                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
+#                 print("exact_ln_partition_function:", exact_ln_partition_function)
+#                 print("loss:", loss)
+                
                 val_losses.append(loss.item())
             print("root mean squared validation error =", np.sqrt(np.mean(val_losses)))
             print()
@@ -632,6 +681,8 @@ def create_many_ising_model_figures(results_dir=ROOT_DIR + '/data/experiments/' 
 if __name__ == "__main__":
     if MODE == "train":
         train()
+#         cProfile.run("train()") 
+        
     elif MODE == "test":
 #         test()
 #         create_ising_model_figure()
