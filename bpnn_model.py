@@ -273,7 +273,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #         print("factor_graph.state_dimensions:", factor_graph.state_dimensions)
         expansion_list = [2 for i in range(factor_graph.state_dimensions - 1)] + [-1,] #messages have states for one variable, add dummy dimensions for the other variables in factors
 
-        fast_expansion = False
+        fast_expansion = True
         if fast_expansion:
     #         new_shape = list(varToFactor_messages.shape[1:]) + expansion_list
             new_shape = [varToFactor_messages.shape[0]] + expansion_list
@@ -305,21 +305,46 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
             new_shape = [varToFactor_messages.shape[0]] + expansion_list
 
-            print("expansion_list:", expansion_list)
-            print("new_shape:", new_shape)
-            print("varToFactor_messages.shape:", varToFactor_messages.shape)
-            
+        
+        
+            #THIS WORKS
+            varToFactor_messages_expand_works = varToFactor_messages.unsqueeze(dim=-1).expand(list(varToFactor_messages.shape)+[2])
+            varToFactor_messages_expand_flatten_works = varToFactor_messages_expand_works.flatten()
+            varToFactor_expandedMessages_works = scatter_('add', src=varToFactor_messages_expand_flatten_works, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)  
+            varToFactor_expandedMessages_works = varToFactor_expandedMessages_works.reshape(new_shape)            
+        
+            #THIS DOESN"T WORK
+            fast_expansion_list = [2 for i in range(factor_graph.state_dimensions.item() - 1)] + list(varToFactor_messages.shape)
 #             varToFactor_messages_expand_flatten = varToFactor_messages.unsqueeze(dim=-1).expand(list(varToFactor_messages.shape)+[2]).flatten()
-            varToFactor_messages_expand_flatten = varToFactor_messages.expand(new_shape).flatten()   
-            print("expansion_list:", expansion_list)
-            print("varToFactor_messages_expand_flatten.shape:", varToFactor_messages_expand_flatten.shape)
-            print("varToFactor_messages.shape:", varToFactor_messages.shape)            
-            print("varToFactor_expandedMessages.shape:", varToFactor_expandedMessages.shape)
-            print("factor_graph.varToFactorMsg_scatter_indices.shape:", factor_graph.varToFactorMsg_scatter_indices.shape)
-            varToFactor_expandedMessages2 = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)  
+            varToFactor_messages_expand = varToFactor_messages.expand(fast_expansion_list)
+#             for t_idx in range(factor_graph.state_dimensions - 1):
+#                 print("debug 131 swapping dimension:", t_idx, "with dimension:", -factor_graph.state_dimensions+1+t_idx)
+#                 varToFactor_messages_expand = varToFactor_messages_expand.transpose(t_idx, -factor_graph.state_dimensions+1+t_idx)
+            varToFactor_messages_expand = varToFactor_messages_expand.transpose(-2, 0).transpose(-1, 1)
+            varToFactor_messages_expand_flatten = varToFactor_messages_expand.flatten()
+
+            
+#             print("asfas", '-'*80)
+#             print("list(varToFactor_messages.shape)+[2]:", list(varToFactor_messages.shape)+[2])
+#             print("varToFactor_messages.unsqueeze(dim=-1).shape:", varToFactor_messages.unsqueeze(dim=-1).shape)
+#             print("fast_expansion_list:", fast_expansion_list)
+#             print("varToFactor_messages.shape:", varToFactor_messages.shape)
+            
+#             print("varToFactor_messages_expand_works:", varToFactor_messages_expand_works)
+#             print("varToFactor_messages_expand:", varToFactor_messages_expand)
+#             print("varToFactor_messages_expand_works.shape:", varToFactor_messages_expand_works.shape)
+#             print("varToFactor_messages_expand.shape:", varToFactor_messages_expand.shape)            
+#             sleep(debugasldkfjlsk)
+            
+            
+            varToFactor_expandedMessages2 = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)            
             varToFactor_expandedMessages2 = varToFactor_expandedMessages2.reshape(new_shape)
-#             print("varToFactor_expandedMessages2:", varToFactor_expandedMessages2)
-#             print("varToFactor_expandedMessages2.shape:", varToFactor_expandedMessages2.shape)        
+            
+#             print('varToFactor_expandedMessages2:', varToFactor_expandedMessages2)
+#             print('varToFactor_expandedMessages:', varToFactor_expandedMessages)              
+#             print('varToFactor_expandedMessages2.shape:', varToFactor_expandedMessages2.shape)
+#             print('varToFactor_expandedMessages.shape:', varToFactor_expandedMessages.shape)              
+       
             assert((varToFactor_expandedMessages2 == varToFactor_expandedMessages).all())
 #             sleep(check_new_code)
 
