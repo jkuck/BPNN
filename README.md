@@ -9,6 +9,8 @@
 - make a network that doesn't have a Bethe final layer, instead just apply loss to final variable beliefs and gt node labels
 
 ## Dependencies
+[PyTorch](https://pytorch.org/get-started/locally/)
+[PyTorch Geometric](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html)
 [mrftools](https://bitbucket.org/berthuang/mrftools/src/master/) (not required, can comment out imports)  
 [libDAI](https://github.com/dbtsai/libDAI) used with Ising model experiments:
 - junction tree algorithm for obtaining the exact partition function
