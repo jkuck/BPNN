@@ -52,8 +52,8 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 1000
-VAL_DATA_SIZE = 1000#100
+TRAINING_DATA_SIZE = 2
+VAL_DATA_SIZE = 2#100
 TEST_DATA_SIZE = 1000
 
 ########## info by problem groups and categories ##########
@@ -122,7 +122,7 @@ LR_DECAY=.5
 LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
 ##########################
 
-# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
+os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 # wandb.init(project="learn_BP_sat2")
 wandb.init(project="test")
 wandb.config.epochs = EPOCH_COUNT
@@ -140,10 +140,12 @@ wandb.config.LR_DECAY = LR_DECAY
 wandb.config.LEARNING_RATE = LEARNING_RATE
 wandb.config.NUM_MLPS = NUM_MLPS
 
-
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # tiny_set = ["10.sk_1_46", "27.sk_3_32"]
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS)
 # lbp_net.double()
+lbp_net = lbp_net.to(device)
+
 
 
 if True:#train val from the same distribution
@@ -215,6 +217,7 @@ def train():
 #         for t, (sat_problem, exact_ln_partition_function) in enumerate(train_data_loader):
         losses = []
         for sat_problem in train_data_loader:
+            sat_problem = sat_problem.to(device)
             exact_ln_partition_function = sat_problem.ln_Z
             optimizer.zero_grad()
 
@@ -240,6 +243,7 @@ def train():
             val_losses = []
 #             for t, (sat_problem, exact_ln_partition_function) in enumerate(val_data_loader):
             for sat_problem in val_data_loader:
+                sat_problem = sat_problem.to(device)
                 exact_ln_partition_function = sat_problem.ln_Z
                 assert(sat_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
                 estimated_ln_partition_function = lbp_net(sat_problem)                
@@ -336,6 +340,7 @@ def test():
 #     for sat_problem, exact_ln_partition_function in test_data_loader:
     runtimes = []
     for idx, sat_problem in enumerate(test_data_loader):
+        sat_problem = sat_problem.to(device)
         problem_names.append(test_problems[idx])
         runLBP = False
         if runLBP:
@@ -413,5 +418,5 @@ def test():
 
 
 if __name__ == "__main__":
-#     train()
-    test()
+    train()
+#     test()

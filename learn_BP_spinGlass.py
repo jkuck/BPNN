@@ -207,7 +207,7 @@ def get_dataset(dataset_type):
 # device = torch.device('cpu')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS,\
-                                      msg_passing_iters=MSG_PASSING_ITERS, device=None).to(device)
+                                      msg_passing_iters=MSG_PASSING_ITERS, device=None)
 
 lbp_net = lbp_net.to(device)
 
@@ -279,7 +279,6 @@ def train():
 #             spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
             spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
         
-#             spin_glass_problem = spin_glass_problem.to(device)
             exact_ln_partition_function = spin_glass_problem.ln_Z
             assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
 

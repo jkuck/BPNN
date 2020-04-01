@@ -376,6 +376,7 @@ def test_create_factorStates_to_varIndices(factorToVar_double_list=[[2,1], [2,3]
     
     
 class Batch_custom(Data):
+    #custom incrementing of values for bipartite factor graph with batching
     def __init__(self, **kwargs):
         super(Batch_custom, self).__init__(**kwargs)
 
