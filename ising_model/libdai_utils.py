@@ -2,7 +2,8 @@ import sys
 import numpy as np
 
 # Atlas
-LIBDAI_SWIG_DIRECTORY = '/atlas/u/jkuck/libdai2/swig/'
+# LIBDAI_SWIG_DIRECTORY = '/atlas/u/jkuck/libdai2/swig/'
+LIBDAI_SWIG_DIRECTORY = '/workspace/libdai/swig/'
 # LIBDAI_SWIG_DIRECTORY = '/atlas/u/jkuck/libdai_reproduce2/swig/'
 
 
@@ -14,7 +15,7 @@ import dai
 import os,sys,inspect
 current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parent_dir = os.path.dirname(current_dir)
-sys.path.insert(0, parent_dir) 
+sys.path.insert(0, parent_dir)
 from parameters import LIBDAI_LBP_ITERS
 from parameters import LIBDAI_MEAN_FIELD_ITERS
 # from ..parameters import LIBDAI_LBP_ITERS
@@ -27,7 +28,7 @@ def build_single_node_factor(variables, fixed_variables, var_idx, f):
     - variables: (list of dai.Var) available variables.
     - fixed_variables: (dictionary)
         key: (int) 0 to N-1 variable index
-        value: (int) -1 or 1, the value the variable is fixed to                 
+        value: (int) -1 or 1, the value the variable is fixed to
     - var_idx: (int) variable index, 0 to N-1, for this factor's node
     - f: (float) local field at this node
 
@@ -49,10 +50,10 @@ def build_pairwise_factor(variables, fixed_variables, var_idx1, var_idx2, c):
     copied from https://github.com/jkuck/mrf_nesting_ub/blob/master/Factor_Graphs/libdai_ising_model.py
 
     Inputs:
-    - variables: (list of dai.Var) available variables. 
+    - variables: (list of dai.Var) available variables.
     - fixed_variables: (dictionary)
         key: (int) 0 to N-1 variable index
-        value: (int) -1 or 1, the value the variable is fixed to                 
+        value: (int) -1 or 1, the value the variable is fixed to
     - var_idx1: (int) variable index, 0 to N-1, for the first node in this factor
     - var_idx2: (int) variable index, 0 to N-1, for the second node in this factor
     - c: (float) coupling strength for this factor
@@ -68,18 +69,18 @@ def build_pairwise_factor(variables, fixed_variables, var_idx1, var_idx2, c):
         factor[0] = np.exp(fixed_variables[var_idx1]*fixed_variables[var_idx2]*c)
     #this 'pairwise' factor is over one fixed variable and one binary variable and has 2 states
     elif (var_idx1 in fixed_variables) and (var_idx2 not in fixed_variables):
-        factor[0] = np.exp(-fixed_variables[var_idx1]*c) # V2 = -1 
-        factor[1] = np.exp(fixed_variables[var_idx1]*c) # V2 = -1 
+        factor[0] = np.exp(-fixed_variables[var_idx1]*c) # V2 = -1
+        factor[1] = np.exp(fixed_variables[var_idx1]*c) # V2 = -1
     #this 'pairwise' factor is over one fixed variable and one binary variable and has 2 states
     elif (var_idx1 not in fixed_variables) and (var_idx2 in fixed_variables):
-        factor[0] = np.exp(-fixed_variables[var_idx2]*c) # V1 = -1 
-        factor[1] = np.exp(fixed_variables[var_idx2]*c) # V1 = -1 
+        factor[0] = np.exp(-fixed_variables[var_idx2]*c) # V1 = -1
+        factor[1] = np.exp(fixed_variables[var_idx2]*c) # V1 = -1
     #this pairwise factor is over two binary variables and has 4 states
     elif (var_idx1 not in fixed_variables) and (var_idx2 not in fixed_variables):
-        factor[0] = np.exp(c)  # V1 = -1, V2 = -1 
-        factor[1] = np.exp(-c) # V1 = -1, V2 =  1 
-        factor[2] = np.exp(-c) # V1 =  1, V2 = -1 
-        factor[3] = np.exp(c)  # V1 =  1, V2 =  1 
+        factor[0] = np.exp(c)  # V1 = -1, V2 = -1
+        factor[1] = np.exp(-c) # V1 = -1, V2 =  1
+        factor[2] = np.exp(-c) # V1 =  1, V2 = -1
+        factor[3] = np.exp(c)  # V1 =  1, V2 =  1
     else:
         assert(False), "This shouldn't happen!!?"
     return factor
@@ -94,7 +95,7 @@ def build_higher_order_factor(variables, fixed_variables, var_idx1, var_idx2, c)
     - variables: (list of dai.Var) available variables.
     - fixed_variables: (dictionary)
         key: (int) 0 to N-1 variable index
-        value: (int) -1 or 1, the value the variable is fixed to                 
+        value: (int) -1 or 1, the value the variable is fixed to
     - var_idx1: (int) variable index, 0 to N-1, for the first node in this factor
     - var_idx2: (int) variable index, 0 to N-1, for the second node in this factor
     - c: (float) coupling strength for this factor
@@ -238,7 +239,7 @@ def junction_tree(sg_model, verbose=False):
 def run_loopyBP(sg_model, maxiter, updates="SEQRND", damping=None):
     if maxiter is None:
         maxiter=LIBDAI_LBP_ITERS
-    
+
     sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
     # sg_FactorGraph = build_graph_from_clique_ising_model(sg_model, fixed_variables={})
 
@@ -279,18 +280,18 @@ def run_loopyBP(sg_model, maxiter, updates="SEQRND", damping=None):
 
     # Report log partition sum of sg_FactorGraph, approximated by the belief propagation algorithm
     ln_z_estimate = bp.logZ()
-    
+
 #     print(type(bp.belief(sg_FactorGraph.var(0))))
 #     print(bp.belief(sg_FactorGraph.var(0))[0])
 #     sleep(aslfkdj)
-    
+
     return ln_z_estimate
 
 
 def run_mean_field(sg_model, maxiter):
     if maxiter is None:
         maxiter=LIBDAI_MEAN_FIELD_ITERS
-    
+
     sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
     # sg_FactorGraph = build_graph_from_clique_ising_model(sg_model, fixed_variables={})
 
@@ -344,7 +345,7 @@ def run_inference(sg_model):
     # Set some constants
     maxiter = 10000
     tol = 1e-9
-    verb = 1    
+    verb = 1
     # Store the constants in a PropertySet object
     opts = dai.PropertySet()
     opts["maxiter"] = str(maxiter)   # Maximum number of iterations

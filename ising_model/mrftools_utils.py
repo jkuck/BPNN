@@ -1,9 +1,9 @@
-import mrftools
+# import mrftools
 import numpy as np
 import os,sys,inspect
 current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parent_dir = os.path.dirname(current_dir)
-sys.path.insert(0, parent_dir) 
+sys.path.insert(0, parent_dir)
 from parameters import MRFTOOLS_LBP_ITERS
 # from ..parameters import MRFTOOLS_LBP_ITERS
 
@@ -17,7 +17,7 @@ def build_single_node_factor(mn, fixed_variables, var_idx, f):
     - mn: (mrftools.MarkovNet)
     - fixed_variables: (dictionary)
         key: (int) 0 to N-1 variable index
-        value: (int) -1 or 1, the value the variable is fixed to                 
+        value: (int) -1 or 1, the value the variable is fixed to
     - var_idx: (int) variable index, 0 to N-1, for this factor's node
     - f: (float) local field at this node
 
@@ -43,7 +43,7 @@ def build_pairwise_factor(mn, fixed_variables, var_idx1, var_idx2, c):
     - mn: (mrftools.MarkovNet)
     - fixed_variables: (dictionary)
         key: (int) 0 to N-1 variable index
-        value: (int) -1 or 1, the value the variable is fixed to                 
+        value: (int) -1 or 1, the value the variable is fixed to
     - var_idx1: (int) variable index, 0 to N-1, for the first node in this factor
     - var_idx2: (int) variable index, 0 to N-1, for the second node in this factor
     - c: (float) coupling strength for this factor
@@ -144,5 +144,5 @@ def run_LBP(sg_model, max_iter=MRFTOOLS_LBP_ITERS):
 
     # print("Bethe energy functional: %f" % bp.compute_energy_functional())
 
-    lbp_estimate = bp.compute_energy_functional() 
+    lbp_estimate = bp.compute_energy_functional()
     return lbp_estimate
