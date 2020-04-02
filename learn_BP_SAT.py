@@ -4,7 +4,8 @@ from nn_models import lbp_message_passing_network
 from sat_helpers.sat_data import SatProblems, get_SATproblems_list, parse_dimacs
 from sat_helpers.libdai_utils_sat import run_loopyBP
 # from torch.utils.data import DataLoader
-from torch_geometric.data import DataLoader
+# from torch_geometric.data import DataLoader
+from factor_graph import DataLoader_custom as DataLoader
 import os
 import matplotlib.pyplot as plt
 import matplotlib
@@ -52,8 +53,8 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 2
-VAL_DATA_SIZE = 2#100
+TRAINING_DATA_SIZE = 20
+VAL_DATA_SIZE = 1000#100
 TEST_DATA_SIZE = 1000
 
 ########## info by problem groups and categories ##########
@@ -88,8 +89,8 @@ TEST_DATA_SIZE = 1000
 # PROBLEM_CATEGORY_TRAIN = ['problems_75', 'problems_90', 'blasted_problems']
 
 # PROBLEM_CATEGORY_TRAIN = ['problems_75']
-PROBLEM_CATEGORY_TRAIN = ['problems_90']
-# PROBLEM_CATEGORY_TRAIN = ['or_50_problems']
+# PROBLEM_CATEGORY_TRAIN = ['problems_90']
+PROBLEM_CATEGORY_TRAIN = ['or_50_problems']
 # PROBLEM_CATEGORY_TRAIN = ['or_60_problems']
 # PROBLEM_CATEGORY_TRAIN = ['or_70_problems']
 # PROBLEM_CATEGORY_TRAIN = ['or_100_problems']
@@ -111,13 +112,13 @@ SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/exact_SAT_counts_noIndSets/"
 # SOLUTION_COUNTS_DIR = TRAINING_DATA_DIR + "SAT_problems_solved"
 
 
-EPOCH_COUNT = 1000
+EPOCH_COUNT = 10000
 PRINT_FREQUENCY = 1
-SAVE_FREQUENCY = 10
+SAVE_FREQUENCY = 100
 VAL_FREQUENCY = 10
 ##########################
 ##### Optimizer parameters #####
-STEP_SIZE=100
+STEP_SIZE=200
 LR_DECAY=.5 
 LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
 ##########################
@@ -126,7 +127,7 @@ os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 # wandb.init(project="learn_BP_sat2")
 wandb.init(project="test")
 wandb.config.epochs = EPOCH_COUNT
-wandb.config.train_val_split = "easyTrain_hardVal"#"random_shuffle"#'separate_categories'#
+wandb.config.train_val_split = "random_shuffle"#"easyTrain_hardVal"#'separate_categories'#
 wandb.config.PROBLEM_CATEGORY_TRAIN = PROBLEM_CATEGORY_TRAIN
 wandb.config.PROBLEM_CATEGORY_VAL = PROBLEM_CATEGORY_VAL
 # wandb.config.TRAINING_DATA_SIZE = TRAINING_DATA_SIZE
@@ -201,7 +202,7 @@ def train():
                # dataset_size=100, begin_idx=50, epsilon=EPSILON)
                dataset_size=TRAINING_DATA_SIZE, epsilon=EPSILON,
                max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
-    train_data_loader = DataLoader(training_SAT_list, batch_size=1)
+    train_data_loader = DataLoader(training_SAT_list, batch_size=50)
    
     val_SAT_list = get_SATproblems_list(problems_to_load=val_problems,
                counts_dir_name=SOLUTION_COUNTS_DIR,
@@ -209,7 +210,7 @@ def train():
                # dataset_size=50, begin_idx=0, epsilon=EPSILON)
                dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON,
                max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
-    val_data_loader = DataLoader(val_SAT_list, batch_size=1)
+    val_data_loader = DataLoader(val_SAT_list, batch_size=50)
 
     # with autograd.detect_anomaly():
     
@@ -217,6 +218,8 @@ def train():
 #         for t, (sat_problem, exact_ln_partition_function) in enumerate(train_data_loader):
         losses = []
         for sat_problem in train_data_loader:
+            sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
+            
             sat_problem = sat_problem.to(device)
             exact_ln_partition_function = sat_problem.ln_Z
             optimizer.zero_grad()
@@ -228,7 +231,10 @@ def train():
             # print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
             # print("exact_ln_partition_function:", exact_ln_partition_function)
             # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
-            loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
+#             print("estimated_ln_partition_function.shape:", estimated_ln_partition_function.shape)
+#             print("exact_ln_partition_function.shape:", exact_ln_partition_function.shape)
+            
+            loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float().squeeze())
             # print("loss:", loss)
             # print()
             losses.append(loss.item())
@@ -243,15 +249,16 @@ def train():
             val_losses = []
 #             for t, (sat_problem, exact_ln_partition_function) in enumerate(val_data_loader):
             for sat_problem in val_data_loader:
+                sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
                 sat_problem = sat_problem.to(device)
                 exact_ln_partition_function = sat_problem.ln_Z
                 assert(sat_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
                 estimated_ln_partition_function = lbp_net(sat_problem)                
-                loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
-                # print("estimated_ln_partition_function:", estimated_ln_partition_function)
-
-                # print("exact_ln_partition_function:", exact_ln_partition_function)
-
+                loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float().squeeze())
+#                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
+#                 print("exact_ln_partition_function:", exact_ln_partition_function)
+#                 print("loss:", loss)
+                
                 val_losses.append(loss.item())
             print("root mean squared validation error =", np.sqrt(np.mean(val_losses)))
             print()

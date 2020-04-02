@@ -275,16 +275,26 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
         fast_expansion = True
         if fast_expansion:
+
     #         new_shape = list(varToFactor_messages.shape[1:]) + expansion_list
             new_shape = [varToFactor_messages.shape[0]] + expansion_list
 
-            varToFactor_messages_expand_flatten = varToFactor_messages.unsqueeze(dim=-1).expand(list(varToFactor_messages.shape)+[2]).flatten()
-            varToFactor_expandedMessages = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)  
+
+            assert(len(varToFactor_messages.shape) == 2)
+            fast_expansion_list = [2 for i in range(factor_graph.state_dimensions.item() - 1)] + list(varToFactor_messages.shape)
+            varToFactor_messages_expand = varToFactor_messages.expand(fast_expansion_list)
+            varToFactor_messages_expand = varToFactor_messages_expand.transpose(-2, 0).transpose(-1, 1)
+            varToFactor_messages_expand_flatten = varToFactor_messages_expand.flatten()
+            varToFactor_expandedMessages = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)            
             varToFactor_expandedMessages = varToFactor_expandedMessages.reshape(new_shape)
-#             print("varToFactor_expandedMessages2:", varToFactor_expandedMessages2)
-#             print("varToFactor_expandedMessages2.shape:", varToFactor_expandedMessages2.shape)        
-#             assert((varToFactor_expandedMessages2 == varToFactor_expandedMessages).all())
-#             sleep(check_new_code)
+            
+            
+            compare_with_pairwise_factor_method = False
+            if compare_with_pairwise_factor_method:
+                varToFactor_messages_expand_flatten = varToFactor_messages.unsqueeze(dim=-1).expand(list(varToFactor_messages.shape)+[2]).flatten()
+                varToFactor_expandedMessages3 = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)  
+                varToFactor_expandedMessages3 = varToFactor_expandedMessages3.reshape(new_shape)
+                assert((varToFactor_expandedMessages==varToFactor_expandedMessages3).all())
 
         else:
             varToFactor_expandedMessages = torch.stack([
@@ -293,60 +303,6 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     #             message_state.expand(expansion_list).transpose(factor_graph.edge_var_indices[0, message_idx], factor_graph.state_dimensions-1) for message_idx, message_state in enumerate(torch.unbind(varToFactor_messages, dim=0))
                                               ], dim=0)
 
-#             print("expansion_list:", expansion_list)
-#             print("factor_graph.edge_var_indices[0,:]:", factor_graph.edge_var_indices[0,:])
-#             print("varToFactor_messages:", varToFactor_messages)
-#             print("varToFactor_messages.shape:", varToFactor_messages.shape)
-#             print("varToFactor_expandedMessages:", varToFactor_expandedMessages)
-#             print("varToFactor_expandedMessages.shape:", varToFactor_expandedMessages.shape)
-#             print("factor_graph.numFactors:", factor_graph.numFactors)
-#             print("factor_graph.numVars:", factor_graph.numVars)        
-    #         sleep(optimize)
-
-            new_shape = [varToFactor_messages.shape[0]] + expansion_list
-
-        
-        
-            #THIS WORKS
-            varToFactor_messages_expand_works = varToFactor_messages.unsqueeze(dim=-1).expand(list(varToFactor_messages.shape)+[2])
-            varToFactor_messages_expand_flatten_works = varToFactor_messages_expand_works.flatten()
-            varToFactor_expandedMessages_works = scatter_('add', src=varToFactor_messages_expand_flatten_works, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)  
-            varToFactor_expandedMessages_works = varToFactor_expandedMessages_works.reshape(new_shape)            
-        
-            #THIS DOESN"T WORK
-            fast_expansion_list = [2 for i in range(factor_graph.state_dimensions.item() - 1)] + list(varToFactor_messages.shape)
-#             varToFactor_messages_expand_flatten = varToFactor_messages.unsqueeze(dim=-1).expand(list(varToFactor_messages.shape)+[2]).flatten()
-            varToFactor_messages_expand = varToFactor_messages.expand(fast_expansion_list)
-#             for t_idx in range(factor_graph.state_dimensions - 1):
-#                 print("debug 131 swapping dimension:", t_idx, "with dimension:", -factor_graph.state_dimensions+1+t_idx)
-#                 varToFactor_messages_expand = varToFactor_messages_expand.transpose(t_idx, -factor_graph.state_dimensions+1+t_idx)
-            varToFactor_messages_expand = varToFactor_messages_expand.transpose(-2, 0).transpose(-1, 1)
-            varToFactor_messages_expand_flatten = varToFactor_messages_expand.flatten()
-
-            
-#             print("asfas", '-'*80)
-#             print("list(varToFactor_messages.shape)+[2]:", list(varToFactor_messages.shape)+[2])
-#             print("varToFactor_messages.unsqueeze(dim=-1).shape:", varToFactor_messages.unsqueeze(dim=-1).shape)
-#             print("fast_expansion_list:", fast_expansion_list)
-#             print("varToFactor_messages.shape:", varToFactor_messages.shape)
-            
-#             print("varToFactor_messages_expand_works:", varToFactor_messages_expand_works)
-#             print("varToFactor_messages_expand:", varToFactor_messages_expand)
-#             print("varToFactor_messages_expand_works.shape:", varToFactor_messages_expand_works.shape)
-#             print("varToFactor_messages_expand.shape:", varToFactor_messages_expand.shape)            
-#             sleep(debugasldkfjlsk)
-            
-            
-            varToFactor_expandedMessages2 = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)            
-            varToFactor_expandedMessages2 = varToFactor_expandedMessages2.reshape(new_shape)
-            
-#             print('varToFactor_expandedMessages2:', varToFactor_expandedMessages2)
-#             print('varToFactor_expandedMessages:', varToFactor_expandedMessages)              
-#             print('varToFactor_expandedMessages2.shape:', varToFactor_expandedMessages2.shape)
-#             print('varToFactor_expandedMessages.shape:', varToFactor_expandedMessages.shape)              
-       
-            assert((varToFactor_expandedMessages2 == varToFactor_expandedMessages).all())
-#             sleep(check_new_code)
 
 
         #debug
@@ -396,7 +352,6 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 
 #                 factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0], dim_size=factor_graph.numFactors)
                 factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0]) #for batching
-
 
 #                 print(varToFactor_expandedMessages_clone.view(varToFactor_expandedMessages_shape[0], -1))
 
@@ -589,8 +544,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 assert(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape == factor_graph.facStates_to_varIdx.shape)
                 assert((factor_graph.facStates_to_varIdx <= num_edges*2).all())
 #                 sleep(temp123)
-                
-                marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)      
+                marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1) 
 #                 print("marginalized_states_fast:", marginalized_states_fast)
 #                 sleep(marginalized_states_fast)
 
@@ -637,7 +591,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                                               ], dim=0)
 
         prv_varToFactor_messages_zeroed = prv_varToFactor_messages.clone()
-        prv_varToFactor_messages_zeroed[prv_varToFactor_messages_zeroed == -np.inf] = 0
+        prv_varToFactor_messages_zeroed[torch.where(prv_varToFactor_messages_zeroed == -np.inf)] = 0
         #avoid double counting
 #         messages = marginalized_states_orig - prv_varToFactor_messages_zeroed
         messages = marginalized_states - prv_varToFactor_messages_zeroed
