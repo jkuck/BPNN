@@ -15,6 +15,7 @@
 [libDAI](https://github.com/dbtsai/libDAI) used with Ising model experiments:
 - junction tree algorithm for obtaining the exact partition function
 - loopy belief propagation for comparison  
+
 See environment.yml for appropriate versions.  [Instructions](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#creating-an-environment-from-an-environment-yml-file) to build a conda environment from a .yml file.  
 
 ## Training the BPNN on Ising models
