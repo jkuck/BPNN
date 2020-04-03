@@ -9,10 +9,14 @@
 - make a network that doesn't have a Bethe final layer, instead just apply loss to final variable beliefs and gt node labels
 
 ## Dependencies
+[PyTorch](https://pytorch.org/get-started/locally/)  
+[PyTorch Geometric](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html)  
 [mrftools](https://bitbucket.org/berthuang/mrftools/src/master/) (not required, can comment out imports)  
 [libDAI](https://github.com/dbtsai/libDAI) used with Ising model experiments:
 - junction tree algorithm for obtaining the exact partition function
-- loopy belief propagation for comparison
+- loopy belief propagation for comparison  
+
+See environment.yml for appropriate versions.  [Instructions](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#creating-an-environment-from-an-environment-yml-file) to build a conda environment from a .yml file.  
 
 ## Training the BPNN on Ising models
 Run learn_BP_spinGlass.py with mode="train"
