@@ -544,6 +544,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #                 print("factor_graph.edge_index.shape:", factor_graph.edge_index.shape)
                 assert(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape == factor_graph.facStates_to_varIdx.shape)
                 assert((factor_graph.facStates_to_varIdx <= num_edges*2).all())
+                assert(torch.unique(factor_graph.facStates_to_varIdx[mapped_factor_beliefs.view(mapped_factor_beliefs.numel())==-np.inf]).numel() <= 1)
 #                 sleep(temp123)
 
                 marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)
