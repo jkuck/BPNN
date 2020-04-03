@@ -115,11 +115,13 @@ TRAINING_DATA_SIZE = 50
 VAL_DATA_SIZE = 50#100
 TEST_DATA_SIZE = 200
 
+TRAIN_BATCH_SIZE=50
+VAL_BATCH_SIZE=50
 
 EPOCH_COUNT = 300
 PRINT_FREQUENCY = 10
 VAL_FREQUENCY = 10
-SAVE_FREQUENCY = 1
+SAVE_FREQUENCY = 100
 
 TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' datasets
 
@@ -158,7 +160,8 @@ if USE_WANDB:
     wandb.config.LR_DECAY = LR_DECAY
     wandb.config.LEARNING_RATE = LEARNING_RATE
     wandb.config.NUM_MLPS = NUM_MLPS
-
+    wandb.config.TRAIN_BATCH_SIZE = TRAIN_BATCH_SIZE
+    wandb.config.VAL_BATCH_SIZE = VAL_BATCH_SIZE
 
 
 
@@ -227,13 +230,14 @@ def train():
     spin_glass_models_list_train = get_dataset(dataset_type='train')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
     sg_models_fg_from_train = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list_train]
-    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=50)
+    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=TRAIN_BATCH_SIZE)
 
     
     spin_glass_models_list_val = get_dataset(dataset_type='val')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
     sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list_val]
-    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=50)
+    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=1)
+    val_data_loader_pytorchGeometric_batchSize50 = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
     
 #     with autograd.detect_anomaly():
     for e in range(EPOCH_COUNT):
@@ -320,6 +324,22 @@ def train():
         if e % VAL_FREQUENCY == 0:
             val_losses = []
             for spin_glass_problem in val_data_loader_pytorchGeometric: #pytorch geometric form
+#                 print("spin_glass_problem.state_dimensions:", spin_glass_problem.state_dimensions)
+#                 print("spin_glass_problem.factor_potentials:", spin_glass_problem.factor_potentials)
+#                 print("spin_glass_problem.facStates_to_varIdx:", spin_glass_problem.facStates_to_varIdx)
+#                 print("spin_glass_problem.facToVar_edge_idx:", spin_glass_problem.facToVar_edge_idx)
+#                 print("spin_glass_problem.edge_index:", spin_glass_problem.edge_index)
+#                 print("spin_glass_problem.factor_degrees:", spin_glass_problem.factor_degrees)
+#                 print("spin_glass_problem.var_degrees:", spin_glass_problem.var_degrees)
+#                 print("spin_glass_problem.numVars:", spin_glass_problem.numVars)
+#                 print("spin_glass_problem.numFactors:", spin_glass_problem.numFactors)
+#                 print("spin_glass_problem.edge_var_indices:", spin_glass_problem.edge_var_indices)
+#                 print("spin_glass_problem.varToFactorMsg_scatter_indices:", spin_glass_problem.varToFactorMsg_scatter_indices)
+#                 print("spin_glass_problem.factor_potential_masks:", spin_glass_problem.factor_potential_masks)
+                
+                
+                
+                
                 spin_glass_problem = spin_glass_problem.to(device)
                 spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
 
@@ -335,6 +355,46 @@ def train():
 #                 print("loss:", loss)
                 
                 val_losses.append(loss.item())
+
+                
+# #### DEBUG ####
+#             val_losses = []
+#             for spin_glass_problem in val_data_loader_pytorchGeometric_batchSize50: #pytorch geometric form
+# #                 print("spin_glass_problem.state_dimensions:", spin_glass_problem.state_dimensions)
+# #                 print("spin_glass_problem.factor_potentials:", spin_glass_problem.factor_potentials)
+# #                 print("spin_glass_problem.facStates_to_varIdx:", spin_glass_problem.facStates_to_varIdx)
+# #                 print("spin_glass_problem.facToVar_edge_idx:", spin_glass_problem.facToVar_edge_idx)
+# #                 print("spin_glass_problem.edge_index:", spin_glass_problem.edge_index)
+# #                 print("spin_glass_problem.factor_degrees:", spin_glass_problem.factor_degrees)
+# #                 print("spin_glass_problem.var_degrees:", spin_glass_problem.var_degrees)
+# #                 print("spin_glass_problem.numVars:", spin_glass_problem.numVars)
+# #                 print("spin_glass_problem.numFactors:", spin_glass_problem.numFactors)
+# #                 print("spin_glass_problem.edge_var_indices:", spin_glass_problem.edge_var_indices)
+# #                 print("spin_glass_problem.varToFactorMsg_scatter_indices:", spin_glass_problem.varToFactorMsg_scatter_indices)
+# #                 print("spin_glass_problem.factor_potential_masks:", spin_glass_problem.factor_potential_masks)
+                
+#                 spin_glass_problem = spin_glass_problem.to(device)
+#                 spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
+
+
+#                 exact_ln_partition_function = spin_glass_problem.ln_Z   
+#                 assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all()), (spin_glass_problem.state_dimensions, MAX_FACTOR_STATE_DIMENSIONS)
+#                 spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
+                
+#                 estimated_ln_partition_function = lbp_net(spin_glass_problem)            
+#                 loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
+#                 print("batchSize50 estimated_ln_partition_function:", estimated_ln_partition_function)
+#                 print("batchSize50 exact_ln_partition_function:", exact_ln_partition_function)
+#                 print("batchSize50 loss:", loss)
+                
+#                 val_losses.append(loss.item())
+#                 print("root mean squared validation error =", np.sqrt(np.mean(val_losses)))
+#                 print()
+#                 print('asdfsa', '-'*80)
+
+# #### END DEBUG ####
+                
+                
             print("root mean squared validation error =", np.sqrt(np.mean(val_losses)))
             print()
             if USE_WANDB:

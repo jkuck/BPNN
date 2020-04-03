@@ -53,7 +53,7 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 20
+TRAINING_DATA_SIZE = 1000
 VAL_DATA_SIZE = 1000#100
 TEST_DATA_SIZE = 1000
 
@@ -202,7 +202,7 @@ def train():
                # dataset_size=100, begin_idx=50, epsilon=EPSILON)
                dataset_size=TRAINING_DATA_SIZE, epsilon=EPSILON,
                max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
-    train_data_loader = DataLoader(training_SAT_list, batch_size=50)
+    train_data_loader = DataLoader(training_SAT_list, batch_size=1)
    
     val_SAT_list = get_SATproblems_list(problems_to_load=val_problems,
                counts_dir_name=SOLUTION_COUNTS_DIR,
@@ -210,7 +210,7 @@ def train():
                # dataset_size=50, begin_idx=0, epsilon=EPSILON)
                dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON,
                max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
-    val_data_loader = DataLoader(val_SAT_list, batch_size=50)
+    val_data_loader = DataLoader(val_SAT_list, batch_size=1)
 
     # with autograd.detect_anomaly():
     

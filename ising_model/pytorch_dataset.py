@@ -24,6 +24,8 @@ def build_unary_factor(f, state_dimensions):
     used_dimension_count = 1
     #initialize to all 0's, -infinity in log space
     factor_potential = -np.inf*torch.ones([2 for i in range(state_dimensions)])
+#     factor_potential = -np.nan*torch.ones([2 for i in range(state_dimensions)]) #for debugging
+    
     mask = torch.zeros([2 for i in range(state_dimensions)])
 
 

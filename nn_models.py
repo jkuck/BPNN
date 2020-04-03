@@ -81,9 +81,19 @@ class lbp_message_passing_network(nn.Module):
                 prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
                     self.message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                           prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
-            
+                if self.bethe_MLP:
+                    cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                    pooled_states.append(cur_pooled_states)            
         else:
             for message_passing_layer in self.message_passing_layers:
+#                 print("prv_varToFactor_messages:", prv_varToFactor_messages)
+#                 print("prv_factorToVar_messages:", prv_factorToVar_messages)
+#                 print("prv_factor_beliefs:", prv_factor_beliefs)
+#                 print("prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)
+#                 print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
+#                 print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape) 
+#                 prv_factor_beliefs[torch.where(prv_factor_beliefs==-np.inf)] = 0
+
                 prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
                     message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                           prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
@@ -101,6 +111,9 @@ class lbp_message_passing_network(nn.Module):
 #             print("torch.cat(pooled_states).shape:", torch.cat(pooled_states, dim=1).shape)
 #             print("torch.cat(pooled_states):", torch.cat(pooled_states, dim=1))
 #             sleep(check_pool2)
+#             print("torch.cat(pooled_states, dim=1):")
+#             print(torch.cat(pooled_states, dim=1))
+#             print()
             estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
             
 #             bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
