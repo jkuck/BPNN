@@ -70,8 +70,8 @@ GNN_trained_model_path = './wandb/run-20200219_051810-bp7hke44/model.pt' #locati
 
 # BPNN_trained_model_path = './wandb/run-20200219_020545-j2ef9bvp/model.pt'
 
-USE_WANDB = False
-os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
+USE_WANDB = True
+# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 ##########################
 ####### Training PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
@@ -143,7 +143,7 @@ else:
 
 ##########################
 if USE_WANDB:
-    wandb.init(project="learnBP_spinGlass")
+    wandb.init(project="learnBP_spinGlass_reproduce")
     wandb.config.epochs = EPOCH_COUNT
     wandb.config.N_MIN_TRAIN = N_MIN_TRAIN
     wandb.config.N_MAX_TRAIN = N_MAX_TRAIN
@@ -236,8 +236,8 @@ def train():
     spin_glass_models_list_val = get_dataset(dataset_type='val')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
     sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list_val]
-    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=1)
-    val_data_loader_pytorchGeometric_batchSize50 = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
+    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
+#     val_data_loader_pytorchGeometric_batchSize50 = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
     
 #     with autograd.detect_anomaly():
     for e in range(EPOCH_COUNT):
@@ -294,6 +294,7 @@ def train():
 #             print("exact_ln_partition_function:", exact_ln_partition_function)
             # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
 #             print(estimated_ln_partition_function.device, exact_ln_partition_function.device)
+
 
 #             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
             loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())

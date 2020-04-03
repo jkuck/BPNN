@@ -18,9 +18,12 @@ def create_scatter_indices_helper(expansion_index, variable_cardinality, state_d
     l = torch.tensor([i + offset for i in range(variable_cardinality**state_dimensions)])
     l_shape = [variable_cardinality for i in range(state_dimensions)]
     l = l.reshape(l_shape)
-    t = torch.tensor(l)
-    t = t.transpose(expansion_index, 0)
-    return t.flatten()
+    l = l.transpose(expansion_index, 0)
+    return l.flatten()    
+#     t = torch.tensor(l)
+#     assert((t == l).all())
+#     t = t.transpose(expansion_index, 0)
+#     return t.flatten()
 
 def create_scatter_indices_varToFactorMsgs(original_indices, variable_cardinality=2, state_dimensions=2):
     #When sending variable to factor messages, variable beliefs must be expanded to have extra redundant dimensions.

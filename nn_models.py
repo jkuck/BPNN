@@ -55,6 +55,7 @@ class lbp_message_passing_network(nn.Module):
             
 #             print("weight_initialization:", weight_initialization)
             self.linear2.weight = torch.nn.Parameter(weight_initialization)
+
             self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape)) 
             self.shifted_relu = shift_func(ReLU(), shift=-500)
             self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)  
@@ -124,10 +125,25 @@ class lbp_message_passing_network(nn.Module):
             return estimated_ln_partition_function
         
         else:
-            bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-            estimated_ln_partition_function = -bethe_free_energy
-            return estimated_ln_partition_function            
+            if False:
+                #broken for batch_size > 1
+                bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                estimated_ln_partition_function = -bethe_free_energy
+            
+                debug=True
+                if debug:
+                    cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                    check_estimated_ln_partition_function = torch.sum(cur_pooled_states)
+    #                 print("check_estimated_ln_partition_function:", check_estimated_ln_partition_function)
+    #                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
+    #                 sleep(debug_bethe)
+                    assert(torch.allclose(check_estimated_ln_partition_function, estimated_ln_partition_function)), (check_estimated_ln_partition_function, estimated_ln_partition_function)
+                return estimated_ln_partition_function
   
+            #corrected for batch_size > 1
+            cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+            estimated_ln_partition_function = torch.sum(cur_pooled_states, dim=1)
+            return estimated_ln_partition_function            
 
 
 
@@ -253,6 +269,7 @@ def compute_bethe_entropy(factor_beliefs, var_beliefs, numVars, var_degrees):
 
 def compute_bethe_free_energy(factor_beliefs, var_beliefs, factor_graph):
     '''
+    BROKEN FOR BATCH SIZE > 1
     Compute the Bethe approximation of the free energy.
     - free energy = -ln(Z)
       where Z is the partition function
