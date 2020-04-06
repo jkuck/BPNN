@@ -20,12 +20,12 @@ def build_unary_factor(f, state_dimensions):
     - mask (torch.tensor): set to 0 for used locations ([:, 0, 0, ..., 0])
          set to 1 for all other unused locations
     '''
-    #only use 1 dimension for a single variable factor 
+    #only use 1 dimension for a single variable factor
     used_dimension_count = 1
     #initialize to all 0's, -infinity in log space
     factor_potential = -np.inf*torch.ones([2 for i in range(state_dimensions)])
 #     factor_potential = -np.nan*torch.ones([2 for i in range(state_dimensions)]) #for debugging
-    
+
     mask = torch.zeros([2 for i in range(state_dimensions)])
 
 
@@ -62,7 +62,7 @@ def build_pairwise_factor(c, state_dimensions):
          set to 1 for all other unused locations
 
     '''
-    #only use 1 dimension for a single variable factor 
+    #only use 1 dimension for a single variable factor
     used_dimension_count = 2
     #initialize to all 0's, -infinity in log space
     factor_potential = -np.inf*torch.ones([2 for i in range(state_dimensions)])
@@ -87,11 +87,11 @@ def build_pairwise_factor(c, state_dimensions):
         else:
             factor_potential[indices] = -c
 
-    return factor_potential, mask    
+    return factor_potential, mask
 
 
 def build_edge_var_indices(sg_model):
-    # edge_var_indices has shape [2, E]. 
+    # edge_var_indices has shape [2, E].
     #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
     #   [1, i] IS CURRENTLY UNUSED AND BROKEN, BUT IN GENERAL FOR PYTORCH GEOMETRIC SHOULD indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
     N = sg_model.N
@@ -129,7 +129,7 @@ def build_edge_var_indices(sg_model):
     edge_var_indices = torch.tensor([indices_at_source_node, indices_at_destination_node])
     return edge_var_indices
 
-def build_factorgraph_from_SpinGlassModel(sg_model):
+def build_factorgraph_from_SpinGlassModel(sg_model, map_flag=False):
     '''
     Convert a spin glass model to a factor graph pytorch representation
 
@@ -137,7 +137,7 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
     - sg_model (SpinGlassModel): defines a sping glass model
 
     Outputs:
-    - factorgraph (FactorGraphData): 
+    - factorgraph (FactorGraphData):
     '''
     state_dimensions = 2
     N = sg_model.N
@@ -149,11 +149,11 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
         num_factors = 2*(N - 1)*N + N**2
 
     #Variable indexing: variable with indices [row_idx, col_idx] (e.g. with lcl_fld_param given by lcl_fld_params[row_idx,col_idx]) has index row_idx*N+col_idx
-    #Factor indexing: 
-    #   - single variable factors: have the same index as their variable index 
+    #Factor indexing:
+    #   - single variable factors: have the same index as their variable index
     #   - horizontal coupling factors: factor between [row_idx, col_idx] and [row_idx, col_idx+1] has index (N**2 + row_idx*(N-1) + col_idx)
     #   - vertical coupling factors: factor between [row_idx, col_idx] and [row_idx+1, col_idx] has index (N**2 + N*(N-1) + row_idx*N + col_idx)
-    
+
     #list of [factor_idx, var_idx] for each edge
     factorToVar_edge_index_list = []
     # factorToVar_double_list[i] is a list of all variables that factor with index i shares an edge with
@@ -174,7 +174,7 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
             factorToVar_edge_index_list.append([horizontal_factor_idx, var_idx2])
             assert(len(factorToVar_double_list) == horizontal_factor_idx)
             factorToVar_double_list.append([var_idx1, var_idx2])
-            
+
     # add vertical factor to variable edges
     for row_idx in range(N-1):
         for col_idx in range(N):
@@ -183,10 +183,10 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
             factorToVar_edge_index_list.append([vertical_factor_idx, var_idx1])
             var_idx2 = (row_idx+1)*N + col_idx
             factorToVar_edge_index_list.append([vertical_factor_idx, var_idx2])
-            
+
             assert(len(factorToVar_double_list) == vertical_factor_idx)
-            factorToVar_double_list.append([var_idx1, var_idx2])  
-            
+            factorToVar_double_list.append([var_idx1, var_idx2])
+
     assert(len(factorToVar_edge_index_list) == 4*(N - 1)*N + N**2)
     if sg_model.contains_higher_order_potentials:
         for higher_order_idx in range(sg_model.ho_potential_count):
@@ -194,7 +194,7 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
             for variable_idx in sg_model.higher_order_potentials_variables[higher_order_idx]:
                 factorToVar_edge_index_list.append([factor_idx, variable_idx])
             # pass
-            
+
             assert(len(factorToVar_double_list) == factor_idx)
             factorToVar_double_list.append(list(sg_model.higher_order_potentials_variables[higher_order_idx]))
 
@@ -244,13 +244,13 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
 
     edge_count = edge_var_indices.shape[1]
 
-    ln_Z = sg_model.junction_tree_libdai()
+    ln_Z = sg_model.junction_tree_libdai(map_flag=map_flag)
 
     factor_graph = FactorGraphData(factor_potentials=factor_potentials,
-                 factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
+                 factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors,
                  edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks,
 #                      ln_Z=ln_Z)
                  ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
 
-        
+
     return factor_graph

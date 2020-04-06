@@ -8,13 +8,13 @@ class SpinGlassModel:
                 attractive_field=False):
         '''
         Sample local field parameters and coupling parameters to define a spin glass model
-        
+
         Inputs:
         - N: int, the model will be a grid with shape (NxN)
         - f: float, local field parameters (theta_i) will be drawn uniformly at random
             from [-f, f] for each node in the grid
         - c: float, coupling parameters (theta_ij) will be drawn uniformly at random from
-            [0, c) (gumbel paper uses [0,c], but this shouldn't matter) for each edge in 
+            [0, c) (gumbel paper uses [0,c], but this shouldn't matter) for each edge in
             the grid
         - all_weights_1: bool, if true return a model with all weights = 1 so Z=2^(N^2)
                                if false return randomly sampled model
@@ -22,25 +22,25 @@ class SpinGlassModel:
             sample from [-c,c]
         Values defining the spin glass model:
         - lcl_fld_params: array with dimensions (NxN), local field parameters (theta_i)
-            that we sampled for each node in the grid 
+            that we sampled for each node in the grid
         - cpl_params_h: array with dimensions (N x N-1), coupling parameters (theta_ij)
-            for each horizontal edge in the grid.  cpl_params_h[k,l] corresponds to 
+            for each horizontal edge in the grid.  cpl_params_h[k,l] corresponds to
             theta_ij where i is the node indexed by (k,l) and j is the node indexed by
             (k,l+1)
         - cpl_params_v: array with dimensions (N-1 x N), coupling parameters (theta_ij)
-            for each vertical edge in the grid.  cpl_params_h[k,l] corresponds to 
+            for each vertical edge in the grid.  cpl_params_h[k,l] corresponds to
             theta_ij where i is the node indexed by (k,l) and j is the node indexed by
-            (k+1,l)     
+            (k+1,l)
         '''
         self.N = N
 
         if all_weights_1: #make all weights 1
             #sample local field parameters (theta_i) for each node
             self.lcl_fld_params = np.zeros((N,N))
-    
+
             #sample horizontal coupling parameters (theta_ij) for each horizontal edge
             self.cpl_params_h = np.zeros((N,N-1))
-    
+
             #sample vertical coupling parameters (theta_ij) for each vertical edge
             self.cpl_params_v = np.zeros((N-1,N))
 
@@ -64,9 +64,9 @@ class SpinGlassModel:
                 self.cpl_params_h = np.random.uniform(low=-c, high=c, size=(N,N-1))
 
                 #sample vertical coupling parameters (theta_ij) for each vertical edge
-                self.cpl_params_v = np.random.uniform(low=-c, high=c, size=(N-1,N))                
-                
-                
+                self.cpl_params_v = np.random.uniform(low=-c, high=c, size=(N-1,N))
+
+
             if create_higher_order_potentials:
                 self.contains_higher_order_potentials = True
                 self.ho_potential_count = 10 # the number of higher order potentials to create
@@ -92,27 +92,27 @@ class SpinGlassModel:
         ln_Z_estimate = mrftools_utils.run_LBP(self)
         return ln_Z_estimate
 
-    def junction_tree_libdai(self):
+    def junction_tree_libdai(self, map_flag=False):
         '''
-        Compute the exact partition function of this spin glass model using the junction tree 
+        Compute the exact partition function of this spin glass model using the junction tree
         implementation from libdai
 
         Outputs:
         - ln_Z: natural logarithm of the exact partition function
         '''
-        ln_Z = libdai_utils.junction_tree(self)
+        ln_Z = libdai_utils.junction_tree(self, map_flag=map_flag)
         return ln_Z
 
     def loopyBP_libdai(self, maxiter=None, updates="SEQRND", damping=None):
         '''
-        estimate the partition function of this spin glass model using the 
+        estimate the partition function of this spin glass model using the
         loopy belief propagation implementation from libdai
 
         Inputs:
         - updates (string): the type of libdai LBP updates to use (see libdai documentation)
         - damping (string): None -> no damping, or string specifying the damping e.g. ".5"
             see libdai docs for more details
-            
+
         Outputs:
         - ln_Z_estimate: estimate of the natural logarithm of the partition function
         '''
@@ -121,17 +121,17 @@ class SpinGlassModel:
 
     def mean_field_libdai(self, maxiter=None):
         '''
-        estimate the partition function of this spin glass model using the 
+        estimate the partition function of this spin glass model using the
         mean field implementation from libdai
 
         Outputs:
         - ln_Z_estimate: estimate of the natural logarithm of the partition function
         '''
         ln_Z_estimate = libdai_utils.run_mean_field(self, maxiter)
-        return ln_Z_estimate    
-    
-    
-    
+        return ln_Z_estimate
+
+
+
 def compare_libdai_mrftools():
     sg_model = SpinGlassModel(N=10, f=1, c=1)
     print("exact ln(partition function):", sg_model.junction_tree_libdai())

@@ -20,7 +20,7 @@ SAT_PROBLEM_DIRECTORY = '/Users/jkuck/research/learn_BP/SAT_problems/'
 
 def map_beliefs(beliefs, factor_graph, map_type):
     '''
-    Utility function for propogate().  Maps factor or variable beliefs to edges 
+    Utility function for propogate().  Maps factor or variable beliefs to edges
     See https://pytorch-geometric.readthedocs.io/en/latest/notes/create_gnn.html
     Inputs:
     - beliefs (tensor): factor_beliefs or var_beliefs, matching map_type
@@ -121,11 +121,12 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     Inputs:
     - learn_BP (bool): if False run standard looph belief propagation, if True
         insert a neural network into message aggregation for learning
-    - logspace_mlp (bool): if True mlp runs in log space (trouble with good results), 
+    - logspace_mlp (bool): if True mlp runs in log space (trouble with good results),
         if False we take exponent then run mlp then take log
     """
 
-    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True, logspace_mlp=False, num_mlps=NUM_MLPS):
+    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True,
+                 logspace_mlp=False, num_mlps=NUM_MLPS, map_flag=False):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
 
         assert(num_mlps in [1,2])
@@ -133,9 +134,10 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         self.learn_BP = learn_BP
         self.avoid_nans = avoid_nans
         self.logspace_mlp = logspace_mlp
+        self.map_flag = map_flag
         print("learn_BP:", learn_BP)
         if learn_BP:
-            assert(factor_state_space is not None)     
+            assert(factor_state_space is not None)
             if num_mlps == 2:
                 self.linear1 = Linear(factor_state_space, factor_state_space)
                 self.linear2 = Linear(factor_state_space, factor_state_space)
@@ -144,10 +146,10 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
                 self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
-                self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space                
-                self.mlp1 = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)  
-                
-                
+                self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space
+                self.mlp1 = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
+
+
                 #add factor potential as part of MLP
 #                 self.linear3 = Linear(factor_state_space*2, factor_state_space)
 #                 self.linear4 = Linear(factor_state_space, factor_state_space)
@@ -156,7 +158,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #                 self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
 #                 self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
-#                 self.shifted_relu1 = shift_func(ReLU(), shift=-50) #allow beliefs less than 0    
+#                 self.shifted_relu1 = shift_func(ReLU(), shift=-50) #allow beliefs less than 0
 
                 #add factor potential after MLP
                 self.linear3 = Linear(factor_state_space, factor_state_space)
@@ -166,9 +168,9 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
                 self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
-                self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
-                self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu1)  
-                
+                self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space
+                self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu1)
+
             else:
                 # print("factor_state_space:", factor_state_space)
                 # sleep(float)
@@ -186,11 +188,11 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                     self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2)
 
                 else:
-                    self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space                
+                    self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space
                     self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
                     # self.mlp = Seq(self.linear1, ReLU(), self.linear2)
 
-                # self.relu = ReLU()                
+                # self.relu = ReLU()
                 # self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
                 # self.mlp = self.linear1
                 # self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
@@ -221,14 +223,14 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             iteration of message passing on.
         - prv_varToFactor_messages (tensor): varToFactor_messages from the last message passing iteration
         - prv_factor_beliefs (tensor): factor beliefs from the last message passing iteration
-        - alpha (float): residual weighting for factorToVar_messages. alpha=1 corresponds to no skip connection, 
+        - alpha (float): residual weighting for factorToVar_messages. alpha=1 corresponds to no skip connection,
             alpha=0 removes the neural network
 
         Outputs:
-        - varToFactor_messages (tensor): varToFactor_messages in this message passing iteration 
-        - factorToVar_messages (tensor): factorToVar_messages in this message passing iteration 
-        - factor_beliefs (tensor): updated factor_beliefs 
-        - var_beliefs (tensor): updated var_beliefs 
+        - varToFactor_messages (tensor): varToFactor_messages in this message passing iteration
+        - factorToVar_messages (tensor): factorToVar_messages in this message passing iteration
+        - factor_beliefs (tensor): updated factor_beliefs
+        - var_beliefs (tensor): updated var_beliefs
         """
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
@@ -239,7 +241,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                                (1 - alpha)*prv_factorToVar_messages
         assert(not torch.isnan(factorToVar_messages).any()), prv_factor_beliefs
 
-        
+
         #print("123debug0 factorToVar_messages =", factorToVar_messages)
 #         print("factor_graph.numVars:", factor_graph.numVars)
 #         sleep(temp)
@@ -251,7 +253,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #         print("factor_graph.numVars:", factor_graph.numVars)
 #         print("factor_graph.numFactors:", factor_graph.numFactors)
 #         print("facToVar_edge_idx:", factor_graph.facToVar_edge_idx)
-        var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1])
+        var_beliefs = scatter_('max' if self.map_flag else  'add', factorToVar_messages, factor_graph.facToVar_edge_idx[1])
 #         print("factorToVar_messages:", factorToVar_messages)
 #         print("factor_graph.facToVar_edge_idx[1]:", factor_graph.facToVar_edge_idx[1])
 #         print("factor_graph.facToVar_edge_idx:", factor_graph.facToVar_edge_idx)
@@ -271,14 +273,14 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         #print("123debug2 var_beliefs =", var_beliefs)
 
         #update factor beliefs
-        varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages) 
+        varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages)
         assert(not torch.isnan(varToFactor_messages).any()), prv_factor_beliefs
-        
-        
+
+
         #print("123debug2 varToFactor_messages =", varToFactor_messages)
-        
+
 #         print("!"*10)
-#         print("varToFactor_messages.shape:", varToFactor_messages.shape)        
+#         print("varToFactor_messages.shape:", varToFactor_messages.shape)
 #         print("factor_graph.state_dimensions:", factor_graph.state_dimensions)
         expansion_list = [2 for i in range(factor_graph.state_dimensions - 1)] + [-1,] #messages have states for one variable, add dummy dimensions for the other variables in factors
 
@@ -294,15 +296,15 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             varToFactor_messages_expand = varToFactor_messages.expand(fast_expansion_list)
             varToFactor_messages_expand = varToFactor_messages_expand.transpose(-2, 0).transpose(-1, 1)
             varToFactor_messages_expand_flatten = varToFactor_messages_expand.flatten()
-            varToFactor_expandedMessages = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)            
+            varToFactor_expandedMessages = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)
             varToFactor_expandedMessages = varToFactor_expandedMessages.reshape(new_shape)
             #print("123debug2 varToFactor_expandedMessages =", varToFactor_expandedMessages)
-            
-            
+
+
             compare_with_pairwise_factor_method = False
             if compare_with_pairwise_factor_method:
                 varToFactor_messages_expand_flatten = varToFactor_messages.unsqueeze(dim=-1).expand(list(varToFactor_messages.shape)+[2]).flatten()
-                varToFactor_expandedMessages3 = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)  
+                varToFactor_expandedMessages3 = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)
                 varToFactor_expandedMessages3 = varToFactor_expandedMessages3.reshape(new_shape)
                 assert((varToFactor_expandedMessages==varToFactor_expandedMessages3).all())
 
@@ -332,16 +334,16 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         #end debug
 
         if not (self.learn_BP and (self.num_mlps == 2)):
-            factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0], dim_size=factor_graph.numFactors)
-        
+            factor_beliefs = scatter_('max' if self.map_flag else 'add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0], dim_size=factor_graph.numFactors)
+
             assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
-      
+
         if debug:
             print("1 factor_beliefs:", torch.exp(factor_beliefs))
-        
+
         if self.learn_BP:
             if self.num_mlps == 2:
-                
+
                 normalization_view = [1 for i in range(len(varToFactor_expandedMessages.shape))]
                 normalization_view[0] = -1
                 varToFactor_expandedMessages = varToFactor_expandedMessages - logsumexp_multipleDim(varToFactor_expandedMessages, dim=0).view(normalization_view)#normalize factor beliefs
@@ -359,20 +361,20 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 varToFactor_expandedMessages[valid_locations] = torch.log(varToFactor_expandedMessages_temp[valid_locations])
 
                 assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
-                
+
 #                 factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0], dim_size=factor_graph.numFactors)
                 factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0]) #for batching
 
 #                 print(varToFactor_expandedMessages_clone.view(varToFactor_expandedMessages_shape[0], -1))
 
                 num_factors = torch.sum(factor_graph.numFactors)
-    
+
 #                 print("num_factors:", num_factors, "factor_beliefs.shape[0]:", factor_beliefs.shape[0])
-#                 sleep(debugasidjf)                
-                    
+#                 sleep(debugasidjf)
+
                 assert(num_factors == factor_beliefs.shape[0]), (num_factors, factor_beliefs.shape[0])
                 assert(num_factors == factor_graph.factor_potentials.shape[0]), (num_factors, factor_graph.factor_potentials.shape[0])
-                
+
                 factor_beliefs_shape = factor_beliefs.shape
 #                 factor_beliefs = self.mlp2(torch.cat([factor_beliefs.view(num_factors,-1), factor_graph.factor_potentials.view(num_factors,-1)], 1)).view(factor_beliefs_shape)
 #                 factor_beliefs = self.mlp2(factor_beliefs.view(num_factors,-1)).view(factor_beliefs_shape)
@@ -393,7 +395,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
 
 
-                
+
             else:
                 normalization_view = [1 for i in range(len(factor_beliefs.shape))]
                 normalization_view[0] = -1
@@ -480,9 +482,9 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
         assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
 #         print("factor_beliefs:", factor_beliefs)
-#         print("factor_beliefs:", factor_beliefs)        
+#         print("factor_beliefs:", factor_beliefs)
 #         assert(not torch.isnan(factor_beliefs[torch.where(factor_graph.factor_potential_masks==0)]).any()), factor_beliefs
-        
+
         if debug:
             print()
             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
@@ -506,7 +508,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             print("factor_graph.facToVar_edge_idx[0]:", factor_graph.facToVar_edge_idx[0])
             print("factor_graph.facToVar_edge_idx:", factor_graph.facToVar_edge_idx)
             sleep(debug34)
-        
+
         return varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs
 
 
@@ -516,26 +518,26 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages, debug=False, fast_logsumexp=True):
         # prv_factor_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_varToFactor_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
-        # factor_graph.edge_var_indices has shape [2, E]. 
+        # factor_graph.edge_var_indices has shape [2, E].
         #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
         #   [1, i] indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
 
         mapped_factor_beliefs = map_beliefs(prv_factor_beliefs, factor_graph, 'factor')
         mapped_factor_potentials_masks = map_beliefs(factor_graph.factor_potential_masks, factor_graph, 'factor')
 
-        
+
         #print("123debug10 mapped_factor_beliefs =", mapped_factor_beliefs)
         if self.avoid_nans:
             #best idea: set to say 0, then log sum exp with -# of infinities precomputed tensor to correct
 
             # mapped_factor_beliefs[torch.where(mapped_factor_beliefs==-np.inf)] = -99
-            
+
             #was using 2/4/2020
             mapped_factor_beliefs[torch.where((mapped_factor_potentials_masks==0) & (mapped_factor_beliefs==-np.inf))] = -99 #leave invalid beliefs at -inf
             #quick debug 2/4/2020
 #             mapped_factor_beliefs[torch.where(mapped_factor_beliefs==-np.inf)] = -99
 #             mapped_factor_beliefs[torch.where(mapped_factor_potentials_masks==1)] = -99
-        
+
             # factor_beliefs_neg_inf_locations = torch.where(mapped_factor_beliefs==-np.inf)
             # mapped_factor_beliefs[factor_beliefs_neg_inf_locations] = 0
             # adjustment_tensor = torch.zeros_like(mapped_factor_beliefs)
@@ -556,11 +558,11 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #                 print("factor_graph.facStates_to_varIdx:", factor_graph.facStates_to_varIdx)
 #                 print("num_edges:", num_edges)
 #                 print("factor_graph.facToVar_edge_idx.shape:", factor_graph.facToVar_edge_idx.shape)
-#                 print("factor_graph.edge_index.shape:", factor_graph.edge_index.shape)     
+#                 print("factor_graph.edge_index.shape:", factor_graph.edge_index.shape)
                 assert(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape == factor_graph.facStates_to_varIdx.shape)
                 assert((factor_graph.facStates_to_varIdx <= num_edges*2).all())
 #                 sleep(temp123)
-                marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1) 
+                marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)
                 #print("123debug11 marginalized_states_fast =", marginalized_states_fast)
 #                 print("marginalized_states_fast:", marginalized_states_fast)
 #                 sleep(marginalized_states_fast)
@@ -572,7 +574,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 edges_per_batch = num_edges//batch_size
                 assert(batch_size*edges_per_batch == num_edges)
                 marginalized_states = marginalized_states_fast[:-1].view(batch_size,2,edges_per_batch).permute(0,2,1).reshape(num_edges,2)
-            
+
                 #print("123debug12 after permute marginalized_states_fast =", marginalized_states)
                 if debug:
                     marginalized_states_orig = torch.stack([
@@ -580,7 +582,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                                                   ], dim=0)
 
                     debug = torch.where(torch.zeros_like(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()))==0)[0]
-#                     marginalized_states_fast_debug = scatter_('add', src=debug, index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)                      
+#                     marginalized_states_fast_debug = scatter_('add', src=debug, index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)
     #                 print("@@@@@")
     #                 print("marginalized_states.shape:", marginalized_states.shape)
         #             print("marginalized_states.shape:", marginalized_states.shape)
@@ -589,7 +591,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
 
     #                 print("debug:", debug)
-    #                 print("marginal ized_states_fast_debug:", marginalized_states_fast_debug)            
+    #                 print("marginal ized_states_fast_debug:", marginalized_states_fast_debug)
 
     #                 print("mapped_factor_beliefs.view(mapped_factor_beliefs.numel()):", mapped_factor_beliefs.view(mapped_factor_beliefs.numel()))
     #                 print("marginalized_states_fast:", marginalized_states_fast)
@@ -627,7 +629,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     def message_varToFactor(self, var_beliefs, factor_graph, prv_factorToVar_messages):
         # var_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_factorToVar_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
-        # factor_graph.edge_var_indices has shape [2, E]. 
+        # factor_graph.edge_var_indices has shape [2, E].
         #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
         #   [1, i] indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
 
@@ -636,7 +638,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         prv_factorToVar_messages_zeroed = prv_factorToVar_messages.clone()
         prv_factorToVar_messages_zeroed[prv_factorToVar_messages_zeroed == -np.inf] = 0
         #avoid double counting
-        messages = mapped_var_beliefs - prv_factorToVar_messages_zeroed            
+        messages = mapped_var_beliefs - prv_factorToVar_messages_zeroed
 
         return messages
 
@@ -677,8 +679,8 @@ def run_loopy_bp(factor_graph, prv_varToFactor_messages, prv_factor_beliefs, ite
             print('factor beliefs:', torch.exp(factor_beliefs))
             print('prv_factorToVar_messages:', torch.exp(factor_graph.prv_factorToVar_messages))
             print('prv_varToFactor_messages:', torch.exp(factor_graph.prv_varToFactor_messages))
-        
-        prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs = msg_passing_layer(factor_graph, prv_varToFactor_messages, prv_factor_beliefs)        
+
+        prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs = msg_passing_layer(factor_graph, prv_varToFactor_messages, prv_factor_beliefs)
     bethe_free_energy = factor_graph.compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs)
     z_estimate_bethe = torch.exp(-bethe_free_energy)
 
@@ -686,7 +688,7 @@ def run_loopy_bp(factor_graph, prv_varToFactor_messages, prv_factor_beliefs, ite
         print()
         print('-'*80)
         print("Bethe free energy =", bethe_free_energy)
-        print("Partition function estimate from Bethe free energy =", z_estimate_bethe)    
+        print("Partition function estimate from Bethe free energy =", z_estimate_bethe)
     return bethe_free_energy, z_estimate_bethe
 
 def plot_lbp_vs_exactCount(dataset_size=10, verbose=True, lbp_iters=4):
@@ -711,7 +713,7 @@ def plot_lbp_vs_exactCount(dataset_size=10, verbose=True, lbp_iters=4):
         exact_solution_counts.append(log_solution_count)
 
 
-        bethe_free_energy, z_estimate_bethe = run_loopy_bp(factor_graph=sat_problem, prv_varToFactor_messages=prv_varToFactor_messages, 
+        bethe_free_energy, z_estimate_bethe = run_loopy_bp(factor_graph=sat_problem, prv_varToFactor_messages=prv_varToFactor_messages,
                                                            prv_factor_beliefs=prv_factor_beliefs, iters=lbp_iters, learn_BP=True)
         lbp_estimated_counts.append(-bethe_free_energy)
 
@@ -724,25 +726,25 @@ def plot_lbp_vs_exactCount(dataset_size=10, verbose=True, lbp_iters=4):
             print("sat_problem.numFactors.shape:", sat_problem.numFactors.shape)
             print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
             print("prv_var_beliefs.shape:", prv_var_beliefs.shape)
-            print()  
+            print()
 
     plt.plot(exact_solution_counts, lbp_estimated_counts, 'x', c='b', label='Negative Bethe Free Energy, %d iters' % lbp_iters)
     plt.plot([min(exact_solution_counts), max(exact_solution_counts)], [min(exact_solution_counts), max(exact_solution_counts)], '-', c='g', label='Exact Estimate')
 
-    # plt.axhline(y=math.log(2)*log_2_Z[PROBLEM_NAME], color='y', label='Ground Truth ln(Set Size)') 
+    # plt.axhline(y=math.log(2)*log_2_Z[PROBLEM_NAME], color='y', label='Ground Truth ln(Set Size)')
     plt.xlabel('ln(Exact Model Count)', fontsize=14)
     plt.ylabel('ln(Estimated Model Count)', fontsize=14)
     plt.title('Exact Model Count vs. Bethe Estimate', fontsize=20)
-    plt.legend(fontsize=12)    
+    plt.legend(fontsize=12)
     #make the font bigger
-    matplotlib.rcParams.update({'font.size': 10})        
+    matplotlib.rcParams.update({'font.size': 10})
 
     plt.grid(True)
     # Shrink current axis's height by 10% on the bottom
     #box = ax.get_position()
     #ax.set_position([box.x0, box.y0 + box.height * 0.1,
     #                 box.width, box.height * 0.9])
-    #fig.savefig('/Users/jkuck/Downloads/temp.png', bbox_extra_artists=(lgd,), bbox_inches='tight')    
+    #fig.savefig('/Users/jkuck/Downloads/temp.png', bbox_extra_artists=(lgd,), bbox_inches='tight')
 
     plt.show()
 

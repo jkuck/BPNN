@@ -1,4 +1,4 @@
-ROOT_DIR = "/atlas/u/jkuck/learn_BP/" #file path to the directory cloned from github
+ROOT_DIR = "/atlas/u/htang/learn_BP/" #file path to the directory cloned from github
 
 alpha = .5 #residual weighting on messages, e.g. damping.  alpha=1 corresponds to no skip connection, alpha=0 removes the neural network
 alpha2 = .5 #residual weighting directly around MLP

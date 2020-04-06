@@ -15,7 +15,7 @@ from parameters import SHARE_WEIGHTS, BETHE_MLP
 
 class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
-                bethe_MLP=BETHE_MLP):
+                bethe_MLP=BETHE_MLP, map_flag=False):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -26,14 +26,15 @@ class lbp_message_passing_network(nn.Module):
         - bethe_MLP (bool): if True, use an MLP to learn a modified Bethe approximation (initialized
                             to the exact Bethe approximation)
         '''
-        super().__init__()        
+        super().__init__()
         self.share_weights = share_weights
         self.msg_passing_iters = msg_passing_iters
         self.bethe_MLP = bethe_MLP
+        self.map_flag = map_flag
         if share_weights:
-            self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions)
+            self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions, map_flag=map_flag)
         else:
-            self.message_passing_layers = nn.ModuleList([FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions)\
+            self.message_passing_layers = nn.ModuleList([FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions, map_flag=map_flag)\
                                            for i in range(msg_passing_iters)])
         self.device = device
 
@@ -41,7 +42,7 @@ class lbp_message_passing_network(nn.Module):
             var_states = 2 #2 for binary variables
             mlp_size =  2*msg_passing_iters*(2**max_factor_state_dimensions) + msg_passing_iters*var_states
 #             self.final_mlp = Seq(Linear(mlp_size, mlp_size), ReLU(), Linear(mlp_size, 1))
-        
+
             self.linear1 = Linear(mlp_size, mlp_size)
             self.linear2 = Linear(mlp_size, 1)
             self.linear1.weight = torch.nn.Parameter(torch.eye(mlp_size))
@@ -52,19 +53,19 @@ class lbp_message_passing_network(nn.Module):
 #             print("self.linear2.weight:", self.linear2.weight)
 #             print("self.linear2.weight.shape:", self.linear2.weight.shape)
 
-            
+
 #             print("weight_initialization:", weight_initialization)
             self.linear2.weight = torch.nn.Parameter(weight_initialization)
 
-            self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape)) 
+            self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
             self.shifted_relu = shift_func(ReLU(), shift=-500)
-            self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)  
-#             self.final_mlp = Seq(self.linear1, self.linear2)  
+            self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
+#             self.final_mlp = Seq(self.linear1, self.linear2)
 
 
-        
-        
-        
+
+
+
     def forward(self, factor_graph):
 #         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
         prv_varToFactor_messages = factor_graph.prv_varToFactor_messages
@@ -74,9 +75,9 @@ class lbp_message_passing_network(nn.Module):
 #         print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
 #         print("factor_graph.facToVar_edge_idx.shape:", factor_graph.facToVar_edge_idx.shape)
 
-        
+
         pooled_states = []
-        
+
         if self.share_weights:
             for iter in range(self.msg_passing_iters):
                 prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
@@ -84,7 +85,7 @@ class lbp_message_passing_network(nn.Module):
                                           prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
                 if self.bethe_MLP:
                     cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-                    pooled_states.append(cur_pooled_states)            
+                    pooled_states.append(cur_pooled_states)
         else:
             for message_passing_layer in self.message_passing_layers:
 #                 print("prv_varToFactor_messages:", prv_varToFactor_messages)
@@ -92,14 +93,14 @@ class lbp_message_passing_network(nn.Module):
 #                 print("prv_factor_beliefs:", prv_factor_beliefs)
 #                 print("prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)
 #                 print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
-#                 print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape) 
+#                 print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
 #                 prv_factor_beliefs[torch.where(prv_factor_beliefs==-np.inf)] = 0
 
                 prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
                     message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                           prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
     #                 message_passing_layer(factor_graph, prv_varToFactor_messages=factor_graph.prv_varToFactor_messages,
-    #                                       prv_factorToVar_messages=factor_graph.prv_factorToVar_messages, prv_factor_beliefs=factor_graph.prv_factor_beliefs) 
+    #                                       prv_factorToVar_messages=factor_graph.prv_factorToVar_messages, prv_factor_beliefs=factor_graph.prv_factor_beliefs)
                 if self.bethe_MLP:
                     cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
 #                     print("cur_pooled_states:", cur_pooled_states)
@@ -107,7 +108,7 @@ class lbp_message_passing_network(nn.Module):
 #                     print("cur_pooled_states.shape:", cur_pooled_states.shape)
                     pooled_states.append(cur_pooled_states)
 
-                        
+
         if self.bethe_MLP:
 #             print("torch.cat(pooled_states).shape:", torch.cat(pooled_states, dim=1).shape)
 #             print("torch.cat(pooled_states):", torch.cat(pooled_states, dim=1))
@@ -116,20 +117,20 @@ class lbp_message_passing_network(nn.Module):
 #             print(torch.cat(pooled_states, dim=1))
 #             print()
             estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
-            
+
 #             bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
 #             estimated_ln_partition_function_orig = -bethe_free_energy
 #             print("estimated_ln_partition_function_orig:", estimated_ln_partition_function_orig)
-#             print("estimated_ln_partition_function:", estimated_ln_partition_function)        
+#             print("estimated_ln_partition_function:", estimated_ln_partition_function)
 #             assert(np.isclose(estimated_ln_partition_function_orig.detach().numpy(), estimated_ln_partition_function.detach().numpy(), rtol=1e-03, atol=1e-03)), (estimated_ln_partition_function_orig, estimated_ln_partition_function)
             return estimated_ln_partition_function
-        
+
         else:
             if False:
                 #broken for batch_size > 1
                 bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
                 estimated_ln_partition_function = -bethe_free_energy
-            
+
                 debug=True
                 if debug:
                     cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
@@ -139,18 +140,18 @@ class lbp_message_passing_network(nn.Module):
     #                 sleep(debug_bethe)
                     assert(torch.allclose(check_estimated_ln_partition_function, estimated_ln_partition_function)), (check_estimated_ln_partition_function, estimated_ln_partition_function)
                 return estimated_ln_partition_function
-  
+
             #corrected for batch_size > 1
             cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
             estimated_ln_partition_function = torch.sum(cur_pooled_states, dim=1)
-            return estimated_ln_partition_function            
+            return estimated_ln_partition_function
 
 
 
     def compute_bethe_average_energy_MLP(self, factor_beliefs, factor_potentials, batch_factors, debug=False):
         '''
         Equation (37) in:
-        https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
+        https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf
         '''
         assert(factor_potentials.shape == factor_beliefs.shape)
         if debug:
@@ -159,7 +160,7 @@ class lbp_message_passing_network(nn.Module):
             print("debugging compute_bethe_average_energy")
             print("torch.exp(factor_beliefs):", torch.exp(factor_beliefs))
             print("neg_inf_to_zero(factor_potentials):", neg_inf_to_zero(factor_potentials))
-        
+
         pooled_fac_beleifPotentials = global_add_pool(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials), batch_factors)
         pooled_fac_beleifPotentials = pooled_fac_beleifPotentials.view(pooled_fac_beleifPotentials.shape[0], -1)
         if debug:
@@ -177,7 +178,7 @@ class lbp_message_passing_network(nn.Module):
     def compute_bethe_entropy_MLP(self, factor_beliefs, var_beliefs, numVars, var_degrees, batch_factors, batch_vars, debug=False):
         '''
         Equation (38) in:
-        https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
+        https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf
         '''
 
         pooled_fac_beliefs = -global_add_pool(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs), batch_factors)
@@ -187,16 +188,16 @@ class lbp_message_passing_network(nn.Module):
             pooled_fac_beliefs_orig = -torch.sum((torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs)).view(factor_beliefs_shape[0], -1), dim=0)
             print("pooled_fac_beliefs_orig:", pooled_fac_beliefs_orig)
             print("pooled_fac_beliefs:", pooled_fac_beliefs)
-        
-        
+
+
 
         var_beliefs_shape = var_beliefs.shape
         pooled_var_beliefs = global_add_pool(torch.exp(var_beliefs)*neg_inf_to_zero(var_beliefs)*(var_degrees.float() - 1).view(var_beliefs_shape[0], -1), batch_vars)
-        
+
         if debug:
-            pooled_var_beliefs_orig = torch.sum(torch.exp(var_beliefs)*neg_inf_to_zero(var_beliefs)*(var_degrees.float() - 1).view(var_beliefs_shape[0], -1), dim=0)            
+            pooled_var_beliefs_orig = torch.sum(torch.exp(var_beliefs)*neg_inf_to_zero(var_beliefs)*(var_degrees.float() - 1).view(var_beliefs_shape[0], -1), dim=0)
             print("pooled_var_beliefs_orig:", pooled_var_beliefs_orig)
-            print("pooled_var_beliefs:", pooled_var_beliefs)        
+            print("pooled_var_beliefs:", pooled_var_beliefs)
     #         sleep(SHAPECHECK)
 
         return pooled_fac_beliefs, pooled_var_beliefs
@@ -222,12 +223,12 @@ class lbp_message_passing_network(nn.Module):
         pooled_fac_beleifPotentials = self.compute_bethe_average_energy_MLP(factor_beliefs=factor_beliefs,\
                                       factor_potentials=factor_graph.factor_potentials, batch_factors=factor_graph.batch_factors)
         pooled_fac_beliefs, pooled_var_beliefs = self.compute_bethe_entropy_MLP(factor_beliefs=factor_beliefs, var_beliefs=var_beliefs, numVars=torch.sum(factor_graph.numVars), var_degrees=factor_graph.var_degrees, batch_factors=factor_graph.batch_factors, batch_vars=factor_graph.batch_vars)
-        
+
         if len(pooled_fac_beleifPotentials.shape) > 1:
             cat_dim = 1
         else:
             cat_dim = 0
-                 
+
         return torch.cat([pooled_fac_beleifPotentials, pooled_fac_beliefs, pooled_var_beliefs], dim=cat_dim)
 
 
@@ -235,7 +236,7 @@ class lbp_message_passing_network(nn.Module):
 def compute_bethe_average_energy(factor_beliefs, factor_potentials, debug=False):
     '''
     Equation (37) in:
-    https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
+    https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf
     '''
     assert(factor_potentials.shape == factor_beliefs.shape)
     if debug:
@@ -251,7 +252,7 @@ def compute_bethe_average_energy(factor_beliefs, factor_potentials, debug=False)
 def compute_bethe_entropy(factor_beliefs, var_beliefs, numVars, var_degrees):
     '''
     Equation (38) in:
-    https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
+    https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf
     '''
     bethe_entropy = -torch.sum(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs)) #elementwise multiplication, then sum
 
@@ -306,10 +307,10 @@ class GIN_Network_withEdgeFeatures(nn.Module):
         self.message_passing_layers = nn.ModuleList(layers)
         self.feat_all_layers = feat_all_layers
         if self.feat_all_layers:
-            self.final_mlp = Seq(Linear(msg_passing_iters*hidden_size, msg_passing_iters*hidden_size), ReLU(), Linear(msg_passing_iters*hidden_size, 1))            
+            self.final_mlp = Seq(Linear(msg_passing_iters*hidden_size, msg_passing_iters*hidden_size), ReLU(), Linear(msg_passing_iters*hidden_size, 1))
         else:
             self.final_mlp = Seq(Linear(hidden_size, hidden_size), ReLU(), Linear(hidden_size, 1))
-        
+
     def forward(self, x, edge_index, edge_attr, batch):
         if self.feat_all_layers:
             summed_node_features_all_layers = []
@@ -324,8 +325,8 @@ class GIN_Network_withEdgeFeatures(nn.Module):
             for message_passing_layer in self.message_passing_layers:
                 x = message_passing_layer(x=x, edge_index=edge_index, edge_attr=edge_attr)
 
-            return self.final_mlp(global_add_pool(x, batch))          
-    
+            return self.final_mlp(global_add_pool(x, batch))
+
 class GINConv_withEdgeFeatures(MessagePassing):
     r"""Modification of the graph isomorphism operator from the `"How Powerful are
     Graph Neural Networks?" <https://arxiv.org/abs/1810.00826>`_ paper, which uses
@@ -378,4 +379,4 @@ class GINConv_withEdgeFeatures(MessagePassing):
         # x_i has shape [E, in_channels]
         # edge_attr has shape [E, edge_features]
         tmp = torch.cat([x_j, edge_attr], dim=1)  # tmp has shape [E, in_channels + edge_features]
-        return self.nn2(tmp)        
+        return self.nn2(tmp)
