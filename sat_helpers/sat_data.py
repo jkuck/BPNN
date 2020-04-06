@@ -7,6 +7,8 @@ from utils import dotdict
 import numpy as np
 from decimal import Decimal
 import torch
+from parameters import LN_ZERO
+
 
 def parse_dimacs(filename, verbose=False):
     clauses = []
@@ -436,8 +438,9 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilo
     edge_count = edge_var_indices.shape[1]
 
 
-
-    factor_graph = FactorGraphData(factor_potentials=torch.log(factor_potentials),
+    log_potentials = torch.log(factor_potentials)
+    log_potentials[torch.where(log_potentials == -np.inf)] = LN_ZERO
+    factor_graph = FactorGraphData(factor_potentials=log_potentials,
                  factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=N, numFactors=num_factors, 
                  edge_var_indices=edge_var_indices, state_dimensions=state_dimensions,
                  factor_potential_masks=factor_potential_masks, ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)

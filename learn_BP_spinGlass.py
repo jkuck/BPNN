@@ -29,7 +29,7 @@ import cProfile
 # $ source bin/activate
 
 
-MODE = "train" #run "test" or "train" mode
+MODE = "train"# "test"# #run "test" or "train" mode
 
 #####Testing parameters
 TEST_TRAINED_MODEL = True #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
@@ -42,11 +42,16 @@ EXPERIMENT_NAME = 'trained_attrField_10layer_2MLPs_noFinalBetheMLP/' #used for s
 # BPNN_trained_model_path = './wandb/run-20200211_233743-tpiv47ws/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True, 2MLPs per layer, weight sharing across layers
 BPNN_trained_model_path = './wandb/run-20200219_090032-11077pcu/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True, 2MLPs per layer [wandb results](https://app.wandb.ai/jdkuck/learnBP_spinGlass/runs/11077pcu)
 
-
-
 # GNN_trained_model_path = './wandb/run-20200209_091247-wz2g3fjd/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=True
 GNN_trained_model_path = './wandb/run-20200219_051810-bp7hke44/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=True, final MLP takes concatenation of all layers summed node features
 
+
+# 20 layer models
+BPNN_trained_model_path = './wandb/run-20200403_184715-x8p7a0o7/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True, 2MLPs per layer [wandb results](https://app.wandb.ai/jdkuck/learnBP_spinGlass_reproduce/runs/x8p7a0o7?workspace=user-)
+
+
+
+GNN_trained_model_path = './wandb/run-20200403_191628-s6oaxy9y/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=True, final MLP takes concatenation of all layers summed node features
 
 
 # BPNN_trained_model_path = './wandb/run-20200209_201644-cj5b13c2/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False
@@ -70,7 +75,7 @@ GNN_trained_model_path = './wandb/run-20200219_051810-bp7hke44/model.pt' #locati
 
 # BPNN_trained_model_path = './wandb/run-20200219_020545-j2ef9bvp/model.pt'
 
-USE_WANDB = True
+USE_WANDB = False
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 ##########################
 ####### Training PARAMETERS #######
@@ -246,6 +251,7 @@ def train():
         losses = []
         count = 0
         for spin_glass_problem in train_data_loader_pytorchGeometric: #pytorch geometric form
+            assert(spin_glass_problem.num_vars == torch.sum(spin_glass_problem.numVars))
 #             print("spin_glass_problem.ln_Z:", spin_glass_problem.ln_Z)
 #             print("spin_glass_problem.state_dimensions:", spin_glass_problem.state_dimensions)
 #             print("spin_glass_problem.factor_potentials :", spin_glass_problem.factor_potentials )
@@ -280,6 +286,15 @@ def train():
 #             sleep(tempaslkdfjsal)
 
             spin_glass_problem = spin_glass_problem.to(device)
+    
+    
+#             print("spin_glass_problem.num_nodes:", spin_glass_problem.num_nodes)
+#             print("spin_glass_problem.numVars:", spin_glass_problem.numVars)
+#             print("spin_glass_problem.num_vars:", spin_glass_problem.num_vars)
+#             print("spin_glass_problem.num_factors:", spin_glass_problem.num_factors)
+#             print("spin_glass_problem.state_dimensions:", spin_glass_problem.state_dimensions)
+#             sleep(batching_check)
+
 #             spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
             spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
         
@@ -323,6 +338,9 @@ def train():
             print("root mean squared training error =", np.sqrt(np.mean(losses)))
 
         if e % VAL_FREQUENCY == 0:
+#             print('-'*40, "check weights 1234", '-'*40)
+#             for param in lbp_net.parameters():
+#                 print(param.data)            
             val_losses = []
             for spin_glass_problem in val_data_loader_pytorchGeometric: #pytorch geometric form
 #                 print("spin_glass_problem.state_dimensions:", spin_glass_problem.state_dimensions)
@@ -748,5 +766,5 @@ if __name__ == "__main__":
         
     elif MODE == "test":
 #         test()
-#         create_ising_model_figure()
-        create_many_ising_model_figures()    
+        create_ising_model_figure()
+#         create_many_ising_model_figures()    
