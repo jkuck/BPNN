@@ -20,10 +20,6 @@ context = '''#!/bin/bash
 #SBATCH --job-name="%s"
 #SBATCH --output=%s-%%j.out
 
-# only use the following if you want email notification
-#SBATCH --mail-user=tanghaosjtu@gmail.com
-#SBATCH --mail-type=ALL
-
 # list out some useful information (optional)
 echo "SLURM_JOBID="$SLURM_JOBID
 echo "SLURM_JOB_NODELIST"=$SLURM_JOB_NODELIST
