@@ -229,7 +229,7 @@ def junction_tree(sg_model, verbose=False, map_flag=False):
     # Calculate joint state of all variables that has maximum probability
     jtmapstate = jtmap.findMaximum()
 
-    ln_Z = jtmap.logZ() if map_flag else jt.logZ()
+    ln_Z = sg_FactorGraph.logScore(jtmapstate) if map_flag else jt.logZ()
     # Report log partition sum (normalizing constant) of sg_FactorGraph, calculated by the junction tree algorithm
     if verbose:
         print()
@@ -237,7 +237,7 @@ def junction_tree(sg_model, verbose=False, map_flag=False):
         print('Exact log partition sum:', ln_Z)
     return(ln_Z)
 
-def run_loopyBP(sg_model, maxiter, updates="SEQRND", damping=None):
+def run_loopyBP(sg_model, maxiter, updates="SEQRND", damping=None, map_flag=False):
     if maxiter is None:
         maxiter=LIBDAI_LBP_ITERS
 
