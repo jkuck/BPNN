@@ -271,7 +271,11 @@ def run_loopyBP(sg_model, maxiter, updates="SEQRND", damping=None, map_flag=Fals
     bpopts["updates"] = updates
     bpopts["logdomain"] = "1"
     if damping is not None:
-        bpopts["damping"] = damping
+        bpopts["damping"] = str(damping)
+    if map_flag:
+        bpopts['inference'] = 'MAXPROD'
+    else:
+        bpopts['inference'] = 'SUMPROD'
 
     bp = dai.BP( sg_FactorGraph, bpopts )
     # Initialize belief propagation algorithm
@@ -280,13 +284,14 @@ def run_loopyBP(sg_model, maxiter, updates="SEQRND", damping=None, map_flag=Fals
     bp.run()
 
     # Report log partition sum of sg_FactorGraph, approximated by the belief propagation algorithm
-    ln_z_estimate = bp.logZ()
+    if map_flag:
+        return sg_FactorGraph.logScore(bp.findMaximum())
+    else:
+        return bp.logZ()
 
 #     print(type(bp.belief(sg_FactorGraph.var(0))))
 #     print(bp.belief(sg_FactorGraph.var(0))[0])
 #     sleep(aslfkdj)
-
-    return ln_z_estimate
 
 
 def run_mean_field(sg_model, maxiter):
