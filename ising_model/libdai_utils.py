@@ -3,7 +3,8 @@ import numpy as np
 
 # Atlas
 # LIBDAI_SWIG_DIRECTORY = '/atlas/u/jkuck/libdai2/swig/'
-LIBDAI_SWIG_DIRECTORY = '/atlas/u/htang/libdai/swig/'
+# LIBDAI_SWIG_DIRECTORY = '/atlas/u/htang/libdai/swig/'
+LIBDAI_SWIG_DIRECTORY = '/workspace/libdai/swig/'
 # LIBDAI_SWIG_DIRECTORY = '/atlas/u/jkuck/libdai_reproduce2/swig/'
 
 
