@@ -123,7 +123,7 @@ LR_DECAY=.5
 LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
 
 #trying new
-LEARNING_RATE = 0.00000001 #10layer with Bethe_mlp
+# LEARNING_RATE = 0.00000001 #10layer with Bethe_mlp
 
 ##########################
 

@@ -75,7 +75,7 @@ GNN_trained_model_path = './wandb/run-20200403_191628-s6oaxy9y/model.pt' #locati
 
 # BPNN_trained_model_path = './wandb/run-20200219_020545-j2ef9bvp/model.pt'
 
-USE_WANDB = False
+USE_WANDB = True
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 ##########################
 ####### Training PARAMETERS #######
@@ -148,7 +148,7 @@ else:
 
 ##########################
 if USE_WANDB:
-    wandb.init(project="learnBP_spinGlass_reproduce")
+    wandb.init(project="learnBP_spinGlass_debug")
     wandb.config.epochs = EPOCH_COUNT
     wandb.config.N_MIN_TRAIN = N_MIN_TRAIN
     wandb.config.N_MAX_TRAIN = N_MAX_TRAIN
