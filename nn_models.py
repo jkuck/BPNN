@@ -11,7 +11,7 @@ from utils import neg_inf_to_zero, shift_func
 
 import math
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
-from bpnn_model_simple import FactorGraphMsgPassingLayer_NoDoubleCounting
+from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
 from parameters import SHARE_WEIGHTS, BETHE_MLP
 
 class lbp_message_passing_network(nn.Module):
@@ -212,17 +212,22 @@ class lbp_message_passing_network(nn.Module):
         For more details, see page 11 of:
         https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf
         '''
+        normalized_var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim=0).view(-1,1)#normalize variable beliefs
+        normalization_view = [1 for i in range(len(factor_beliefs.shape))]
+        normalization_view[0] = -1        
+        normalized_factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim=0).view(normalization_view)#normalize factor beliefs
+        
         # print("self.compute_bethe_average_energy():", self.compute_bethe_average_energy())
         # print("self.compute_bethe_entropy():", self.compute_bethe_entropy())
-        if torch.isnan(factor_beliefs).any():
+        if torch.isnan(normalized_factor_beliefs).any():
             print("values, some should be nan:")
-            for val in factor_beliefs.flatten():
+            for val in normalized_factor_beliefs.flatten():
                 print(val)
-        assert(not torch.isnan(factor_beliefs).any()), (factor_beliefs, torch.where(factor_beliefs == torch.tensor(float('nan'))), torch.where(var_beliefs == torch.tensor(float('nan'))))
-        assert(not torch.isnan(var_beliefs).any()), var_beliefs
-        pooled_fac_beleifPotentials = self.compute_bethe_average_energy_MLP(factor_beliefs=factor_beliefs,\
+        assert(not torch.isnan(normalized_factor_beliefs).any()), (normalized_factor_beliefs, torch.where(normalized_factor_beliefs == torch.tensor(float('nan'))), torch.where(normalized_var_beliefs == torch.tensor(float('nan'))))
+        assert(not torch.isnan(normalized_var_beliefs).any()), normalized_var_beliefs
+        pooled_fac_beleifPotentials = self.compute_bethe_average_energy_MLP(factor_beliefs=normalized_factor_beliefs,\
                                       factor_potentials=factor_graph.factor_potentials, batch_factors=factor_graph.batch_factors)
-        pooled_fac_beliefs, pooled_var_beliefs = self.compute_bethe_entropy_MLP(factor_beliefs=factor_beliefs, var_beliefs=var_beliefs, numVars=torch.sum(factor_graph.numVars), var_degrees=factor_graph.var_degrees, batch_factors=factor_graph.batch_factors, batch_vars=factor_graph.batch_vars)
+        pooled_fac_beliefs, pooled_var_beliefs = self.compute_bethe_entropy_MLP(factor_beliefs=normalized_factor_beliefs, var_beliefs=normalized_var_beliefs, numVars=torch.sum(factor_graph.numVars), var_degrees=factor_graph.var_degrees, batch_factors=factor_graph.batch_factors, batch_vars=factor_graph.batch_vars)
         
         if len(pooled_fac_beleifPotentials.shape) > 1:
             cat_dim = 1

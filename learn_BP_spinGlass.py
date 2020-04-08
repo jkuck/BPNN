@@ -80,7 +80,7 @@ USE_WANDB = True
 ##########################
 ####### Training PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 10 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 20 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 

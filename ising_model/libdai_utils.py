@@ -227,6 +227,11 @@ def junction_tree(sg_model, verbose=False):
     jtmap.run()
     # Calculate joint state of all variables that has maximum probability
     jtmapstate = jtmap.findMaximum()
+#doesn't work    
+#     print(type(bp.belief(sg_FactorGraph.var(0))))
+#     print(jtmap.belief(sg_FactorGraph.var(0))[0])
+#     sleep(aslfkdj)
+    
     ln_Z = jt.logZ()
     # Report log partition sum (normalizing constant) of sg_FactorGraph, calculated by the junction tree algorithm
     if verbose:

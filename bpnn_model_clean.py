@@ -10,7 +10,7 @@ from utils import dotdict, logminusexp, shift_func #wrote a helper function that
 import matplotlib.pyplot as plt
 import matplotlib
 import mrftools
-from parameters import alpha, alpha2, NUM_MLPS, LN_ZERO
+from parameters import alpha, alpha2, LN_ZERO
 
 __size_error_msg__ = ('All tensors which should get mapped to the same source '
                       'or target nodes must be of same size in dimension 0.')
@@ -121,34 +121,36 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     Inputs:
     - learn_BP (bool): if False run standard looph belief propagation, if True
         insert a neural network into message aggregation for learning
-    - logspace_mlp (bool): if True mlp runs in log space (trouble with good results), 
-        if False we take exponent then run mlp then take log
+    - lne_mlp (bool): if False mlp runs in log space (had trouble with good results), 
+        if True we take exponent then run mlp then take log
     """
 
-    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True, logspace_mlp=False, num_mlps=NUM_MLPS):
+    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True, lne_mlp=False, use_MLP1=True, use_MLP2=True):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
 
-        assert(num_mlps in [1,2])
-        self.num_mlps = num_mlps
+        self.use_MLP1 = use_MLP1
+        self.use_MLP2 = use_MLP2
         self.learn_BP = learn_BP
         self.avoid_nans = avoid_nans
-        self.logspace_mlp = logspace_mlp
+        self.lne_mlp = lne_mlp
         print("learn_BP:", learn_BP)
         if learn_BP:
             assert(factor_state_space is not None)     
-            if num_mlps == 2:
-                self.linear1 = Linear(factor_state_space, factor_state_space)
-                self.linear2 = Linear(factor_state_space, factor_state_space)
-                self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-                self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-                self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-                self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+            self.linear1 = Linear(factor_state_space, factor_state_space)
+            self.linear2 = Linear(factor_state_space, factor_state_space)
+            self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+            self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+            self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+            self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
-                self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space                
+            self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space           
+            if lne_mlp:            
                 self.mlp1 = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)  
-                
-                
-                #add factor potential as part of MLP
+            else:
+                self.mlp1 = Seq(self.linear1, self.linear2)  
+
+
+            #add factor potential as part of MLP
 #                 self.linear3 = Linear(factor_state_space*2, factor_state_space)
 #                 self.linear4 = Linear(factor_state_space, factor_state_space)
 #                 self.linear3.weight = torch.nn.Parameter(torch.cat([torch.eye(factor_state_space), torch.eye(factor_state_space)], 1))
@@ -158,48 +160,20 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
 #                 self.shifted_relu1 = shift_func(ReLU(), shift=-50) #allow beliefs less than 0    
 
-                #add factor potential after MLP
-                self.linear3 = Linear(factor_state_space, factor_state_space)
-                self.linear4 = Linear(factor_state_space, factor_state_space)
-                self.linear3.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-                self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-                self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-                self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+            #add factor potential after MLP
+            self.linear3 = Linear(factor_state_space, factor_state_space)
+            self.linear4 = Linear(factor_state_space, factor_state_space)
+            self.linear3.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+            self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+            self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+            self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
-                self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
-                self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu1)  
-                
+            self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
+            if lne_mlp:
+                self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu1) 
             else:
-                # print("factor_state_space:", factor_state_space)
-                # sleep(float)
-                self.linear1 = Linear(factor_state_space, factor_state_space)
-                self.linear2 = Linear(factor_state_space, factor_state_space)
-                self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-                self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-                self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-                self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+                self.mlp2 = Seq(self.linear3, self.linear4)  
 
-                if self.logspace_mlp:
-                    self.shifted_relu = shift_func(ReLU(), shift=-50)
-                    # self.shifted_relu = shift_func(ReLU(), shift=np.exp(-99))
-
-                    self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2)
-
-                else:
-                    self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space                
-                    self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
-                    # self.mlp = Seq(self.linear1, ReLU(), self.linear2)
-
-                # self.relu = ReLU()                
-                # self.mlp = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)
-                # self.mlp = self.linear1
-                # self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
-                # self.mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
-                # self.mlp = Seq(self.linear1, ReLU(), self.linear2, ReLU())
-
-                # self.mlp = Seq(Linear(factor_state_space, factor_state_space),
-                #                ReLU(),
-                #                Linear(factor_state_space, factor_state_space))
 
     def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs):
         '''
@@ -215,10 +189,14 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     
     #testing a simplified version, modelling GIN, that preserves no double counting computation graph
     def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs,\
-                  alpha=alpha, alpha2=alpha2, debug=False, normalize_messages=True, normalize_beliefs=True,\
-                  use_MLP1=True, use_MLP2=True):
+                  alpha=alpha, alpha2=alpha2, debug=False, normalize_messages=True, normalize_beliefs=False):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
+
+        Notes:
+        - safe to clamp messages to be larger than LN_ZERO constant, but don't clamp or mess with beliefs.
+          Beliefs should just be the sum of messages during message passing and are only computed to make
+          the computation more efficient. (sum once, then subtract out messages, do this exactly)
 
         Inputs:
         - factor_graph: (FactorGraphData, defined in factor_graph.py) the factor graph we will perform one
@@ -238,29 +216,10 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         assert(factor_graph is not None)
         #update variable beliefs
-        factorToVar_messages = alpha*self.message_factorToVar(prv_factor_beliefs=prv_factor_beliefs, factor_graph=factor_graph,\
-                                                              prv_varToFactor_messages=prv_varToFactor_messages) +\
-                               (1 - alpha)*prv_factorToVar_messages
-        
-        if normalize_messages:
-#             print("pre normalization factorToVar_messages:")
-#             print(factorToVar_messages)
-            
-            factorToVar_messages = factorToVar_messages - logsumexp_multipleDim(factorToVar_messages, dim=0).view(-1,1)#normalize variable beliefs
-            check_messages = torch.sum(torch.exp(factorToVar_messages), dim=-1)
-            assert(torch.max(torch.abs(check_messages-1)) < .00001), (torch.sum(torch.abs(check_messages-1)), torch.max(torch.abs(check_messages-1)), check_messages)
-
-#             print("post normalization factorToVar_messages:")
-#             print(factorToVar_messages)
-#             check_messages = torch.sum(torch.exp(factorToVar_messages), dim=-1)
-#             print("check_messages:", check_messages)
-#             print("factorToVar_messages.shape:", factorToVar_messages.shape)
-#             print("check_messages.shape:", check_messages.shape)
-#             sleep(lskafdjlks)           
-        
-        
-        assert(not torch.isnan(factorToVar_messages).any()), prv_factor_beliefs
-
+        factorToVar_messages = self.message_factorToVar(prv_factor_beliefs=prv_factor_beliefs, factor_graph=factor_graph,\
+                                                              prv_varToFactor_messages=prv_varToFactor_messages,\
+                                                              prv_factorToVar_messages=prv_factorToVar_messages, alpha=alpha,\
+                                                              normalize_messages=normalize_messages)
 
         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1], dim_size=factor_graph.num_vars)
         assert(len(var_beliefs.shape) == 2)
@@ -269,24 +228,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert(not torch.isnan(var_beliefs).any()), var_beliefs
         
         #update factor beliefs
-        varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages) 
-        
-        if normalize_messages:
-#             print("pre normalization varToFactor_messages:")
-#             print(varToFactor_messages)
-            
-            varToFactor_messages = varToFactor_messages - logsumexp_multipleDim(varToFactor_messages, dim=0).view(-1,1)#normalize variable beliefs
-#             print("post normalization varToFactor_messages:")
-#             print(varToFactor_messages)
-            check_messages = torch.sum(torch.exp(varToFactor_messages), dim=-1)
-            assert(torch.max(torch.abs(check_messages-1)) < .00001), (torch.sum(torch.abs(check_messages-1)), torch.max(torch.abs(check_messages-1)), check_messages)
-
-#             print("check_messages:", check_messages)
-#             print("varToFactor_messages.shape:", varToFactor_messages.shape)
-#             print("check_messages.shape:", check_messages.shape)
-#             sleep(lskafdjlks)           
-        
-        assert(not torch.isnan(varToFactor_messages).any()), prv_factor_beliefs
+        varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages,\
+                                                        normalize_messages=normalize_messages)
         
         expansion_list = [2 for i in range(factor_graph.state_dimensions - 1)] + [-1,] #messages have states for one variable, add dummy dimensions for the other variables in factors
         new_shape = [varToFactor_messages.shape[0]] + expansion_list
@@ -311,20 +254,27 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #         varToFactor_expandedMessages = varToFactor_expandedMessages - logsumexp_multipleDim(varToFactor_expandedMessages, dim=0).view(normalization_view)#normalize factor beliefs
 
 
-        
-        if use_MLP1:
-            varToFactor_expandedMessages_shape = varToFactor_expandedMessages.shape
-            assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
+        if self.use_MLP1:
+            if self.lne_mlp:
+                varToFactor_expandedMessages_shape = varToFactor_expandedMessages.shape
+                assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
 
-            varToFactor_expandedMessages = torch.exp(varToFactor_expandedMessages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
-            varToFactor_expandedMessages_clone = varToFactor_expandedMessages.clone()
-            varToFactor_expandedMessages_temp = (1-alpha2)*self.mlp1(varToFactor_expandedMessages_clone.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape) + alpha2*varToFactor_expandedMessages_clone
+                varToFactor_expandedMessages = torch.exp(varToFactor_expandedMessages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                varToFactor_expandedMessages_clone = varToFactor_expandedMessages.clone()
+                varToFactor_expandedMessages_temp = (1-alpha2)*self.mlp1(varToFactor_expandedMessages_clone.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape) + alpha2*varToFactor_expandedMessages_clone
 
-            valid_locations = torch.where((varToFactor_expandedMessages>LN_ZERO))
-            # valid_locations = torch.where((varToFactor_expandedMessages>LN_ZERO) & (varToFactor_expandedMessages_temp>0))
-            varToFactor_expandedMessages = LN_ZERO*torch.ones_like(varToFactor_expandedMessages)
-            varToFactor_expandedMessages[valid_locations] = torch.log(varToFactor_expandedMessages_temp[valid_locations])
+                valid_locations = torch.where((varToFactor_expandedMessages>LN_ZERO))
+                # valid_locations = torch.where((varToFactor_expandedMessages>LN_ZERO) & (varToFactor_expandedMessages_temp>0))
+                varToFactor_expandedMessages = LN_ZERO*torch.ones_like(varToFactor_expandedMessages)
+                varToFactor_expandedMessages[valid_locations] = torch.log(varToFactor_expandedMessages_temp[valid_locations])
 
+            else:
+                varToFactor_expandedMessages_shape = varToFactor_expandedMessages.shape
+                assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
+
+                varToFactor_expandedMessages = (1-alpha2)*self.mlp1(varToFactor_expandedMessages.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape) + alpha2*varToFactor_expandedMessages
+                
+            
         assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
 
 #                 factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0], dim_size=factor_graph.numFactors)
@@ -338,22 +288,33 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert(num_factors == factor_beliefs.shape[0]), (num_factors, factor_beliefs.shape[0])
         assert(num_factors == factor_graph.factor_potentials.shape[0]), (num_factors, factor_graph.factor_potentials.shape[0])
 
-        if use_MLP2:
-            factor_beliefs_shape = factor_beliefs.shape
-    #                 factor_beliefs = self.mlp2(torch.cat([factor_beliefs.view(num_factors,-1), factor_graph.factor_potentials.view(num_factors,-1)], 1)).view(factor_beliefs_shape)
-    #                 factor_beliefs = self.mlp2(factor_beliefs.view(num_factors,-1)).view(factor_beliefs_shape)
-            factor_beliefs = torch.exp(factor_beliefs) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
-            factor_beliefs_clone = factor_beliefs.clone()
+        if self.use_MLP2:
+            if self.lne_mlp:
+                factor_beliefs_shape = factor_beliefs.shape
+        #                 factor_beliefs = self.mlp2(torch.cat([factor_beliefs.view(num_factors,-1), factor_graph.factor_potentials.view(num_factors,-1)], 1)).view(factor_beliefs_shape)
+        #                 factor_beliefs = self.mlp2(factor_beliefs.view(num_factors,-1)).view(factor_beliefs_shape)
 
-            check_factor_beliefs(factor_beliefs) #debugging
-            factor_beliefs_temp = (1-alpha2)*self.mlp2(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) + alpha2*factor_beliefs_clone
-            valid_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs>LN_ZERO))
-            # valid_locations = torch.where((factor_beliefs>LN_ZERO) & (factor_beliefs_temp>0))
-            factor_beliefs = LN_ZERO*torch.ones_like(factor_beliefs)
-            factor_beliefs[valid_locations] = torch.log(factor_beliefs_temp[valid_locations])
-            # check_factor_beliefs(factor_beliefs) #debugging
-            assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
+                factor_beliefs = torch.exp(factor_beliefs) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                factor_beliefs_clone = factor_beliefs.clone()
 
+                check_factor_beliefs(factor_beliefs) #debugging
+                factor_beliefs_temp = (1-alpha2)*self.mlp2(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) + alpha2*factor_beliefs_clone
+                valid_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs>LN_ZERO))
+                # valid_locations = torch.where((factor_beliefs>LN_ZERO) & (factor_beliefs_temp>0))
+                factor_beliefs = LN_ZERO*torch.ones_like(factor_beliefs)
+                factor_beliefs[valid_locations] = torch.log(factor_beliefs_temp[valid_locations])
+
+                # check_factor_beliefs(factor_beliefs) #debugging
+                assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
+
+            else:
+                factor_beliefs_shape = factor_beliefs.shape
+                check_factor_beliefs(factor_beliefs) #debugging
+                factor_beliefs = (1-alpha2)*self.mlp2(factor_beliefs.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) + alpha2*factor_beliefs
+
+                # check_factor_beliefs(factor_beliefs) #debugging
+                assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
+                
 
         factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
         factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)] = LN_ZERO
@@ -386,7 +347,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 # def logsumexp(tensor, dim):
 #     tensor_exp = tor
 
-    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages, debug=False, fast_logsumexp=True):
+    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages,\
+                            alpha, normalize_messages, debug=False, fast_logsumexp=True):
         #subtract previous messages from current factor beliefs to get factor to variable messages
         # prv_factor_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_varToFactor_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
@@ -425,24 +387,39 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1) 
         marginalized_states = marginalized_states_fast[:-1].view(num_edges,2)
 
-        assert((prv_varToFactor_messages >= LN_ZERO).all())
+        assert((prv_varToFactor_messages >= LN_ZERO).all()), (torch.min(prv_varToFactor_messages))
 
         #avoid double counting
-        messages = marginalized_states - prv_varToFactor_messages
+        factorToVar_messages = marginalized_states - prv_varToFactor_messages
         
         # FIX ME
 #         TO DO:
 #             - normalize messages
 #             - check if cloning in following is necessary 
 #         assert(False), "finish these todos"
-        #for numerical stability, don't let log messages get smaller than LN_ZERO (constant set in parameters.py)
-        messages_clipped = messages.clone()
-        messages_clipped[torch.where(messages < LN_ZERO)] = LN_ZERO         
-        
-        
-        return messages_clipped
+#         #for numerical stability, don't let log messages get smaller than LN_ZERO (constant set in parameters.py)
+        factorToVar_messages = torch.clamp(factorToVar_messages, min=LN_ZERO)
+        factorToVar_messages = alpha*factorToVar_messages + (1 - alpha)*prv_factorToVar_messages
+        if normalize_messages:
+#             print("pre normalization factorToVar_messages:")
+#             print(factorToVar_messages)
+            
+            factorToVar_messages = factorToVar_messages - logsumexp_multipleDim(factorToVar_messages, dim=0).view(-1,1)#normalize variable beliefs
+            check_messages = torch.sum(torch.exp(factorToVar_messages), dim=-1)
+            assert(torch.max(torch.abs(check_messages-1)) < .00001), (torch.sum(torch.abs(check_messages-1)), torch.max(torch.abs(check_messages-1)), check_messages)
 
-    def message_varToFactor(self, var_beliefs, factor_graph, prv_factorToVar_messages):
+#             print("post normalization factorToVar_messages:")
+#             print(factorToVar_messages)
+#             check_messages = torch.sum(torch.exp(factorToVar_messages), dim=-1)
+#             print("check_messages:", check_messages)
+#             print("factorToVar_messages.shape:", factorToVar_messages.shape)
+#             print("check_messages.shape:", check_messages.shape)
+#             sleep(lskafdjlks)           
+        factorToVar_messages = torch.clamp(factorToVar_messages, min=LN_ZERO)
+        assert(not torch.isnan(factorToVar_messages).any()), prv_factor_beliefs        
+        return factorToVar_messages
+
+    def message_varToFactor(self, var_beliefs, factor_graph, prv_factorToVar_messages, normalize_messages):
         #subtract previous messages from current variable beliefs to get variable to factor messages
         # var_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_factorToVar_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
@@ -454,19 +431,25 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert((prv_factorToVar_messages >= LN_ZERO).all())
 
         #avoid double counting
-        messages = mapped_var_beliefs - prv_factorToVar_messages            
+        varToFactor_messages = mapped_var_beliefs - prv_factorToVar_messages            
 
         # FIX ME
 #         TO DO:
 #             - normalize messages
-#             - check if cloning in following is necessary 
 #         assert(False), "finish these todos"
             
         #for numerical stability, don't let log messages get smaller than LN_ZERO (constant set in parameters.py)
-        messages_clipped = messages.clone()
-        messages_clipped[torch.where(messages < LN_ZERO)] = LN_ZERO 
-            
-        return messages_clipped    
+        varToFactor_messages = torch.clamp(varToFactor_messages, min=LN_ZERO)
+        if normalize_messages:
+            varToFactor_messages = varToFactor_messages - logsumexp_multipleDim(varToFactor_messages, dim=0).view(-1,1)#normalize variable beliefs
+#             print("post normalization varToFactor_messages:")
+#             print(varToFactor_messages)
+            check_messages = torch.sum(torch.exp(varToFactor_messages), dim=-1)
+            assert(torch.max(torch.abs(check_messages-1)) < .00001), (torch.sum(torch.abs(check_messages-1)), torch.max(torch.abs(check_messages-1)), check_messages)
+
+        varToFactor_messages = torch.clamp(varToFactor_messages, min=LN_ZERO)
+        assert(not torch.isnan(varToFactor_messages).any()), prv_factor_beliefs            
+        return varToFactor_messages    
     
 def check_factor_beliefs(factor_beliefs):
     '''

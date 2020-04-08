@@ -27,7 +27,7 @@ import json
 ##########################
 ####### PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 5 #number of variables in the largest factor -> factor has 2^MAX_FACTOR_STATE_DIMENSIONS states
-MSG_PASSING_ITERS = 2 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 5 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -113,7 +113,7 @@ SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/exact_SAT_counts_noIndSets/"
 
 
 EPOCH_COUNT = 10000
-PRINT_FREQUENCY = 1
+PRINT_FREQUENCY = 10
 SAVE_FREQUENCY = 100
 VAL_FREQUENCY = 10
 ##########################
@@ -129,8 +129,8 @@ LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
 
 # USE_WANDB = False
 # if USE_WANDB:
-os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
-wandb.init(project="learn_BP_sat_reproduce")
+# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
+wandb.init(project="learn_BP_sat_debug")
 # wandb.init(project="test")
 wandb.config.epochs = EPOCH_COUNT
 wandb.config.train_val_split = "random_shuffle"#"easyTrain_hardVal"#'separate_categories'#
