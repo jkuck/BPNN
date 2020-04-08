@@ -5,7 +5,7 @@ import torch
 
 from factor_graph import FactorGraphData
 from .spin_glass_model import SpinGlassModel
-
+from parameters import LN_ZERO
 
 
 def build_unary_factor(f, state_dimensions):
@@ -23,7 +23,8 @@ def build_unary_factor(f, state_dimensions):
     #only use 1 dimension for a single variable factor
     used_dimension_count = 1
     #initialize to all 0's, -infinity in log space
-    factor_potential = -np.inf*torch.ones([2 for i in range(state_dimensions)])
+    factor_potential = LN_ZERO*torch.ones([2 for i in range(state_dimensions)])
+#     factor_potential = -np.inf*torch.ones([2 for i in range(state_dimensions)])
 #     factor_potential = -np.nan*torch.ones([2 for i in range(state_dimensions)]) #for debugging
 
     mask = torch.zeros([2 for i in range(state_dimensions)])
@@ -65,7 +66,8 @@ def build_pairwise_factor(c, state_dimensions):
     #only use 1 dimension for a single variable factor
     used_dimension_count = 2
     #initialize to all 0's, -infinity in log space
-    factor_potential = -np.inf*torch.ones([2 for i in range(state_dimensions)])
+    factor_potential = LN_ZERO*torch.ones([2 for i in range(state_dimensions)])
+#     factor_potential = -np.inf*torch.ones([2 for i in range(state_dimensions)])
     mask = torch.zeros([2 for i in range(state_dimensions)])
 
 
