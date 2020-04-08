@@ -125,7 +125,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         if True we take exponent then run mlp then take log
     """
 
-    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True, lne_mlp=False, use_MLP1=True, use_MLP2=True):
+    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True, lne_mlp=False, use_MLP1=False, use_MLP2=False):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
 
         self.use_MLP1 = use_MLP1
@@ -174,7 +174,24 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             else:
                 self.mlp2 = Seq(self.linear3, self.linear4)  
 
+                
+            self.linear5 = Linear(2, 2)
+            self.linear6 = Linear(2, 2)
+            self.linear5.weight = torch.nn.Parameter(torch.eye(2))
+            self.linear5.bias = torch.nn.Parameter(torch.zeros(self.linear5.bias.shape))
+            self.linear6.weight = torch.nn.Parameter(torch.eye(2))
+            self.linear6.bias = torch.nn.Parameter(torch.zeros(self.linear6.bias.shape))
+            self.mlp3 = Seq(self.linear5, self.linear6)  
 
+            self.linear7 = Linear(2, 2)
+            self.linear8 = Linear(2, 2)
+            self.linear7.weight = torch.nn.Parameter(torch.eye(2))
+            self.linear7.bias = torch.nn.Parameter(torch.zeros(self.linear7.bias.shape))
+            self.linear8.weight = torch.nn.Parameter(torch.eye(2))
+            self.linear8.bias = torch.nn.Parameter(torch.zeros(self.linear8.bias.shape))
+            self.mlp4 = Seq(self.linear7, self.linear8)  
+            
+            
     def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs):
         '''
         Inputs:
@@ -220,7 +237,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                                                               prv_varToFactor_messages=prv_varToFactor_messages,\
                                                               prv_factorToVar_messages=prv_factorToVar_messages, alpha=alpha,\
                                                               normalize_messages=normalize_messages)
-
+        factorToVar_messages = self.mlp3(factorToVar_messages)
+        
         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1], dim_size=factor_graph.num_vars)
         assert(len(var_beliefs.shape) == 2)
         if normalize_beliefs:
@@ -230,6 +248,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         #update factor beliefs
         varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages,\
                                                         normalize_messages=normalize_messages)
+        varToFactor_messages = self.mlp4(varToFactor_messages)
         
         expansion_list = [2 for i in range(factor_graph.state_dimensions - 1)] + [-1,] #messages have states for one variable, add dummy dimensions for the other variables in factors
         new_shape = [varToFactor_messages.shape[0]] + expansion_list
