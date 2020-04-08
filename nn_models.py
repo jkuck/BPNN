@@ -11,7 +11,7 @@ from utils import neg_inf_to_zero, shift_func
 
 import math
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
-from bpnn_model_simple import FactorGraphMsgPassingLayer_NoDoubleCounting
+from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting
 from parameters import SHARE_WEIGHTS, BETHE_MLP
 
 class lbp_message_passing_network(nn.Module):
