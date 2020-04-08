@@ -53,7 +53,7 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 1000
+TRAINING_DATA_SIZE = 100
 VAL_DATA_SIZE = 1000#100
 TEST_DATA_SIZE = 1000
 
@@ -118,14 +118,20 @@ SAVE_FREQUENCY = 100
 VAL_FREQUENCY = 10
 ##########################
 ##### Optimizer parameters #####
-STEP_SIZE=200
+STEP_SIZE=500
 LR_DECAY=.5 
 LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
+
+#trying new
+# LEARNING_RATE = 0.00000001 #10layer with Bethe_mlp
+
 ##########################
 
+# USE_WANDB = False
+# if USE_WANDB:
 os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
-# wandb.init(project="learn_BP_sat2")
-wandb.init(project="test")
+wandb.init(project="learn_BP_sat_reproduce")
+# wandb.init(project="test")
 wandb.config.epochs = EPOCH_COUNT
 wandb.config.train_val_split = "random_shuffle"#"easyTrain_hardVal"#'separate_categories'#
 wandb.config.PROBLEM_CATEGORY_TRAIN = PROBLEM_CATEGORY_TRAIN
@@ -202,7 +208,8 @@ def train():
                # dataset_size=100, begin_idx=50, epsilon=EPSILON)
                dataset_size=TRAINING_DATA_SIZE, epsilon=EPSILON,
                max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
-    train_data_loader = DataLoader(training_SAT_list, batch_size=1)
+    train_data_loader = DataLoader(training_SAT_list, batch_size=100)
+    train_data_loader2 = DataLoader(training_SAT_list, batch_size=2)    
    
     val_SAT_list = get_SATproblems_list(problems_to_load=val_problems,
                counts_dir_name=SOLUTION_COUNTS_DIR,
@@ -210,26 +217,30 @@ def train():
                # dataset_size=50, begin_idx=0, epsilon=EPSILON)
                dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON,
                max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
-    val_data_loader = DataLoader(val_SAT_list, batch_size=1)
+    val_data_loader = DataLoader(val_SAT_list, batch_size=100)
 
     # with autograd.detect_anomaly():
     
     for e in range(EPOCH_COUNT):
 #         for t, (sat_problem, exact_ln_partition_function) in enumerate(train_data_loader):
         losses = []
+        epoch_loss = 0
+        optimizer.zero_grad()
         for sat_problem in train_data_loader:
+            assert(sat_problem.num_vars == torch.sum(sat_problem.numVars))
+#             optimizer.zero_grad()
             sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
             
             sat_problem = sat_problem.to(device)
             exact_ln_partition_function = sat_problem.ln_Z
-            optimizer.zero_grad()
+#             optimizer.zero_grad()
 
             assert(sat_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
             estimated_ln_partition_function = lbp_net(sat_problem)
 
-            # print("estimated_ln_partition_function:", estimated_ln_partition_function)
+#             print("estimated_ln_partition_function:", estimated_ln_partition_function)
             # print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
-            # print("exact_ln_partition_function:", exact_ln_partition_function)
+#             print("exact_ln_partition_function:", exact_ln_partition_function)
             # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
 #             print("estimated_ln_partition_function.shape:", estimated_ln_partition_function.shape)
 #             print("exact_ln_partition_function.shape:", exact_ln_partition_function.shape)
@@ -238,14 +249,53 @@ def train():
             # print("loss:", loss)
             # print()
             losses.append(loss.item())
+#             epoch_loss += loss
             loss.backward()
-            # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
+#             # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
             optimizer.step()
 
+#         epoch_loss = epoch_loss
+#         epoch_loss.backward()
+        # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
+#         optimizer.step()
+
+# ######DEBUG
+#         for sat_problem in train_data_loader2:
+#             sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
+            
+#             sat_problem = sat_problem.to(device)
+#             exact_ln_partition_function = sat_problem.ln_Z
+#             optimizer.zero_grad()
+
+#             assert(sat_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
+#             estimated_ln_partition_function = lbp_net(sat_problem)
+
+#             print("estimated_ln_partition_function:", estimated_ln_partition_function)
+#             # print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
+#             print("exact_ln_partition_function:", exact_ln_partition_function)
+#             # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
+# #             print("estimated_ln_partition_function.shape:", estimated_ln_partition_function.shape)
+# #             print("exact_ln_partition_function.shape:", exact_ln_partition_function.shape)
+            
+#             loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float().squeeze())
+#             # print("loss:", loss)
+#             # print()
+#             losses.append(loss.item())
+#             loss.backward()
+#             # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
+#             optimizer.step()
+
+#         sleep(temptemp)
+
+# ######DEBUG END
+            
         if e % PRINT_FREQUENCY == 0:
             print("root mean squared training error =", np.sqrt(np.mean(losses)))
             
         if e % VAL_FREQUENCY == 0:
+#             print('-'*40, "check weights 1234", '-'*40)
+#             for param in lbp_net.parameters():
+#                 print(param.data)
             val_losses = []
 #             for t, (sat_problem, exact_ln_partition_function) in enumerate(val_data_loader):
             for sat_problem in val_data_loader:

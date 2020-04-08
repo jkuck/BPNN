@@ -14,9 +14,6 @@ context = '''#!/bin/bash
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
 
-# only use the following on partition with GPUs
-#SBATCH --gres=gpu:1
-
 #SBATCH --job-name="%s"
 #SBATCH --output=%s-%%j.out
 
