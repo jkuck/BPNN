@@ -26,6 +26,7 @@ import pickle
 MODE = 'train'
 ##########################################################################################################
 MSG_PASSING_ITERS = 10
+NODE_FEATURE_SIZE = 32
 
 N_MIN_TRAIN = 10
 N_MAX_TRAIN = 10
@@ -33,8 +34,8 @@ F_MAX_TRAIN = .1
 C_MAX_TRAIN = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
-TRAIN_DATA_SIZE = 50
-ATTRACTIVE_FIELD_TRAIN = True
+TRAIN_DATA_SIZE = 250
+ATTRACTIVE_FIELD_TRAIN = False
 
 # N_MIN_VAL = 10
 # N_MAX_VAL = 10
@@ -45,7 +46,7 @@ N_MAX_VAL = 10
 F_MAX_VAL = .1
 C_MAX_VAL = 5.0
 VAL_DATA_SIZE = 50
-ATTRACTIVE_FIELD_VAL = True
+ATTRACTIVE_FIELD_VAL = False
 
 SAVE_FREQUENCY = 100
 EPOCH_COUNT = 5000
@@ -84,7 +85,7 @@ else:
                                                             f=np.random.uniform(low=0, high=F_MAX),\
                                                             c=np.random.uniform(low=0, high=C_MAX),\
                                                             attractive_field=ATTRACTIVE_FIELD_TRAIN)) for i in range(TRAIN_DATA_SIZE)]
-    train_loader = DataLoader(train_data_list, batch_size=50)
+    train_loader = DataLoader(train_data_list, batch_size=250)
 
     val_data_list = [spinGlass_to_torchGeometric(SpinGlassModel(N=random.randint(N_MIN_VAL, N_MAX_VAL),\
                                                             f=np.random.uniform(low=0, high=F_MAX_VAL),\
@@ -93,7 +94,8 @@ else:
     val_loader = DataLoader(val_data_list, batch_size=200)    
     
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = GIN_Network_withEdgeFeatures(msg_passing_iters=MSG_PASSING_ITERS).to(device)
+model = GIN_Network_withEdgeFeatures(input_state_size=1, edge_attr_size=1, hidden_size=NODE_FEATURE_SIZE,\
+                                     msg_passing_iters=MSG_PASSING_ITERS).to(device)
 
 #works well for attractive field
 if ATTRACTIVE_FIELD_TRAIN:
@@ -185,8 +187,25 @@ def val_epoch(plot=False, val_mode=False):
     return total_loss / VAL_DATA_SIZE
 
 def train():
-    wandb.init(project="gnn_sat")
+    wandb.init(project="gnn_spinGlass_compare")
+#     os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
+    wandb.config.epochs = EPOCH_COUNT
+    wandb.config.N_MIN_TRAIN = N_MIN_TRAIN
+    wandb.config.N_MAX_TRAIN = N_MAX_TRAIN
+    wandb.config.F_MAX_TRAIN = F_MAX_TRAIN
+    wandb.config.C_MAX_TRAIN = C_MAX_TRAIN
+    wandb.config.ATTRACTIVE_FIELD_TRAIN = ATTRACTIVE_FIELD_TRAIN
+#     wandb.config.TRAINING_DATA_SIZE = TRAINING_DATA_SIZE
+    wandb.config.MSG_PASSING_ITERS = MSG_PASSING_ITERS
+    wandb.config.NODE_FEATURE_SIZE = NODE_FEATURE_SIZE
+
+#     wandb.config.STEP_SIZE = STEP_SIZE
+#     wandb.config.LR_DECAY = LR_DECAY
+#     wandb.config.LEARNING_RATE = LEARNING_RATE
+#     wandb.config.TRAIN_BATCH_SIZE = TRAIN_BATCH_SIZE
+#     wandb.config.VAL_BATCH_SIZE = VAL_BATCH_SIZE  
     wandb.watch(model)
+    
     for epoch in range(1, EPOCH_COUNT):
     
     # for epoch in range(1, 501):

@@ -80,7 +80,11 @@ USE_WANDB = True
 ##########################
 ####### Training PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 20 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+VAR_CARDINALITY = 2
+
+MSG_PASSING_ITERS = 10 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+BELIEF_REPEATS = 4
+
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -102,13 +106,13 @@ F_MAX_TRAIN = .1
 C_MAX_TRAIN = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
-ATTRACTIVE_FIELD_TRAIN = True
+ATTRACTIVE_FIELD_TRAIN = False
 
 N_MIN_VAL = 10
 N_MAX_VAL = 10
 F_MAX_VAL = .1
 C_MAX_VAL = 5.0
-ATTRACTIVE_FIELD_VAL = True
+ATTRACTIVE_FIELD_VAL = False
 # ATTRACTIVE_FIELD_TEST = True
 
 REGENERATE_DATA = False
@@ -116,14 +120,14 @@ REGENERATE_DATA = False
 DATA_DIR = "./data/spin_glass/"
 
 
-TRAINING_DATA_SIZE = 50
+TRAINING_DATA_SIZE = 250
 VAL_DATA_SIZE = 50#100
 TEST_DATA_SIZE = 200
 
-TRAIN_BATCH_SIZE=50
+TRAIN_BATCH_SIZE=250
 VAL_BATCH_SIZE=50
 
-EPOCH_COUNT = 300
+EPOCH_COUNT = 5000
 PRINT_FREQUENCY = 10
 VAL_FREQUENCY = 10
 SAVE_FREQUENCY = 100
@@ -131,11 +135,11 @@ SAVE_FREQUENCY = 100
 TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' datasets
 
 ##### Optimizer parameters #####
-STEP_SIZE=300
+STEP_SIZE=2000
 LR_DECAY=.5
 if ATTRACTIVE_FIELD_TRAIN == True:
     #works well for training on attractive field
-        LEARNING_RATE = 0.0005
+        LEARNING_RATE = 0.0005        
 #         LEARNING_RATE = 0.001 #testing
 #     LEARNING_RATE = 0.00005 #10layer with Bethe_mlp
 else:
@@ -143,6 +147,8 @@ else:
 #         LEARNING_RATE = 0.005 #10layer        
 #         LEARNING_RATE = 0.001 #30layer trial 
     LEARNING_RATE = 0.0005 #10layer with Bethe_mlp
+#     LEARNING_RATE = 0.0001
+    
 #     LEARNING_RATE = 0.0000005 #c_max = .5
 
 
@@ -167,8 +173,8 @@ if USE_WANDB:
     wandb.config.NUM_MLPS = NUM_MLPS
     wandb.config.TRAIN_BATCH_SIZE = TRAIN_BATCH_SIZE
     wandb.config.VAL_BATCH_SIZE = VAL_BATCH_SIZE
-
-
+    wandb.config.BELIEF_REPEATS = BELIEF_REPEATS
+    wandb.config.VAR_CARDINALITY = VAR_CARDINALITY
 
 
 def get_dataset(dataset_type):
@@ -215,7 +221,8 @@ def get_dataset(dataset_type):
 # device = torch.device('cpu')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS,\
-                                      msg_passing_iters=MSG_PASSING_ITERS, device=None)
+                                      msg_passing_iters=MSG_PASSING_ITERS, device=None,
+                                     belief_repeats=BELIEF_REPEATS, var_cardinality=VAR_CARDINALITY)
 
 lbp_net = lbp_net.to(device)
 
@@ -234,13 +241,13 @@ def train():
 
     spin_glass_models_list_train = get_dataset(dataset_type='train')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_from_train = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list_train]
+    sg_models_fg_from_train = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list_train]
     train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=TRAIN_BATCH_SIZE)
 
     
     spin_glass_models_list_val = get_dataset(dataset_type='val')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list_val]
+    sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list_val]
     val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
 #     val_data_loader_pytorchGeometric_batchSize50 = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
     
@@ -296,7 +303,16 @@ def train():
 #             sleep(batching_check)
 
 #             spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
+#             print("1 spin_glass_problem.var_cardinality:", spin_glass_problem.var_cardinality)
+#             print("1 spin_glass_problem.belief_repeats:", spin_glass_problem.belief_repeats)
+
             spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
+            spin_glass_problem.var_cardinality = spin_glass_problem.var_cardinality[0] #hack for batching,
+            spin_glass_problem.belief_repeats = spin_glass_problem.belief_repeats[0] #hack for batching,
+        
+#             print("2 spin_glass_problem.var_cardinality:", spin_glass_problem.var_cardinality)
+#             print("2 spin_glass_problem.belief_repeats:", spin_glass_problem.belief_repeats)
+        
         
             exact_ln_partition_function = spin_glass_problem.ln_Z
             assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
@@ -312,6 +328,8 @@ def train():
 
 
 #             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
+#             print("estimated_ln_partition_function.shape:", estimated_ln_partition_function.shape)
+#             print("exact_ln_partition_function.shape:", exact_ln_partition_function.shape)    
             loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
 #             print("loss:", loss)
 #             sleep(check_loss)
@@ -366,6 +384,8 @@ def train():
                 exact_ln_partition_function = spin_glass_problem.ln_Z   
                 assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all()), (spin_glass_problem.state_dimensions, MAX_FACTOR_STATE_DIMENSIONS)
                 spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
+                spin_glass_problem.var_cardinality = spin_glass_problem.var_cardinality[0] #hack for batching,
+                spin_glass_problem.belief_repeats = spin_glass_problem.belief_repeats[0] #hack for batching,
                 
                 estimated_ln_partition_function = lbp_net(spin_glass_problem)            
                 loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
@@ -449,7 +469,7 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
     #data loader for BPNN
     spin_glass_models_list = get_dataset(dataset_type=TEST_DATSET)
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_from = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list]
+    sg_models_fg_from = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list]
     data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from, batch_size=1, shuffle=False)
 
     #data loader for GNN
@@ -645,7 +665,7 @@ def test(skip_our_model=False):
 
     spin_glass_models_list = get_dataset(dataset_type=TEST_DATSET)
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_from = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list]
+    sg_models_fg_from = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list]
     data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from, batch_size=1)
     
     

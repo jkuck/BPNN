@@ -16,7 +16,7 @@ from parameters import SHARE_WEIGHTS, BETHE_MLP
 
 class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
-                bethe_MLP=BETHE_MLP):
+                bethe_MLP=BETHE_MLP, belief_repeats=None, var_cardinality=None):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -32,15 +32,20 @@ class lbp_message_passing_network(nn.Module):
         self.msg_passing_iters = msg_passing_iters
         self.bethe_MLP = bethe_MLP
         if share_weights:
-            self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions)
+            self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
+                                                                                     var_cardinality=var_cardinality, belief_repeats=belief_repeats)
         else:
-            self.message_passing_layers = nn.ModuleList([FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions)\
-                                           for i in range(msg_passing_iters)])
+            self.message_passing_layers = nn.ModuleList([\
+                FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
+                                                            var_cardinality=var_cardinality, belief_repeats=belief_repeats)\
+                                                         for i in range(msg_passing_iters)])
         self.device = device
 
         if bethe_MLP:
-            var_states = 2 #2 for binary variables
-            mlp_size =  2*msg_passing_iters*(2**max_factor_state_dimensions) + msg_passing_iters*var_states
+            var_cardinality = var_cardinality #2 for binary variables
+            belief_repeats = belief_repeats
+            num_ones = belief_repeats*(2*(var_cardinality**max_factor_state_dimensions)+var_cardinality)
+            mlp_size =  msg_passing_iters*num_ones
 #             self.final_mlp = Seq(Linear(mlp_size, mlp_size), ReLU(), Linear(mlp_size, 1))
         
             self.linear1 = Linear(mlp_size, mlp_size)
@@ -48,8 +53,7 @@ class lbp_message_passing_network(nn.Module):
             self.linear1.weight = torch.nn.Parameter(torch.eye(mlp_size))
             self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
             weight_initialization = torch.zeros((1,mlp_size))
-            num_ones = (2*(2**max_factor_state_dimensions)+var_states)
-            weight_initialization[0,-num_ones:] = 1
+            weight_initialization[0,-num_ones:] = 1.0/belief_repeats
 #             print("self.linear2.weight:", self.linear2.weight)
 #             print("self.linear2.weight.shape:", self.linear2.weight.shape)
 
@@ -153,7 +157,7 @@ class lbp_message_passing_network(nn.Module):
         Equation (37) in:
         https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
         '''
-        assert(factor_potentials.shape == factor_beliefs.shape)
+        assert(factor_potentials.shape == factor_beliefs.shape), (factor_potentials.shape, factor_beliefs.shape)
         if debug:
             print()
             print('!!!!!!!')
@@ -162,6 +166,7 @@ class lbp_message_passing_network(nn.Module):
             print("neg_inf_to_zero(factor_potentials):", neg_inf_to_zero(factor_potentials))
         
         pooled_fac_beleifPotentials = global_add_pool(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials), batch_factors)
+        #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and each factor        
         pooled_fac_beleifPotentials = pooled_fac_beleifPotentials.view(pooled_fac_beleifPotentials.shape[0], -1)
         if debug:
             factor_beliefs_shape = factor_beliefs.shape
@@ -182,7 +187,8 @@ class lbp_message_passing_network(nn.Module):
         '''
 
         pooled_fac_beliefs = -global_add_pool(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs), batch_factors)
-        pooled_fac_beliefs = pooled_fac_beliefs.view(pooled_fac_beliefs.shape[0], -1)
+        #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and each factor        
+        pooled_fac_beliefs = pooled_fac_beliefs.view(pooled_fac_beliefs.shape[0], -1)        
         if debug:
             factor_beliefs_shape = factor_beliefs.shape
             pooled_fac_beliefs_orig = -torch.sum((torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs)).view(factor_beliefs_shape[0], -1), dim=0)
@@ -192,7 +198,11 @@ class lbp_message_passing_network(nn.Module):
         
 
         var_beliefs_shape = var_beliefs.shape
-        pooled_var_beliefs = global_add_pool(torch.exp(var_beliefs)*neg_inf_to_zero(var_beliefs)*(var_degrees.float() - 1).view(var_beliefs_shape[0], -1), batch_vars)
+        assert(var_beliefs_shape[0] == var_degrees.shape[0])
+        pooled_var_beliefs = global_add_pool(torch.exp(var_beliefs)*neg_inf_to_zero(var_beliefs)*(var_degrees.float() - 1).view(var_degrees.shape[0], 1, 1), batch_vars)
+        #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and variable states        
+        pooled_var_beliefs = pooled_var_beliefs.view(pooled_var_beliefs.shape[0], -1)
+    
         
         if debug:
             pooled_var_beliefs_orig = torch.sum(torch.exp(var_beliefs)*neg_inf_to_zero(var_beliefs)*(var_degrees.float() - 1).view(var_beliefs_shape[0], -1), dim=0)            
@@ -212,11 +222,55 @@ class lbp_message_passing_network(nn.Module):
         For more details, see page 11 of:
         https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf
         '''
-        normalized_var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim=0).view(-1,1)#normalize variable beliefs
-        normalization_view = [1 for i in range(len(factor_beliefs.shape))]
-        normalization_view[0] = -1        
-        normalized_factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim=0).view(normalization_view)#normalize factor beliefs
         
+#         print("var_beliefs.shape:", var_beliefs.shape)
+#         print("factor_beliefs.shape:", factor_beliefs.shape)
+        
+        
+                
+        #switch to Temp=False/remove me after generalized to handle repeated beliefs!   
+        TEMP=False
+        if TEMP:
+            var_beliefs = torch.mean(var_beliefs, dim=1) #remove me after generalized to handle repeated beliefs!
+            factor_beliefs = torch.mean(factor_beliefs, dim=1) #remove me after generalized to handle repeated beliefs!
+            
+            normalized_var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim_to_keep=[0])#normalize variable beliefs
+#             print("normalized_var_beliefs.shape:", normalized_var_beliefs.shape)
+            check_normalization = torch.sum(torch.exp(normalized_var_beliefs), dim=[i for i in range(1,len(var_beliefs.shape))])
+#             print("check_normalization.shape:", check_normalization.shape)
+#             print("check_normalization:", check_normalization)
+
+            assert(torch.max(torch.abs(check_normalization-1)) < .001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization) 
+
+            normalized_factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim_to_keep=[0])#normalize factor beliefs
+            check_normalization = torch.sum(torch.exp(normalized_factor_beliefs), dim=[i for i in range(1,len(factor_beliefs.shape))])
+#             print("normalized_factor_beliefs.shape:", normalized_factor_beliefs.shape)        
+#             print("check_normalization.shape:", check_normalization.shape)
+#             print("check_normalization:", check_normalization)
+#             print()        
+            assert(torch.max(torch.abs(check_normalization-1)) < .001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization)             
+        else:
+            normalized_var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim_to_keep=[0,1])#normalize variable beliefs
+#             print("normalized_var_beliefs.shape:", normalized_var_beliefs.shape)
+            check_normalization = torch.sum(torch.exp(normalized_var_beliefs), dim=[i for i in range(2,len(var_beliefs.shape))])
+#             print("check_normalization.shape:", check_normalization.shape)
+#             print("check_normalization:", check_normalization)
+
+            assert(torch.max(torch.abs(check_normalization-1)) < .001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization) 
+
+#             print("factor_beliefs.shape:", factor_beliefs.shape)                    
+            normalized_factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim_to_keep=[0,1])#normalize factor beliefs
+            check_normalization = torch.sum(torch.exp(normalized_factor_beliefs), dim=[i for i in range(2,len(factor_beliefs.shape))])
+#             print("normalized_factor_beliefs.shape:", normalized_factor_beliefs.shape)        
+#             print("check_normalization.shape:", check_normalization.shape)
+#             print("check_normalization:", check_normalization)
+#             print()        
+            assert(torch.max(torch.abs(check_normalization-1)) < .001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization) 
+            
+#         print("normalized_var_beliefs.shape:", normalized_var_beliefs.shape)
+#         print("factor_beliefs.shape:", factor_beliefs.shape)        
+#         sleep(salfjlsdkj)
+            
         # print("self.compute_bethe_average_energy():", self.compute_bethe_average_energy())
         # print("self.compute_bethe_entropy():", self.compute_bethe_entropy())
         if torch.isnan(normalized_factor_beliefs).any():
@@ -225,10 +279,24 @@ class lbp_message_passing_network(nn.Module):
                 print(val)
         assert(not torch.isnan(normalized_factor_beliefs).any()), (normalized_factor_beliefs, torch.where(normalized_factor_beliefs == torch.tensor(float('nan'))), torch.where(normalized_var_beliefs == torch.tensor(float('nan'))))
         assert(not torch.isnan(normalized_var_beliefs).any()), normalized_var_beliefs
+        
+        if TEMP:
+            #quick option for not dealing with repeated beliefs
+            factor_potentials_quick = factor_graph.factor_potentials[:, 0, ::]
+            factor_potentials_check = torch.mean(factor_graph.factor_potentials, dim=1, keepdim=False)
+            assert(torch.max(torch.abs(factor_potentials_quick - factor_potentials_check)) < .00001), (factor_potentials_quick, factor_potentials_check, torch.max(torch.abs(factor_potentials_quick - factor_potentials_check)))
+        else:
+            factor_potentials_quick = factor_graph.factor_potentials
+        
         pooled_fac_beleifPotentials = self.compute_bethe_average_energy_MLP(factor_beliefs=normalized_factor_beliefs,\
-                                      factor_potentials=factor_graph.factor_potentials, batch_factors=factor_graph.batch_factors)
+                                      factor_potentials=factor_potentials_quick, batch_factors=factor_graph.batch_factors)
         pooled_fac_beliefs, pooled_var_beliefs = self.compute_bethe_entropy_MLP(factor_beliefs=normalized_factor_beliefs, var_beliefs=normalized_var_beliefs, numVars=torch.sum(factor_graph.numVars), var_degrees=factor_graph.var_degrees, batch_factors=factor_graph.batch_factors, batch_vars=factor_graph.batch_vars)
         
+        
+#         print("pooled_fac_beleifPotentials.shape:", pooled_fac_beleifPotentials.shape)
+#         print("pooled_fac_beliefs.shape:", pooled_fac_beliefs.shape)
+#         print("pooled_var_beliefs.shape:", pooled_var_beliefs.shape)        
+#         sleep(laskdjfowin)
         if len(pooled_fac_beleifPotentials.shape) > 1:
             cat_dim = 1
         else:

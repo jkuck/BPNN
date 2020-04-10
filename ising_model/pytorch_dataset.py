@@ -131,7 +131,7 @@ def build_edge_var_indices(sg_model):
     edge_var_indices = torch.tensor([indices_at_source_node, indices_at_destination_node])
     return edge_var_indices
 
-def build_factorgraph_from_SpinGlassModel(sg_model):
+def build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats):
     '''
     Convert a spin glass model to a factor graph pytorch representation
 
@@ -252,7 +252,8 @@ def build_factorgraph_from_SpinGlassModel(sg_model):
                  factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=num_vars, numFactors=num_factors, 
                  edge_var_indices=edge_var_indices, state_dimensions=state_dimensions, factor_potential_masks=factor_potential_masks,
 #                      ln_Z=ln_Z)
-                 ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
+                 ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list,
+                 var_cardinality=2, belief_repeats=belief_repeats)
 
         
     return factor_graph

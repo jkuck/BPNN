@@ -116,7 +116,7 @@ def parse_dimacs(filename, verbose=False):
     return n_vars, clauses, load_successful
 
 def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0, verbose=True, epsilon=0, 
-                     max_factor_dimensions=5, return_logZ_list=False):
+                     max_factor_dimensions=5, return_logZ_list=False, belief_repeats=None):
     '''
     Inputs:
     - problems_to_load (list of strings): problems to load
@@ -206,7 +206,7 @@ def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, d
         # print("factor_graph:", factor_graph)
         if discarded_count == begin_idx:
             # print('using problem:', problem_file)
-            factor_graph = build_factorgraph_from_SATproblem(clauses, epsilon=epsilon, max_factor_dimensions=max_factor_dimensions, ln_Z=ln_solution_count)
+            factor_graph = build_factorgraph_from_SATproblem(clauses, epsilon=epsilon, max_factor_dimensions=max_factor_dimensions, ln_Z=ln_solution_count, belief_repeats=belief_repeats)
             if factor_graph is None: #largest clause contains too many variables
                 factors_to_large_count += 1
                 continue
@@ -330,7 +330,7 @@ def test_build_edge_var_indices():
     print(expected_edge_var_indices)
 
 def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilon=0, max_factor_dimensions=5,
-                                      local_state_dim=False, ln_Z=None):
+                                      local_state_dim=False, ln_Z=None, belief_repeats=None):
     '''
     Take a SAT problem in CNF form (specified by clauses) and return a factor graph representation
     whose partition function is the number of satisfying solutions
@@ -443,7 +443,8 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilo
     factor_graph = FactorGraphData(factor_potentials=log_potentials,
                  factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=N, numFactors=num_factors, 
                  edge_var_indices=edge_var_indices, state_dimensions=state_dimensions,
-                 factor_potential_masks=factor_potential_masks, ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
+                 factor_potential_masks=factor_potential_masks, ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list,
+                 var_cardinality=2, belief_repeats=belief_repeats)
 
     return factor_graph
 

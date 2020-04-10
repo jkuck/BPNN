@@ -26,8 +26,12 @@ import json
 
 ##########################
 ####### PARAMETERS #######
-MAX_FACTOR_STATE_DIMENSIONS = 5 #number of variables in the largest factor -> factor has 2^MAX_FACTOR_STATE_DIMENSIONS states
+MAX_FACTOR_STATE_DIMENSIONS = 3 #number of variables in the largest factor -> factor has 2^MAX_FACTOR_STATE_DIMENSIONS states
+VAR_CARDINALITY = 2
+
 MSG_PASSING_ITERS = 5 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+BELIEF_REPEATS = 5
+
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
@@ -90,12 +94,12 @@ TEST_DATA_SIZE = 1000
 
 # PROBLEM_CATEGORY_TRAIN = ['problems_75']
 # PROBLEM_CATEGORY_TRAIN = ['problems_90']
-PROBLEM_CATEGORY_TRAIN = ['or_50_problems']
+# PROBLEM_CATEGORY_TRAIN = ['or_50_problems']
 # PROBLEM_CATEGORY_TRAIN = ['or_60_problems']
 # PROBLEM_CATEGORY_TRAIN = ['or_70_problems']
 # PROBLEM_CATEGORY_TRAIN = ['or_100_problems']
 # PROBLEM_CATEGORY_TRAIN = ['blasted_problems']
-# PROBLEM_CATEGORY_TRAIN = ['s_problems']
+PROBLEM_CATEGORY_TRAIN = ['s_problems']
 
 
 
@@ -146,10 +150,14 @@ wandb.config.STEP_SIZE = STEP_SIZE
 wandb.config.LR_DECAY = LR_DECAY
 wandb.config.LEARNING_RATE = LEARNING_RATE
 wandb.config.NUM_MLPS = NUM_MLPS
+wandb.config.BELIEF_REPEATS = BELIEF_REPEATS
+wandb.config.VAR_CARDINALITY = VAR_CARDINALITY
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # tiny_set = ["10.sk_1_46", "27.sk_3_32"]
-lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS)
+lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS,
+                                     belief_repeats=BELIEF_REPEATS, var_cardinality=VAR_CARDINALITY)
 # lbp_net.double()
 lbp_net = lbp_net.to(device)
 
@@ -171,6 +179,7 @@ if True:#train val from the same distribution
     # val_problems = val_problems_helper[:VAL_DATA_SIZE]
     if wandb.config.train_val_split == "random_shuffle":
         print("shuffling data")
+        random.seed(0)
         random.shuffle(train_problems_helper)
     else:
         assert(wandb.config.train_val_split == "easyTrain_hardVal")
@@ -191,6 +200,7 @@ elif False: #use multiple categories for validation and train, using all problem
     wandb.config.TRAINING_DATA_SIZE = len(train_problems)
     wandb.config.VAL_DATA_SIZE = len(val_problems)
 def train():
+    print("HISLKDJFLSJFLK")
     wandb.watch(lbp_net)
     
     lbp_net.train()
@@ -207,7 +217,7 @@ def train():
                problems_dir_name=SAT_PROBLEMS_DIR,
                # dataset_size=100, begin_idx=50, epsilon=EPSILON)
                dataset_size=TRAINING_DATA_SIZE, epsilon=EPSILON,
-               max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
+               max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS, belief_repeats=BELIEF_REPEATS)
     train_data_loader = DataLoader(training_SAT_list, batch_size=100)
     train_data_loader2 = DataLoader(training_SAT_list, batch_size=2)    
    
@@ -216,7 +226,7 @@ def train():
                problems_dir_name=SAT_PROBLEMS_DIR,
                # dataset_size=50, begin_idx=0, epsilon=EPSILON)
                dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON,
-               max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
+               max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS, belief_repeats=BELIEF_REPEATS)
     val_data_loader = DataLoader(val_SAT_list, batch_size=100)
 
     # with autograd.detect_anomaly():
@@ -230,6 +240,8 @@ def train():
             assert(sat_problem.num_vars == torch.sum(sat_problem.numVars))
 #             optimizer.zero_grad()
             sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
+            sat_problem.var_cardinality = sat_problem.var_cardinality[0] #hack for batching,
+            sat_problem.belief_repeats = sat_problem.belief_repeats[0] #hack for batching,
             
             sat_problem = sat_problem.to(device)
             exact_ln_partition_function = sat_problem.ln_Z
@@ -300,6 +312,9 @@ def train():
 #             for t, (sat_problem, exact_ln_partition_function) in enumerate(val_data_loader):
             for sat_problem in val_data_loader:
                 sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
+                sat_problem.var_cardinality = sat_problem.var_cardinality[0] #hack for batching,
+                sat_problem.belief_repeats = sat_problem.belief_repeats[0] #hack for batching,
+            
                 sat_problem = sat_problem.to(device)
                 exact_ln_partition_function = sat_problem.ln_Z
                 assert(sat_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS)
@@ -385,7 +400,7 @@ def test():
                # dataset_size=50, begin_idx=0, epsilon=EPSILON)
 #                dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON,
                dataset_size=10000, begin_idx=0, epsilon=EPSILON,
-               max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS)
+               max_factor_dimensions=MAX_FACTOR_STATE_DIMENSIONS, belief_repeats=BELIEF_REPEATS)
     test_data_loader = DataLoader(test_SAT_list, batch_size=1)
     loss_func = torch.nn.MSELoss()
 

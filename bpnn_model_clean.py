@@ -73,30 +73,32 @@ def max_multipleDim(input, axes, keepdim=False):
             input = input.max(ax)[0]
     return input
 
-def logsumexp_multipleDim(tensor, dim=None):
+def logsumexp_multipleDim(tensor, dim_to_keep=None):
     """
-    Compute log(sum(exp(tensor), dim)) in a numerically stable way.
+    Compute log(sum(exp(tensor), aggregate_dimensions)) in a numerically stable way.
 
     Inputs:
     - tensor (tensor): input tensor
-    - dim (int): the only dimension to keep in the output.  i.e. for a 4d input tensor with dim=2 (0-indexed):
-        return_tensor[i] = logsumexp(tensor[:,:,i,:])
+    - dim_to_keep (list of ints): the only dimensions to keep in the output.  i.e. 
+        for a 4d input tensor with dim_to_keep=[2] (0-indexed): return_tensor[i] = logsumexp(tensor[:,:,i,:])
 
     Outputs:
-    - return_tensor (1d tensor): logsumexp of input tensor along specified dimension
+    - return_tensor (tensor): logsumexp of input tensor along specified dimensions (those not appearing in dim_to_keep).
+        Has same number of dimensions as the original tensor, but those not appearing in dim_to_keep have size 1
 
     """
     assert(not torch.isnan(tensor).any())
 
     tensor_dimensions = len(tensor.shape)
-    assert(dim < tensor_dimensions and dim >= 0)
-    aggregate_dimensions = [i for i in range(tensor_dimensions) if i != dim]
+    assert((torch.tensor([dim_to_keep]) < tensor_dimensions).all())
+    assert((torch.tensor([dim_to_keep]) >= 0).all())    
+    aggregate_dimensions = [i for i in range(tensor_dimensions) if (i not in dim_to_keep)]
     # print("aggregate_dimensions:", aggregate_dimensions)
     # print("tensor:", tensor)
     max_values = max_multipleDim(tensor, axes=aggregate_dimensions, keepdim=True)
     max_values[torch.where(max_values == -np.inf)] = 0
     assert(not torch.isnan(max_values).any())
-    assert((max_values > -np.inf).any())
+    assert((max_values > -np.inf).all())
     assert(not torch.isnan(tensor - max_values).any())
     assert(not torch.isnan(torch.exp(tensor - max_values)).any())
     assert(not torch.isnan(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)).any())
@@ -106,7 +108,10 @@ def logsumexp_multipleDim(tensor, dim=None):
     # print("max_values:", max_values)
     # print("tensor - max_values", tensor - max_values)
     # print("torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)):", torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)))
-    return_tensor = torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)) + max_values.squeeze()
+#     print("tensor.shape", tensor.shape)
+#     print("max_values.shape", max_values.shape)
+#     sleep(temp)
+    return_tensor = torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions, keepdim=True)) + max_values
     # print("return_tensor:", return_tensor)
     assert(not torch.isnan(return_tensor).any())
     return return_tensor
@@ -123,9 +128,11 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         insert a neural network into message aggregation for learning
     - lne_mlp (bool): if False mlp runs in log space (had trouble with good results), 
         if True we take exponent then run mlp then take log
+    - var_cardinality (int): variable cardinality, the number of states each variable can take.
     """
 
-    def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True, lne_mlp=False, use_MLP1=False, use_MLP2=False):
+    def __init__(self, learn_BP=True, factor_state_space=None, var_cardinality=None, belief_repeats=None,\
+                 avoid_nans=True, lne_mlp=False, use_MLP1=False, use_MLP2=False):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
 
         self.use_MLP1 = use_MLP1
@@ -133,6 +140,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         self.learn_BP = learn_BP
         self.avoid_nans = avoid_nans
         self.lne_mlp = lne_mlp
+        self.var_cardinality = var_cardinality
         print("learn_BP:", learn_BP)
         if learn_BP:
             assert(factor_state_space is not None)     
@@ -175,19 +183,19 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 self.mlp2 = Seq(self.linear3, self.linear4)  
 
                 
-            self.linear5 = Linear(2, 2)
-            self.linear6 = Linear(2, 2)
-            self.linear5.weight = torch.nn.Parameter(torch.eye(2))
+            self.linear5 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            self.linear6 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            self.linear5.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
             self.linear5.bias = torch.nn.Parameter(torch.zeros(self.linear5.bias.shape))
-            self.linear6.weight = torch.nn.Parameter(torch.eye(2))
+            self.linear6.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
             self.linear6.bias = torch.nn.Parameter(torch.zeros(self.linear6.bias.shape))
             self.mlp3 = Seq(self.linear5, self.linear6)  
 
-            self.linear7 = Linear(2, 2)
-            self.linear8 = Linear(2, 2)
-            self.linear7.weight = torch.nn.Parameter(torch.eye(2))
+            self.linear7 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            self.linear8 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            self.linear7.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
             self.linear7.bias = torch.nn.Parameter(torch.zeros(self.linear7.bias.shape))
-            self.linear8.weight = torch.nn.Parameter(torch.eye(2))
+            self.linear8.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
             self.linear8.bias = torch.nn.Parameter(torch.zeros(self.linear8.bias.shape))
             self.mlp4 = Seq(self.linear7, self.linear8)  
             
@@ -229,6 +237,13 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         - factor_beliefs (tensor): updated factor_beliefs 
         - var_beliefs (tensor): updated var_beliefs 
         """
+#         print("prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)
+#         print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
+#         print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
+#         print()
+#         sleep(aslkjflwekf)
+        
+        
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         assert(factor_graph is not None)
@@ -237,27 +252,51 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                                                               prv_varToFactor_messages=prv_varToFactor_messages,\
                                                               prv_factorToVar_messages=prv_factorToVar_messages, alpha=alpha,\
                                                               normalize_messages=normalize_messages)
-        factorToVar_messages = self.mlp3(factorToVar_messages)
+#         print("factorToVar_messages.shape:", factorToVar_messages.shape)
+        fTOv_mesg_shape = factorToVar_messages.shape
+        factorToVar_messages = self.mlp3(factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
+        factorToVar_messages = factorToVar_messages.view(fTOv_mesg_shape)
+        factorToVar_messages = torch.clamp(factorToVar_messages, min=LN_ZERO)
         
         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1], dim_size=factor_graph.num_vars)
-        assert(len(var_beliefs.shape) == 2)
+        #var_beliefs has shape [# variables, belief_repeats, variable cardinality]
+        assert(len(var_beliefs.shape) == 3)
+        assert(var_beliefs.shape[1] == factor_graph.belief_repeats), (var_beliefs.shape)
+        assert(var_beliefs.shape[2] == factor_graph.var_cardinality), (var_beliefs.shape)         
+        
         if normalize_beliefs:
-            var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim=0).view(-1,1)#normalize variable beliefs
+            var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim_to_keep=[0, 1])#normalize variable beliefs
+            check_normalization = torch.sum(torch.exp(var_beliefs), dim=-1)
+            assert(torch.max(torch.abs(check_normalization-1)) < .00001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization)
+            
         assert(not torch.isnan(var_beliefs).any()), var_beliefs
         
         #update factor beliefs
         varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages,\
                                                         normalize_messages=normalize_messages)
-        varToFactor_messages = self.mlp4(varToFactor_messages)
+        vTOf_mesg_shape = varToFactor_messages.shape        
+        varToFactor_messages = self.mlp4(varToFactor_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
+        varToFactor_messages = varToFactor_messages.view(vTOf_mesg_shape)
+        varToFactor_messages = torch.clamp(varToFactor_messages, min=LN_ZERO)
         
-        expansion_list = [2 for i in range(factor_graph.state_dimensions - 1)] + [-1,] #messages have states for one variable, add dummy dimensions for the other variables in factors
-        new_shape = [varToFactor_messages.shape[0]] + expansion_list
-        assert(len(varToFactor_messages.shape) == 2)
-        fast_expansion_list = [2 for i in range(factor_graph.state_dimensions.item() - 1)] + list(varToFactor_messages.shape)
+        #varToFactor_messages has shape [# edges, belief_repeats, variable cardinality]       
+        assert(len(varToFactor_messages.shape) == 3), (varToFactor_messages.shape)
+        assert(varToFactor_messages.shape[1] == factor_graph.belief_repeats), (varToFactor_messages.shape)
+        assert(varToFactor_messages.shape[2] == factor_graph.var_cardinality), (varToFactor_messages.shape)        
+        fast_expansion_list = [factor_graph.var_cardinality for i in range(factor_graph.state_dimensions.item() - 1)] + list(varToFactor_messages.shape)
         varToFactor_messages_expand = varToFactor_messages.expand(fast_expansion_list)
-        varToFactor_messages_expand = varToFactor_messages_expand.transpose(-2, 0).transpose(-1, 1) #expanded dimensions are prepended, this moves them to the to back
+#         print("varToFactor_messages.shape:", varToFactor_messages.shape)
+#         print("before transpose varToFactor_messages_expand.shape:", varToFactor_messages_expand.shape)
+        
+        varToFactor_messages_expand = varToFactor_messages_expand.transpose(-3, 0).transpose(-2, 1).transpose(-1, 2) #expanded dimensions are prepended, this moves them to the to back
+#         print("varToFactor_messages_expand.shape:", varToFactor_messages_expand.shape)
+#         print("factor_graph.factor_potentials.shape:", factor_graph.factor_potentials.shape)
+#         sleep(temp)
         varToFactor_messages_expand_flatten = varToFactor_messages_expand.flatten()
         varToFactor_expandedMessages = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)            
+        
+        new_shape = [varToFactor_messages.shape[0], factor_graph.belief_repeats] +\
+                    [factor_graph.var_cardinality for i in range(factor_graph.state_dimensions)]        
         varToFactor_expandedMessages = varToFactor_expandedMessages.reshape(new_shape)
         #print("123debug2 varToFactor_expandedMessages =", varToFactor_expandedMessages)
 
@@ -344,13 +383,12 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             
 
         assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
-
-        normalization_view = [1 for i in range(len(factor_beliefs.shape))]
-        normalization_view[0] = -1
-        log_sum_exp_factor_beliefs = logsumexp_multipleDim(factor_beliefs, dim=0).view(normalization_view)
+        log_sum_exp_factor_beliefs = logsumexp_multipleDim(factor_beliefs, dim_to_keep=[0, 1])
+        assert(len(factor_beliefs.shape) == (factor_graph.state_dimensions + 2))#dimension for #factors, belief_repeats, each state dimension
         if normalize_beliefs:
             factor_beliefs = factor_beliefs - log_sum_exp_factor_beliefs#normalize factor beliefs
-        
+            check_normalization = torch.sum(torch.exp(factor_beliefs), dim=[i for i in range(2,2+self.state_dimensions)])
+            assert(torch.max(torch.abs(check_normalization-1)) < .00001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization)        
         
         assert((log_sum_exp_factor_beliefs != -np.inf).all()) #debugging
         assert((log_sum_exp_factor_beliefs >= LN_ZERO).all()) #debugging
@@ -359,6 +397,13 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)] = LN_ZERO
 #         assert((factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)] == LN_ZERO).all())
 
+#         print("HI from propagate :)")
+#         print("varToFactor_messages.shape:", varToFactor_messages.shape)
+#         print("factorToVar_messages.shape:", factorToVar_messages.shape)
+#         print("var_beliefs.shape:", var_beliefs.shape)
+#         print("factor_beliefs.shape:", factor_beliefs.shape)
+#         print()
+        
         return varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs
 
     
@@ -401,11 +446,22 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         mapped_factor_beliefs[torch.where(mapped_factor_beliefs<LN_ZERO)] = LN_ZERO
         
         num_edges = factor_graph.facToVar_edge_idx.shape[1]
-        assert(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape == factor_graph.facStates_to_varIdx.shape)
-        assert((factor_graph.facStates_to_varIdx <= num_edges*2).all())
-        marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1) 
-        marginalized_states = marginalized_states_fast[:-1].view(num_edges,2)
-
+        
+        assert(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape == factor_graph.facStates_to_varIdx.shape), (mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape, factor_graph.facStates_to_varIdx.shape)
+#         print("factor_graph.facStates_to_varIdx.shape:", factor_graph.facStates_to_varIdx.shape)
+#         print("num_edges*factor_graph.var_cardinality*factor_graph.belief_repeats:", num_edges*factor_graph.var_cardinality*factor_graph.belief_repeats)
+#         print("factor_graph.var_cardinality:", factor_graph.var_cardinality)
+#         print("factor_graph.belief_repeats:", factor_graph.belief_repeats)
+        assert((factor_graph.facStates_to_varIdx <= num_edges*factor_graph.var_cardinality*factor_graph.belief_repeats).all())
+        marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*factor_graph.var_cardinality*factor_graph.belief_repeats + 1) 
+           
+        #check that dim_size is correct and not too small if a crazy error message shows up around scatter.
+        #e.g. the error message may look like the following repeated a bunch of times:
+        #/opt/conda/conda-bld/pytorch_1579022036340/work/aten/src/THC/THCTensorScatterGather.cu:100: void THCudaTensor_gatherKernel(TensorInfo<Real, IndexType>, TensorInfo<Real, IndexType>, TensorInfo<long, IndexType>, int, IndexType) [with IndexType = unsigned int, Real = float, Dims = 1]: block: [0,0,0], thread: [128,0,0] Assertion `indexValue >= 0 && indexValue < src.sizes[dim]` failed.
+        
+        marginalized_states = marginalized_states_fast[:-1].view(num_edges,factor_graph.belief_repeats,factor_graph.var_cardinality)
+        
+        #this assert may break if normalizing beliefs. should be no reason to normalize beliefs
         assert((prv_varToFactor_messages >= LN_ZERO).all()), (torch.min(prv_varToFactor_messages))
 
         #avoid double counting
@@ -423,7 +479,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #             print("pre normalization factorToVar_messages:")
 #             print(factorToVar_messages)
             
-            factorToVar_messages = factorToVar_messages - logsumexp_multipleDim(factorToVar_messages, dim=0).view(-1,1)#normalize variable beliefs
+
+            factorToVar_messages = factorToVar_messages - logsumexp_multipleDim(factorToVar_messages, dim_to_keep=[0,1])#normalize variable beliefs
             check_messages = torch.sum(torch.exp(factorToVar_messages), dim=-1)
             assert(torch.max(torch.abs(check_messages-1)) < .00001), (torch.sum(torch.abs(check_messages-1)), torch.max(torch.abs(check_messages-1)), check_messages)
 
@@ -460,7 +517,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         #for numerical stability, don't let log messages get smaller than LN_ZERO (constant set in parameters.py)
         varToFactor_messages = torch.clamp(varToFactor_messages, min=LN_ZERO)
         if normalize_messages:
-            varToFactor_messages = varToFactor_messages - logsumexp_multipleDim(varToFactor_messages, dim=0).view(-1,1)#normalize variable beliefs
+            varToFactor_messages = varToFactor_messages - logsumexp_multipleDim(varToFactor_messages, dim_to_keep=[0, 1])#normalize variable beliefs
 #             print("post normalization varToFactor_messages:")
 #             print(varToFactor_messages)
             check_messages = torch.sum(torch.exp(varToFactor_messages), dim=-1)

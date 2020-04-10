@@ -5,6 +5,8 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
 
+# only use the following on partition with GPUs
+#SBATCH --gres=gpu:1
 
 #SBATCH --job-name="learnBP_SAT"
 #SBATCH --output=slurm-%j.out
