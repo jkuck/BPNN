@@ -16,7 +16,7 @@ from parameters import SHARE_WEIGHTS, BETHE_MLP
 
 class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
-                bethe_MLP=BETHE_MLP, map_flag=False):
+                bethe_MLP=BETHE_MLP, map_flag=False, marginal_flag=False, classification_flag=False):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -32,6 +32,8 @@ class lbp_message_passing_network(nn.Module):
         self.msg_passing_iters = msg_passing_iters
         self.bethe_MLP = bethe_MLP
         self.map_flag = map_flag
+        self.marginal_flag = marginal_flag
+        self.classification_flag = classification_flag
         if share_weights:
             self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions, map_flag=map_flag)
         else:
@@ -110,42 +112,27 @@ class lbp_message_passing_network(nn.Module):
                     pooled_states.append(cur_pooled_states)
 
 
+
         if self.bethe_MLP:
-#             print("torch.cat(pooled_states).shape:", torch.cat(pooled_states, dim=1).shape)
-#             print("torch.cat(pooled_states):", torch.cat(pooled_states, dim=1))
-#             sleep(check_pool2)
-#             print("torch.cat(pooled_states, dim=1):")
-#             print(torch.cat(pooled_states, dim=1))
-#             print()
-            estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
-
-#             bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-#             estimated_ln_partition_function_orig = -bethe_free_energy
-#             print("estimated_ln_partition_function_orig:", estimated_ln_partition_function_orig)
-#             print("estimated_ln_partition_function:", estimated_ln_partition_function)
-#             assert(np.isclose(estimated_ln_partition_function_orig.detach().numpy(), estimated_ln_partition_function.detach().numpy(), rtol=1e-03, atol=1e-03)), (estimated_ln_partition_function_orig, estimated_ln_partition_function)
-            return estimated_ln_partition_function
-
-        else:
-            if False:
-                #broken for batch_size > 1
-                bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-                estimated_ln_partition_function = -bethe_free_energy
-
-                debug=True
-                if debug:
-                    cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-                    check_estimated_ln_partition_function = torch.sum(cur_pooled_states)
-    #                 print("check_estimated_ln_partition_function:", check_estimated_ln_partition_function)
-    #                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
-    #                 sleep(debug_bethe)
-                    assert(torch.allclose(check_estimated_ln_partition_function, estimated_ln_partition_function)), (check_estimated_ln_partition_function, estimated_ln_partition_function)
+            if self.marginal_flag:
+                raise NotImplementedError('No implementation for marginal_flag=True and bethe_MLP=True')
+            else:
+                estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
                 return estimated_ln_partition_function
 
-            #corrected for batch_size > 1
-            cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-            estimated_ln_partition_function = torch.sum(cur_pooled_states, dim=1)
-            return estimated_ln_partition_function
+        else:
+            if self.marginal_flag:
+                if self.classification_flag:
+                    beliefs = torch.exp(prv_var_beliefs)
+                    probabilities = beliefs / torch.sum(beliefs, dim=-1, keepdims=True)
+                    return probabilities
+                else:
+                    diff = prv_var_beliefs[:, :-1]-prv_var_beliefs[:,-1:]
+                    return diff
+            else:
+                cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                estimated_ln_partition_function = torch.sum(cur_pooled_states, dim=1)
+                return estimated_ln_partition_function
 
 
 
