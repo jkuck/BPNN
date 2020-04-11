@@ -103,6 +103,20 @@ class SpinGlassModel:
         ln_Z = libdai_utils.junction_tree(self, map_flag=map_flag)
         return ln_Z
 
+    def marginal_junction_tree_libdai(self, map_flag=True, classification_flag=True):
+        '''
+        Compute the exact marginal function of this spin glass model using the junction tree
+        implementation from libdai
+
+        Outputs:
+        - if classification_flag:
+            return the fake probability given the marginals
+        else:
+            return the difference of log-marginals
+        '''
+        output = libdai_utils.marginal_junction_tree(self, map_flag=map_flag, classification_flag=classification_flag)
+        return output
+
     def loopyBP_libdai(self, maxiter=None, updates="SEQRND", damping=None, map_flag=False):
         '''
         estimate the partition function of this spin glass model using the
@@ -117,6 +131,28 @@ class SpinGlassModel:
         - ln_Z_estimate: estimate of the natural logarithm of the partition function
         '''
         ln_Z_estimate = libdai_utils.run_loopyBP(self, maxiter, updates, damping, map_flag=map_flag)
+        return ln_Z_estimate
+
+    def marginal_loopyBP_libdai(self, maxiter=None, updates="SEQRND", damping=None,
+                                map_flag=False, classification_flag=True):
+        '''
+        estimate the marginal function of this spin glass model using the
+        loopy belief propagation implementation from libdai
+
+        Inputs:
+        - updates (string): the type of libdai LBP updates to use (see libdai documentation)
+        - damping (string): None -> no damping, or string specifying the damping e.g. ".5"
+            see libdai docs for more details
+
+        Outputs:
+        - if classification_flag:
+            return the fake probability given the marginals
+        else:
+            return the difference of log-marginals
+        '''
+        ln_Z_estimate = libdai_utils.run_marginal_loopyBP(
+            self, maxiter, updates, damping,
+            map_flag=map_flag, classification_flag=classification_flag,)
         return ln_Z_estimate
 
     def mean_field_libdai(self, maxiter=None):

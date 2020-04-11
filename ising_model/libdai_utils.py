@@ -238,6 +238,107 @@ def junction_tree(sg_model, verbose=False, map_flag=False):
         print('Exact log partition sum:', ln_Z)
     return(ln_Z)
 
+def marginal_junction_tree(sg_model, verbose=False, map_flag=True, classification_flag=True):
+    '''
+    Calculate the exact marginal function of a spin glass model using the junction tree algorithm
+    Inputs:
+    - sg_model (SpinGlassModel)
+
+    Features:
+    - log_marginals: of shape [N, D], where N is the number of variables, and D is
+    the state dimensionality. marginal[n,d] denotes the max/sum marginal of variable n
+    with state d. (Here, for spinGlass model, D is always equal to 2)
+
+    Output:
+    - if classification_flag:
+        return the fake probability given the marginals
+      else:
+        return the difference of log-marginals
+    '''
+    if not map_flag:
+        raise NotImplementedError('Sum marginal hasn\'t been implemented yet in marginal_junction_tree')
+
+    # Set some constants
+    maxiter = 10000
+    tol = 1e-9
+    verb = 0
+    # Store the constants in a PropertySet object
+    opts = dai.PropertySet()
+    opts["maxiter"] = str(maxiter)   # Maximum number of iterations
+    opts["tol"] = str(tol)           # Tolerance for convergence
+    opts["verbose"] = str(verb)      # Verbosity (amount of output generated)bpopts["updates"] = "SEQRND"
+    opts["updates"] = "HUGIN"
+    opts["inference"] = "MAXPROD" if map_flag else "SUMPROD"
+
+    N = sg_model.lcl_fld_params.shape[0]
+    log_marginals = np.zeros([N*N, 2])
+
+    sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
+    jt = dai.JTree( sg_FactorGraph, opts )
+    jt.init()
+    jt.run()
+    state = jt.findMaximum()
+    score = sg_FactorGraph.logScore(state)
+    log_marginals[np.arange(N*N), np.array(state)] = score
+
+    for vi, s in enumerate(state):
+        sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={vi:(1 if s==0 else -1)})
+        jt = dai.JTree( sg_FactorGraph, opts )
+        jt.init()
+        jt.run()
+        cur_state = jt.findMaximum()
+        cur_score = sg_FactorGraph.logScore(cur_state)
+        log_marginals[vi,1-s] = cur_score
+
+    normalized_log_marginals = log_marginals-log_marginals[:,-1:]
+    if classification_flag:
+        marginals = np.exp(normalized_log_marginals)
+        probability = marginals / np.sum(marginals, axis=-1, keepdims=True)
+        return probability.tolist()
+    else:
+        return normalized_log_marginals[:,0:-1].tolist()
+
+def run_marginal_loopyBP(sg_model, maxiter=None, updates="SEQRND", damping=None,
+                         map_flag=True, classification_flag=True):
+    if maxiter is None:
+        maxiter=LIBDAI_LBP_ITERS
+
+
+    # Set some constants
+    maxiter = maxiter
+    tol = 1e-9
+    verb = 1
+    # Store the constants in a PropertySet object
+    opts = dai.PropertySet()
+    opts["maxiter"] = str(maxiter)   # Maximum number of iterations
+    opts["tol"] = str(tol)           # Tolerance for convergence
+    opts["verbose"] = str(verb)      # Verbosity (amount of output generated)bpopts["updates"] = "SEQRND"
+    opts["updates"] = updates
+    opts["logdomain"] = "1"
+    if damping is not None:
+        opts["damping"] = str(damping)
+    opts['inference'] = 'MAXPROD' if map_flag else 'SUMPROD'
+
+    sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
+    bp = dai.BP( sg_FactorGraph, opts )
+    bp.init()
+    bp.run()
+
+    N = sg_model.lcl_fld_params.shape[0]
+    marginals = np.zeros([N*N, 2])
+    for vi in range(N*N):
+        factor = bp.beliefV(vi)
+        marginals[vi, 0] = factor[0]
+        marginals[vi, 1] = factor[1]
+
+    if classification_flag:
+        probability = marginals / np.sum(marginals, axis=-1, keepdims=True)
+        return probability.tolist()
+    else:
+        log_marginals = np.log(marginals)
+        normalized_log_marginals = log_marginals[:, 0:-1]-log_marginals[:, -1:]
+        return normalized_log_marginals.tolist()
+
 def run_loopyBP(sg_model, maxiter, updates="SEQRND", damping=None, map_flag=False):
     if maxiter is None:
         maxiter=LIBDAI_LBP_ITERS
@@ -440,4 +541,42 @@ def run_inference(sg_model):
     print( 'Exact log partition sum:', jt.logZ())
 
 
+#==================================Testing===================================
+from . import spin_glass_model
+def _test_marginal_junction_tree():
+    for _ in range(10):
+        N = 10
+        f,c = np.random.rand(2)
+        classification_flag = bool(np.random.choice(2))
+        print(N, f, c, classification_flag)
 
+        output =  marginal_junction_tree(spin_glass_model.SpinGlassModel(N, f, c),
+                                         classification_flag=classification_flag,)
+        assert(type(output) == list)
+        output = np.array(output)
+        assert(output.shape[0] == N*N)
+        assert(output.shape[1] == 2 if classification_flag else 1)
+        if classification_flag:
+            assert(np.all(np.sum(output, axis=-1)-1 < 1e-7))
+def _test_run_marginal_BP():
+    for _ in range(10):
+        N = 10
+        f,c = np.random.rand(2)
+        classification_flag = bool(np.random.choice(2))
+        print(N, f, c, classification_flag)
+
+        output =  run_marginal_loopyBP(spin_glass_model.SpinGlassModel(N, f, c),
+                                       classification_flag=classification_flag,)
+        assert(type(output) == list)
+        output = np.array(output)
+        assert(output.shape[0] == N*N)
+        assert(output.shape[1] == 2 if classification_flag else 1)
+        if classification_flag:
+            assert(np.all(np.sum(output, axis=-1)-1 < 1e-7))
+
+if __name__ == '__main__':
+    functions = {k:v for k,v in globals().items() if 'test_' == k[:5]}
+    for k,v in functions.items():
+        print()
+        print('=============Running %s=============='%k)
+        v()

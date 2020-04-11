@@ -14,16 +14,16 @@ from parameters import LN_ZERO
 def create_scatter_indices_helper(expansion_index, variable_cardinality, state_dimensions, offset):
     '''
     Inputs:
-    - expansion_index (int): 
-    - 
-    - 
+    - expansion_index (int):
+    -
+    -
     - offset (int): add this value to every index
     '''
     l = torch.tensor([i + offset for i in range(variable_cardinality**state_dimensions)])
     l_shape = [variable_cardinality for i in range(state_dimensions)]
     l = l.reshape(l_shape)
     l = l.transpose(expansion_index, 0)
-    return l.flatten()    
+    return l.flatten()
 #     t = torch.tensor(l)
 #     assert((t == l).all())
 #     t = t.transpose(expansion_index, 0)
@@ -31,14 +31,14 @@ def create_scatter_indices_helper(expansion_index, variable_cardinality, state_d
 
 def create_scatter_indices_varToFactorMsgs(original_indices, variable_cardinality=2, state_dimensions=2):
     #When sending variable to factor messages, variable beliefs must be expanded to have extra redundant dimensions.
-    #The approach is to expand all variable beliefs in all outgoing messages, then transpose each belief appropriately 
+    #The approach is to expand all variable beliefs in all outgoing messages, then transpose each belief appropriately
     #so that the variable it represents lines up in the correct dimension of the factor each message is sent to.
     #This function creates indices, to be used with torch_scatter, to perform this functionality.
     assert((original_indices < state_dimensions).all())
     scatter_indices_list = []
     for position, index in enumerate(original_indices):
         cur_offset = position*(variable_cardinality**state_dimensions)
-        cur_indices = create_scatter_indices_helper(expansion_index=index, variable_cardinality=variable_cardinality, 
+        cur_indices = create_scatter_indices_helper(expansion_index=index, variable_cardinality=variable_cardinality,
                           state_dimensions=state_dimensions, offset=cur_offset)
         scatter_indices_list.append(cur_indices)
     scatter_indices = torch.cat(scatter_indices_list)
@@ -52,17 +52,17 @@ class FactorGraphData(DataFactorGraph_partial):
     '''
     Representation of a factor graph in pytorch geometric Data format
     '''
-    def __init__(self, factor_potentials, factorToVar_edge_index, numVars, numFactors, 
+    def __init__(self, factor_potentials, factorToVar_edge_index, numVars, numFactors,
                  edge_var_indices, state_dimensions, factor_potential_masks, ln_Z=None,
-                 factorToVar_double_list=None, gt_variable_labels=None):
+                 factorToVar_double_list=None, gt_variable_labels=None, marginals=None):
         '''
         Inputs:
-        - factor_potentials (torch tensor): represents all factor potentials (log base e space) and has 
-            shape (num_factors, var_states, ..., var_states), where var_states is the number 
+        - factor_potentials (torch tensor): represents all factor potentials (log base e space) and has
+            shape (num_factors, var_states, ..., var_states), where var_states is the number
             of states a variable can take (e.g. 2 for an ising model or 3 for community detection
             with 3 communities).  Has state_dimensions + 1 total dimensions (where state_dimensions
-            is the number of dimenions in the largest factor), e.g. 3 total 
-            dimensions when the largest factor contains 2 variables.  Factors with fewer than 
+            is the number of dimenions in the largest factor), e.g. 3 total
+            dimensions when the largest factor contains 2 variables.  Factors with fewer than
             state_dimensions dimensions have unused states set to -infinitiy (0 probability)
         - factorToVar_edge_index (torch tensor): shape (2, num_edges), represents all edges in the factor graph.
             factorToVar_edge_index[0, i] is the index of the factor connected by the ith edge
@@ -78,7 +78,7 @@ class FactorGraphData(DataFactorGraph_partial):
             1: represents that the corresponding location in factor_potentials is invalid and should be masked,
                e.g. the factor has fewer than state_dimensions dimensions
         - ln_Z : natural logarithm of the partition function
-        - factorToVar_double_list (list of lists): 
+        - factorToVar_double_list (list of lists):
             factorToVar_double_list[i] is a list of all variables that factor with index i shares an edge with
             factorToVar_double_list[i][j] is the index of the jth variable that the factor with index i shares an edge with
         - gt_variable_labels (torch tensor): shape (# variables).  ground truth labels for each variable in the stochastic block model
@@ -89,12 +89,14 @@ class FactorGraphData(DataFactorGraph_partial):
         if ln_Z is not None:
 #             print("check ln_Z:", ln_Z)
             self.ln_Z = torch.tensor([ln_Z], dtype=float)
-        
+        if marginals is not None:
+            self.marginals = torch.tensor(marginals, dtype=torch.float)
+
         # (int) the largest node degree
         self.state_dimensions = torch.tensor([state_dimensions])
-        
+
         #potentials defining the factor graph
-        self.factor_potentials = factor_potentials 
+        self.factor_potentials = factor_potentials
 
         # - factorToVar_edge_index (Tensor): The indices of a general (sparse) edge
         #     matrix with shape :obj:`[numFactors, numVars]`
@@ -102,10 +104,10 @@ class FactorGraphData(DataFactorGraph_partial):
         if factorToVar_double_list is not None:
             #factorStates_to_varIndices (torch LongTensor): essentially representing edges and pseudo edges (between
             #    junk states and a junk bin)
-            #    has shape [num_factors*(2^state_dimensions] with values 
-            #    in {0, 1, ..., (number of factor to variable edges)-1, (number of factor to variable edges)}. 
-            #    Note (number of factor to variable edges) indicates a 'junk state' and should be output into a 
-            #    'junk' bin after scatter operation.            
+            #    has shape [num_factors*(2^state_dimensions] with values
+            #    in {0, 1, ..., (number of factor to variable edges)-1, (number of factor to variable edges)}.
+            #    Note (number of factor to variable edges) indicates a 'junk state' and should be output into a
+            #    'junk' bin after scatter operation.
             self.facStates_to_varIdx, self.facToVar_edge_idx = self.create_factorStates_to_varIndices(factorToVar_double_list)
 #             self.facStates_to_varIdx_FIXED, self.facToVar_edge_idx_FIXED = self.create_factorStates_to_varIndices_FIXED(factorToVar_double_list)
         else:
@@ -135,28 +137,28 @@ class FactorGraphData(DataFactorGraph_partial):
         self.numFactors = torch.tensor([numFactors])
         #when batching, see num_vars and num_factors to access the cumulative number of variables and factors in all
         #graphs in the batch, like num_nodes
-        
-        
-        # edge_var_indices has shape [2, E]. 
+
+
+        # edge_var_indices has shape [2, E].
         #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
         #   [1, i] IS CURRENTLY UNUSED AND BROKEN, BUT IN GENERAL FOR PYTORCH GEOMETRIC SHOULD indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
         self.edge_var_indices = edge_var_indices
         assert(self.facToVar_edge_idx.shape == self.edge_var_indices.shape)
-        
+
         self.varToFactorMsg_scatter_indices = create_scatter_indices_varToFactorMsgs(original_indices=self.edge_var_indices[0, :], variable_cardinality=2, state_dimensions=state_dimensions)
 
-        #1 signifies an invalid location (e.g. a dummy dimension in a factor), 0 signifies a valid location 
+        #1 signifies an invalid location (e.g. a dummy dimension in a factor), 0 signifies a valid location
         self.factor_potential_masks = factor_potential_masks
 
-        
+
         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = self.get_initial_beliefs_and_messages()
         self.prv_varToFactor_messages = prv_varToFactor_messages
         self.prv_factorToVar_messages = prv_factorToVar_messages
         self.prv_factor_beliefs = prv_factor_beliefs
         self.prv_var_beliefs = prv_var_beliefs
-        
+
         assert(self.prv_factor_beliefs.size(0) == self.numFactors)
-        assert(self.prv_var_beliefs.size(0) == self.numVars)        
+        assert(self.prv_var_beliefs.size(0) == self.numVars)
 #         print("added prv_varToFactor_messages!!1234")
 #         print("prv_varToFactor_messages:", prv_varToFactor_messages)
 #         sleep(temp23)
@@ -172,7 +174,7 @@ class FactorGraphData(DataFactorGraph_partial):
 #         if bool(re.search('(index|face)', key)):
 #             print('re evaluated True, key:', key)#, 'value:', value)
 #         else:
-#             print('re evaluated False, key:', key)#, 'value:', value)            
+#             print('re evaluated False, key:', key)#, 'value:', value)
 #         return self.num_nodes if bool(re.search('(index|face)', key)) else 0
         if key == 'facStates_to_varIdx':
             return torch.tensor([2*self.edge_var_indices.size(1)]) #2*(number of edges)
@@ -221,7 +223,7 @@ class FactorGraphData(DataFactorGraph_partial):
 #             print("hi1 num_nodes property")
 #             return self.__num_nodes__
 #         for key, item in self('x', 'pos', 'norm', 'batch'):
-#             print("hi2 num_nodes property")            
+#             print("hi2 num_nodes property")
 #             return item.size(self.__cat_dim__(key, item))
 # #         if self.face is not None:
 # #             warnings.warn(__num_nodes_warn_msg__.format('face'))
@@ -233,45 +235,45 @@ class FactorGraphData(DataFactorGraph_partial):
 
 #     @num_nodes.setter
 #     def num_nodes(self, num_nodes):
-#         print("hi num_nodes setter called!")                    
-#         self.__num_nodes__ = num_nodes        
-        
+#         print("hi num_nodes setter called!")
+#         self.__num_nodes__ = num_nodes
+
 
 
     def create_factorStates_to_varIndices_OLD(self, factorToVar_double_list):
         '''
         Inputs:
-        - factorToVar_double_list (list of lists): 
+        - factorToVar_double_list (list of lists):
             factorToVar_double_list[i] is a list of all variables that factor with index i shares an edge with
             factorToVar_double_list[i][j] is the index of the jth variable that the factor with index i shares an edge with
-            
+
         Output:
-        - factorStates_to_varIndices (torch LongTensor): shape [num_factors*(2^state_dimensions] with values 
-            in {0, 1, ..., 2*(number of factor to variable edges)-1, 2*(number of factor to variable edges)}. 
-            Note 2*(number of factor to variable edges) indicates a 'junk state' and should be output into a 
+        - factorStates_to_varIndices (torch LongTensor): shape [num_factors*(2^state_dimensions] with values
+            in {0, 1, ..., 2*(number of factor to variable edges)-1, 2*(number of factor to variable edges)}.
+            Note 2*(number of factor to variable edges) indicates a 'junk state' and should be output into a
             'junk' bin after scatter operation.
             Used with scatter_logsumexp (https://pytorch-scatter.readthedocs.io/en/latest/functions/segment_coo.html)
             to marginalize the appropriate factor states for each message
         - factorToVar_edge_index (Tensor): The indices of a general (sparse) edge matrix
-            stored as a [2, E] tensor of [factor_idx, var_idx] for each edge factor to variable edge            
+            stored as a [2, E] tensor of [factor_idx, var_idx] for each edge factor to variable edge
         '''
         # the number of (undirected) edges in the factor graph, or messages in one graph wide update
         numMsgs = 0
         for variables_list in factorToVar_double_list:
             numMsgs += len(variables_list)
-        
+
         factorStates_to_varIndices_list = []
         factorToVar_edge_index_list = []
-        
+
 #         junk_bin = 2*numMsgs
         junk_bin = -1 #new junk bin for batching
-        
+
         arange_tensor = torch.arange(2**self.state_dimensions.item())
         msg_idx = 0
         for factor_idx, variables_list in enumerate(factorToVar_double_list):
             unused_var_count = self.state_dimensions - len(variables_list)
-            
-            
+
+
             for varIdx_inFac, var_idx in enumerate(variables_list):
                 factorToVar_edge_index_list.append(torch.tensor([factor_idx, var_idx]))
                 msgIdx_varIs0 = msg_idx
@@ -295,43 +297,43 @@ class FactorGraphData(DataFactorGraph_partial):
         factorToVar_edge_index = torch.stack(factorToVar_edge_index_list).permute(1,0)
         return factorStates_to_varIndices, factorToVar_edge_index
 
-   
+
 
 
     def create_factorStates_to_varIndices(self, factorToVar_double_list):
         '''
         Inputs:
-        - factorToVar_double_list (list of lists): 
+        - factorToVar_double_list (list of lists):
             factorToVar_double_list[i] is a list of all variables that factor with index i shares an edge with
             factorToVar_double_list[i][j] is the index of the jth variable that the factor with index i shares an edge with
-            
+
         Output:
-        - factorStates_to_varIndices (torch LongTensor): shape [num_factors*(2^state_dimensions] with values 
-            in {0, 1, ..., 2*(number of factor to variable edges)-1, 2*(number of factor to variable edges)}. 
-            Note 2*(number of factor to variable edges) indicates a 'junk state' and should be output into a 
+        - factorStates_to_varIndices (torch LongTensor): shape [num_factors*(2^state_dimensions] with values
+            in {0, 1, ..., 2*(number of factor to variable edges)-1, 2*(number of factor to variable edges)}.
+            Note 2*(number of factor to variable edges) indicates a 'junk state' and should be output into a
             'junk' bin after scatter operation.
             Used with scatter_logsumexp (https://pytorch-scatter.readthedocs.io/en/latest/functions/segment_coo.html)
             to marginalize the appropriate factor states for each message
         - factorToVar_edge_index (Tensor): The indices of a general (sparse) edge matrix
-            stored as a [2, E] tensor of [factor_idx, var_idx] for each edge factor to variable edge            
+            stored as a [2, E] tensor of [factor_idx, var_idx] for each edge factor to variable edge
         '''
         # the number of (undirected) edges in the factor graph, or messages in one graph wide update
         numMsgs = 0
         for variables_list in factorToVar_double_list:
             numMsgs += len(variables_list)
-        
+
         factorStates_to_varIndices_list = []
         factorToVar_edge_index_list = []
-        
+
 #         junk_bin = 2*numMsgs
         junk_bin = -1 #new junk bin for batching
-        
-        arange_tensor = torch.arange(2**self.state_dimensions.item())        
+
+        arange_tensor = torch.arange(2**self.state_dimensions.item())
         msg_idx = 0
         for factor_idx, variables_list in enumerate(factorToVar_double_list):
             unused_var_count = self.state_dimensions - len(variables_list)
-            
-            
+
+
             for varIdx_inFac, var_idx in enumerate(variables_list):
                 factorToVar_edge_index_list.append(torch.tensor([factor_idx, var_idx]))
                 msgIdx_varIs0 = msg_idx
@@ -355,8 +357,8 @@ class FactorGraphData(DataFactorGraph_partial):
         factorToVar_edge_index = torch.stack(factorToVar_edge_index_list).permute(1,0)
         return factorStates_to_varIndices, factorToVar_edge_index
 
-        
-        
+
+
     def get_initial_beliefs_and_messages(self, initialize_randomly=False, device=None):
         edge_count = self.edge_var_indices.shape[1]
 
@@ -376,18 +378,18 @@ class FactorGraphData(DataFactorGraph_partial):
             prv_factorToVar_messages = prv_factorToVar_messages.to(device)
             prv_factor_beliefs = prv_factor_beliefs.to(device)
             prv_var_beliefs = prv_var_beliefs.to(device)
-            
+
         #These locations are unused, set to LN_ZERO as a safety check for assert statements elsewhere
         assert(prv_factor_beliefs.shape == self.factor_potential_masks.shape)
         prv_factor_beliefs[torch.where(self.factor_potential_masks==1)] = LN_ZERO
-            
+
         return prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs
 
 
     def compute_bethe_average_energy(self, factor_beliefs, debug=False):
         '''
         Equation (37) in:
-        https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
+        https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf
         '''
         assert(self.factor_potentials.shape == factor_beliefs.shape)
         if debug:
@@ -403,7 +405,7 @@ class FactorGraphData(DataFactorGraph_partial):
     def compute_bethe_entropy(self, factor_beliefs, var_beliefs):
         '''
         Equation (38) in:
-        https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
+        https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf
         '''
         bethe_entropy = -torch.sum(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs)) #elementwise multiplication, then sum
 
@@ -438,7 +440,7 @@ class FactorGraphData(DataFactorGraph_partial):
         assert(not torch.isnan(var_beliefs).any()), var_beliefs
         return self.compute_bethe_average_energy(factor_beliefs) - self.compute_bethe_entropy(factor_beliefs, var_beliefs)
 
-    
+
 def test_create_factorStates_to_varIndices(factorToVar_double_list=[[2,1], [2,3], [1], [3,2,1]], numVars=3):
     '''
     test function
@@ -447,10 +449,10 @@ def test_create_factorStates_to_varIndices(factorToVar_double_list=[[2,1], [2,3]
     for variables_list in factorToVar_double_list:
         numMsgs += len(variables_list)
         print("numMsgs:", numMsgs)
-        
+
     factorStates_to_varIndices_list = []
     factorToVar_edge_index_list = []
-    
+
     junk_bin = 2*numMsgs
     state_dimensions = 3
 
@@ -481,16 +483,16 @@ def test_create_factorStates_to_varIndices(factorToVar_double_list=[[2,1], [2,3]
     assert(len(factorStates_to_varIndices_list) == numMsgs)
     factorStates_to_varIndices = torch.cat(factorStates_to_varIndices_list)
     factorToVar_edge_index = torch.stack(factorToVar_edge_index_list).permute(1,0)
-    
+
     print("test, factorStates_to_varIndices:", factorStates_to_varIndices)
     print("test, factorToVar_edge_index:", factorToVar_edge_index)
     print("test, factorToVar_edge_index.shape:", factorToVar_edge_index.shape)
-    
+
 
 
 class Batch_custom(DataFactorGraph_partial):
     #custom incrementing of values for bipartite factor graph with batching
-    def __init__(self, **kwargs):       
+    def __init__(self, **kwargs):
         super(Batch_custom, self).__init__(**kwargs)
 
     @staticmethod
@@ -508,7 +510,7 @@ class Batch_custom(DataFactorGraph_partial):
         batch = Batch_custom()
         batch.__data_class__ = data_list[0].__class__
         batch.__slices__ = {key: [0] for key in keys}
-        
+
         for key in keys:
             batch[key] = []
 
@@ -533,13 +535,13 @@ class Batch_custom(DataFactorGraph_partial):
                     if key == "facStates_to_varIdx":
 #                         print("a item:", item)
 #                         print("a item.shape:", item.shape)
-#                         print("cumsum[key]:", cumsum[key])                
+#                         print("cumsum[key]:", cumsum[key])
 #                         print("cumsum[key].shape:", cumsum[key].shape)
 #                         item = item + cumsum[key]
                         item = item.clone() #without this we edit the data for the next epoch, causing errors
                         item[torch.where(item != -1)] = item[torch.where(item != -1)] + cumsum[key]
-#                         print("b item:", item)    
-#                         print("b item.shape:", item.shape)    
+#                         print("b item:", item)
+#                         print("b item.shape:", item.shape)
                     else:
                         item = item + cumsum[key]
                 if torch.is_tensor(item):
@@ -550,16 +552,16 @@ class Batch_custom(DataFactorGraph_partial):
                 if key == "facStates_to_varIdx":
                     num_edges_times2 = data.__inc__(key, item)
                     junk_bin_val += num_edges_times2
-                    cumsum[key] += num_edges_times2                   
+                    cumsum[key] += num_edges_times2
                 else:
                     cumsum[key] += data.__inc__(key, item)
                 batch[key].append(item)
-                
+
 #                 if key == 'edge_index' or key == 'facToVar_edge_idx':
 #                     print("key:", key)
 #                     print("cumsum[key]:", cumsum[key])
 #                     print()
-                    
+
                 if key in follow_batch:
                     item = torch.full((size, ), i, dtype=torch.long)
                     batch['{}_batch'.format(key)].append(item)
@@ -571,13 +573,13 @@ class Batch_custom(DataFactorGraph_partial):
                 print()
                 print("num_nodes item:", item)
                 print()
-                
+
             batch.batch_factors.append(torch.full((data.numFactors, ), i, dtype=torch.long))
-            batch.batch_vars.append(torch.full((data.numVars, ), i, dtype=torch.long))            
+            batch.batch_vars.append(torch.full((data.numVars, ), i, dtype=torch.long))
 
         if num_nodes is None:
             batch.batch = None
-            
+
 #         print("1 batch.num_nodes:", batch.num_nodes)
 #         print("000 type(batch.num_nodes):", type(batch.num_nodes))
 
@@ -585,28 +587,28 @@ class Batch_custom(DataFactorGraph_partial):
 #             print()
 #             print("key:", key)
             item = batch[key][0]
-            if torch.is_tensor(item):                   
+            if torch.is_tensor(item):
                 batch[key] = torch.cat(batch[key],
-                                       dim=data_list[0].__cat_dim__(key, item))               
+                                       dim=data_list[0].__cat_dim__(key, item))
                 if key == "facStates_to_varIdx":
-                    batch[key][torch.where(batch[key] == -1)] = junk_bin_val   
-            elif isinstance(item, int) or isinstance(item, float):               
-                batch[key] = torch.tensor(batch[key])               
+                    batch[key][torch.where(batch[key] == -1)] = junk_bin_val
+            elif isinstance(item, int) or isinstance(item, float):
+                batch[key] = torch.tensor(batch[key])
             else:
                 raise ValueError('Unsupported attribute type')
-                                  
+
 ######jdk debugging
 #             if key == 'num_nodes':
 #                 print("key: num_nodes, batch[key]:", batch[key])
-            
+
 #             try:
 #                 print("key:", key, "batch.num_nodes:", batch.num_nodes)
 #             except:
 #                 print("batch.num_nodes doesn't work yet")
-            
+
 
 ######end jdk debugging
-                
+
         # Copy custom data functions to batch (does not work yet):
         # if data_list.__class__ != Data:
         #     org_funcs = set(Data.__dict__.keys())
@@ -617,7 +619,7 @@ class Batch_custom(DataFactorGraph_partial):
 
         if torch_geometric.is_debug_enabled():
             batch.debug()
-        
+
         return batch.contiguous()
 
 
@@ -656,12 +658,12 @@ class Batch_custom(DataFactorGraph_partial):
     @property
     def num_graphs(self):
         """Returns the number of graphs in the batch."""
-        return self.batch[-1].item() + 1    
-    
-    
-    
-    
-    
+        return self.batch[-1].item() + 1
+
+
+
+
+
 class DataLoader_custom(torch.utils.data.DataLoader):
     #copied from pytorch-geometric, only changed to call Batch_custom
     r"""Data loader which merges data objects from a
@@ -691,7 +693,7 @@ class DataLoader_custom(torch.utils.data.DataLoader):
                 data_list, follow_batch),
             **kwargs)
 
-    
-    
+
+
 if __name__ == "__main__":
     test_create_factorStates_to_varIndices()
