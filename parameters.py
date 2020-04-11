@@ -7,6 +7,6 @@ BETHE_MLP = True #if true, use a final layer MLP for BPNN that is initialized to
 NUM_MLPS = 2 #the number of MLPs per layer in BPNN (1 or 2)
 
 MRFTOOLS_LBP_ITERS = 5 #iterations of loopy belief propagation to run in mrftools
-LIBDAI_LBP_ITERS = 5 #iterations of loopy belief propagation to run in libdai
+LIBDAI_LBP_ITERS = 10000 #iterations of loopy belief propagation to run in libdai
 LIBDAI_MEAN_FIELD_ITERS = 5 #iterations of mean field to run in libdai
 LN_ZERO = -99 #for numerical stability, use this value instead of -infinity for ln(0)
