@@ -317,7 +317,7 @@ def run_marginal_loopyBP(sg_model, maxiter=None, updates="SEQRND", damping=None,
     opts["logdomain"] = "1"
     if damping is not None:
         opts["damping"] = str(damping)
-    opts['inference'] = 'MAXPROD' if map_flag else 'SUMPROD'
+    opts['inference'] = ('MAXPROD' if map_flag else 'SUMPROD')
 
     sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
     bp = dai.BP( sg_FactorGraph, opts )

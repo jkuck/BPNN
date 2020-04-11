@@ -8,7 +8,7 @@ do
         do 
             for cflag in '--classification_flag' ''
             do
-                python run_cpu.py python bp_map_marginal_spinglass.py $dflag $mflag --updates $updates --damping $damping
+                python run_cpu.py python bp_map_marginal_spinglass.py $cflag $mflag --updates $updates --damping $damping
             done
         done
     done
