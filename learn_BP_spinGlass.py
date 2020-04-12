@@ -21,7 +21,7 @@ import matplotlib
 import numpy as np
 import parameters
 from parameters import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, BETHE_MLP, NUM_MLPS
-import cProfile 
+import cProfile
 
 ##########################
 ##### Run me on Atlas
@@ -75,7 +75,7 @@ GNN_trained_model_path = './wandb/run-20200403_191628-s6oaxy9y/model.pt' #locati
 
 # BPNN_trained_model_path = './wandb/run-20200219_020545-j2ef9bvp/model.pt'
 
-USE_WANDB = True
+USE_WANDB = False
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 ##########################
 ####### Training PARAMETERS #######
@@ -140,8 +140,8 @@ if ATTRACTIVE_FIELD_TRAIN == True:
 #     LEARNING_RATE = 0.00005 #10layer with Bethe_mlp
 else:
     #think this works for mixed fields
-#         LEARNING_RATE = 0.005 #10layer        
-#         LEARNING_RATE = 0.001 #30layer trial 
+#         LEARNING_RATE = 0.005 #10layer
+#         LEARNING_RATE = 0.001 #30layer trial
     LEARNING_RATE = 0.0005 #10layer with Bethe_mlp
 #     LEARNING_RATE = 0.0000005 #c_max = .5
 
@@ -174,7 +174,7 @@ if USE_WANDB:
 def get_dataset(dataset_type):
     '''
     Store/load a list of SpinGlassModels
-    When using, convert to BPNN or GNN form with either 
+    When using, convert to BPNN or GNN form with either
     build_factorgraph_from_SpinGlassModel(pytorch_geometric=True) for BPNN or spinGlass_to_torchGeometric() for GNN
     '''
     assert(dataset_type in ['train', 'val', 'test'])
@@ -191,11 +191,11 @@ def get_dataset(dataset_type):
         N_MIN = N_MIN_VAL
         N_MAX = N_MAX_VAL
         F_MAX = F_MAX_VAL
-        C_MAX = C_MAX_VAL        
+        C_MAX = C_MAX_VAL
     else:
         datasize = TEST_DATA_SIZE
         ATTRACTIVE_FIELD = ATTRACTIVE_FIELD_TEST
-        
+
     dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f_attField=%s.pkl' % (datasize, N_MIN, N_MAX, F_MAX, C_MAX, ATTRACTIVE_FIELD)
     if REGENERATE_DATA or (not os.path.exists(dataset_file)):
         print("REGENERATING DATA!!")
@@ -206,12 +206,12 @@ def get_dataset(dataset_type):
         if not os.path.exists(DATA_DIR):
             os.makedirs(DATA_DIR)
         with open(dataset_file, 'wb') as f:
-            pickle.dump(spin_glass_models_list, f)            
+            pickle.dump(spin_glass_models_list, f)
     else:
         with open(dataset_file, 'rb') as f:
             spin_glass_models_list = pickle.load(f)
     return spin_glass_models_list
- 
+
 # device = torch.device('cpu')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS,\
@@ -222,13 +222,13 @@ lbp_net = lbp_net.to(device)
 # lbp_net.double()
 def train():
     if USE_WANDB:
-        
+
         wandb.watch(lbp_net)
-    
+
     lbp_net.train()
     # Initialize optimizer
     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=LEARNING_RATE)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=LR_DECAY) #multiply lr by gamma every step_size epochs    
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=LR_DECAY) #multiply lr by gamma every step_size epochs
     loss_func = torch.nn.MSELoss()
 
 
@@ -237,13 +237,13 @@ def train():
     sg_models_fg_from_train = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list_train]
     train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=TRAIN_BATCH_SIZE)
 
-    
+
     spin_glass_models_list_val = get_dataset(dataset_type='val')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
     sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list_val]
     val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
 #     val_data_loader_pytorchGeometric_batchSize50 = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
-    
+
 #     with autograd.detect_anomaly():
     for e in range(EPOCH_COUNT):
         epoch_loss = 0
@@ -271,8 +271,8 @@ def train():
 #             count += 1
 #             if count == 1:
 #                 sleep(debug)
-            
-            
+
+
 #             print("spin_glass_problem.ln_Z.shape:", spin_glass_problem.ln_Z.shape)
 #             print("spin_glass_problem.factor_potentials.shape:", spin_glass_problem.factor_potentials.shape)
 #             print("spin_glass_problem.facToVar_edge_idx.shape:", spin_glass_problem.facToVar_edge_idx.shape)
@@ -281,13 +281,13 @@ def train():
 #             print("-"*80)
 #             sleep(shape_check)
 
-#             print("spin_glass_problem.edge_index.shape:", spin_glass_problem.edge_index.shape)  
+#             print("spin_glass_problem.edge_index.shape:", spin_glass_problem.edge_index.shape)
 #             print("spin_glass_problem.facToVar_edge_idx.shape:", spin_glass_problem.facToVar_edge_idx.shape)
 #             sleep(tempaslkdfjsal)
 
             spin_glass_problem = spin_glass_problem.to(device)
-    
-    
+
+
 #             print("spin_glass_problem.num_nodes:", spin_glass_problem.num_nodes)
 #             print("spin_glass_problem.numVars:", spin_glass_problem.numVars)
 #             print("spin_glass_problem.num_vars:", spin_glass_problem.num_vars)
@@ -297,7 +297,7 @@ def train():
 
 #             spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
             spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
-        
+
             exact_ln_partition_function = spin_glass_problem.ln_Z
             assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
 
@@ -340,7 +340,7 @@ def train():
         if e % VAL_FREQUENCY == 0:
 #             print('-'*40, "check weights 1234", '-'*40)
 #             for param in lbp_net.parameters():
-#                 print(param.data)            
+#                 print(param.data)
             val_losses = []
             for spin_glass_problem in val_data_loader_pytorchGeometric: #pytorch geometric form
 #                 print("spin_glass_problem.state_dimensions:", spin_glass_problem.state_dimensions)
@@ -355,27 +355,27 @@ def train():
 #                 print("spin_glass_problem.edge_var_indices:", spin_glass_problem.edge_var_indices)
 #                 print("spin_glass_problem.varToFactorMsg_scatter_indices:", spin_glass_problem.varToFactorMsg_scatter_indices)
 #                 print("spin_glass_problem.factor_potential_masks:", spin_glass_problem.factor_potential_masks)
-                
-                
-                
-                
+
+
+
+
                 spin_glass_problem = spin_glass_problem.to(device)
                 spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
 
 
-                exact_ln_partition_function = spin_glass_problem.ln_Z   
+                exact_ln_partition_function = spin_glass_problem.ln_Z
                 assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all()), (spin_glass_problem.state_dimensions, MAX_FACTOR_STATE_DIMENSIONS)
                 spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
-                
-                estimated_ln_partition_function = lbp_net(spin_glass_problem)            
+
+                estimated_ln_partition_function = lbp_net(spin_glass_problem)
                 loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
 #                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
 #                 print("exact_ln_partition_function:", exact_ln_partition_function)
 #                 print("loss:", loss)
-                
+
                 val_losses.append(loss.item())
 
-                
+
 # #### DEBUG ####
 #             val_losses = []
 #             for spin_glass_problem in val_data_loader_pytorchGeometric_batchSize50: #pytorch geometric form
@@ -391,33 +391,33 @@ def train():
 # #                 print("spin_glass_problem.edge_var_indices:", spin_glass_problem.edge_var_indices)
 # #                 print("spin_glass_problem.varToFactorMsg_scatter_indices:", spin_glass_problem.varToFactorMsg_scatter_indices)
 # #                 print("spin_glass_problem.factor_potential_masks:", spin_glass_problem.factor_potential_masks)
-                
+
 #                 spin_glass_problem = spin_glass_problem.to(device)
 #                 spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
 
 
-#                 exact_ln_partition_function = spin_glass_problem.ln_Z   
+#                 exact_ln_partition_function = spin_glass_problem.ln_Z
 #                 assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all()), (spin_glass_problem.state_dimensions, MAX_FACTOR_STATE_DIMENSIONS)
 #                 spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
-                
-#                 estimated_ln_partition_function = lbp_net(spin_glass_problem)            
+
+#                 estimated_ln_partition_function = lbp_net(spin_glass_problem)
 #                 loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
 #                 print("batchSize50 estimated_ln_partition_function:", estimated_ln_partition_function)
 #                 print("batchSize50 exact_ln_partition_function:", exact_ln_partition_function)
 #                 print("batchSize50 loss:", loss)
-                
+
 #                 val_losses.append(loss.item())
 #                 print("root mean squared validation error =", np.sqrt(np.mean(val_losses)))
 #                 print()
 #                 print('asdfsa', '-'*80)
 
 # #### END DEBUG ####
-                
-                
+
+
             print("root mean squared validation error =", np.sqrt(np.mean(val_losses)))
             print()
             if USE_WANDB:
-                wandb.log({"RMSE_val": np.sqrt(np.mean(val_losses)), "RMSE_training": np.sqrt(np.mean(losses))})        
+                wandb.log({"RMSE_val": np.sqrt(np.mean(val_losses)), "RMSE_training": np.sqrt(np.mean(losses))})
         else:
             if USE_WANDB:
                 wandb.log({"RMSE_training": np.sqrt(np.mean(losses))})
@@ -445,7 +445,7 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
 
 
     lbp_net.eval()
-    
+
     #data loader for BPNN
     spin_glass_models_list = get_dataset(dataset_type=TEST_DATSET)
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
@@ -455,12 +455,12 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
     #data loader for GNN
     val_data_list_GNN = [spinGlass_to_torchGeometric(sg_problem) for sg_problem in spin_glass_models_list]
     val_loader_GNN = DataLoader_pytorchGeometric(val_data_list_GNN, batch_size=1, shuffle=False)
-    
+
 #     gnn_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     gnn_model = GIN_Network_withEdgeFeatures(msg_passing_iters=MSG_PASSING_ITERS).to(device)
     gnn_model.load_state_dict(torch.load(GNN_trained_model_path))
-    gnn_model.eval()  
-    
+    gnn_model.eval()
+
     loss_func = torch.nn.MSELoss()
 
     exact_solution_counts = []
@@ -474,26 +474,26 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
     LBPlibdai_1000iters_estimated_counts = []
     LBPlibdai_1000Seqiters_estimated_counts = []
     LBPlibdai_5kiters_estimated_counts = []
-    
+
     meanFieldlibdai_5kiters_estimated_counts = []
-    
+
 #     lbp_losses_5iters = []
     lbp_losses_10iters = []
     lbp_losses_100iters = []
     lbp_losses_1000iters = []
     lbp_losses_1000Seqiters = []
     lbp_losses_5kiters = []
-    
+
     mean_field_losses_5kiters = []
-    
+
     losses = []
     GNN_losses = []
-    
+
     lbp_losses = []
     mrftool_lbp_losses = []
     for idx, (spin_glass_problem, gnn_data) in enumerate(zip(data_loader_pytorchGeometric, val_loader_GNN)): #pytorch geometric form
         print("problem:", idx)
-        # spin_glass_problem.compute_bethe_free_energy()     
+        # spin_glass_problem.compute_bethe_free_energy()
         sg_problem_SGM = spin_glass_models_list[idx]
         exact_ln_partition_function = spin_glass_problem.ln_Z
         if not skip_our_model:
@@ -504,7 +504,7 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
             BPNN_estimated_counts.append(estimated_ln_partition_function.item()-exact_ln_partition_function)
             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
             losses.append(loss.item())
-            
+
             #run GNN FIX ME
             assert(np.isclose(exact_ln_partition_function.item(), gnn_data.ln_Z.item())), (exact_ln_partition_function.item(), gnn_data.ln_Z.item())
             gnn_data = gnn_data.to(device)
@@ -513,7 +513,7 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
             GNN_estimated_counts.append(gnn_pred_ln_Z.item()-exact_ln_partition_function)
             gnn_loss = loss_func(gnn_pred_ln_Z, exact_ln_partition_function.float().squeeze())
             GNN_losses.append(gnn_loss.item())
-            
+
 #         libdai_lbp_Z_5 = sg_problem_SGM.loopyBP_libdai(maxiter=5)
         libdai_lbp_Z_10 = sg_problem_SGM.loopyBP_libdai(maxiter=10, updates="PARALL", damping=".5")
         libdai_lbp_Z_100 = sg_problem_SGM.loopyBP_libdai(maxiter=100, updates="PARALL", damping=".5")
@@ -531,8 +531,8 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
         libdai_meanField_Z_5k = sg_problem_SGM.mean_field_libdai(maxiter=100000)
         meanFieldlibdai_5kiters_estimated_counts.append(libdai_meanField_Z_5k-exact_ln_partition_function)
 
-        
-        
+
+
         exact_solution_counts.append(exact_ln_partition_function)
 
 
@@ -562,43 +562,43 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
         plt.plot(exact_solution_counts, BPNN_estimated_counts, 'x', label='%d layer BPNN, RMSE=%.2f' % (MSG_PASSING_ITERS, np.sqrt(np.mean(losses))))
         plt.plot(exact_solution_counts, GNN_estimated_counts, 'x', label='%d layer GNN, RMSE=%.2f' % (MSG_PASSING_ITERS, np.sqrt(np.mean(GNN_losses))))
 
-        
+
 #     plt.plot(exact_solution_counts, LBPlibdai_5iters_estimated_counts, '+', label='LBP 5 iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_5iters))))
-    
+
     plt.plot(exact_solution_counts, LBPlibdai_10iters_estimated_counts, '+', label='LBP 10 iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_10iters))))
-    
+
     plt.plot(exact_solution_counts, LBPlibdai_100iters_estimated_counts, '+', label='LBP 100 iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_100iters))))
-    
+
     plt.plot(exact_solution_counts, LBPlibdai_1000iters_estimated_counts, '+', label='LBP 1000 iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_1000iters))))
-    
+
     plt.plot(exact_solution_counts, LBPlibdai_1000Seqiters_estimated_counts, '+', label='LBP 1000 seq iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_1000Seqiters))))
-    
+
 #     plt.plot(exact_sol”ution_counts, LBPlibdai_5kiters_estimated_counts, '+', label='LBP 5k iters, RMSE=%.2f' % (np.sqrt(np.mean(lbp_losses_5kiters))))
-    
+
     plt.plot(exact_solution_counts, meanFieldlibdai_5kiters_estimated_counts, '1', label='Mean Field, RMSE=%.2f' % (np.sqrt(np.mean(mean_field_losses_5kiters))))
-    
+
     plt.plot([min(exact_solution_counts), max(exact_solution_counts)], [0, 0], '-', c='g', label='Exact')
 
-    # plt.axhline(y=math.log(2)*log_2_Z[PROBLEM_NAME], color='y', label='Ground Truth ln(Set Size)') 
+    # plt.axhline(y=math.log(2)*log_2_Z[PROBLEM_NAME], color='y', label='Ground Truth ln(Set Size)')
     plt.xlabel('ln(Z)', fontsize=14)
     plt.ylabel('ln(Estimate) - ln(Z)', fontsize=14)
     plt.yscale('symlog')
     plt.title('Exact Partition Function vs. Estimates', fontsize=20)
-    # plt.legend(fontsize=8, loc=2, prop={'size': 6})    
-#     plt.legend(fontsize=12, prop={'size': 12})    
+    # plt.legend(fontsize=8, loc=2, prop={'size': 6})
+#     plt.legend(fontsize=12, prop={'size': 12})
     # Put a legend below current axis
     lgd = plt.legend(loc='upper center', bbox_to_anchor=(0.45, -0.12),
           fancybox=True, ncol=2, fontsize=12, prop={'size': 12})
 
     #make the font bigger
-    matplotlib.rcParams.update({'font.size': 10})        
+    matplotlib.rcParams.update({'font.size': 10})
 
     plt.grid(True)
     # Shrink current axis's height by 10% on the bottom
     #box = ax.get_position()
     #ax.set_position([box.x0, box.y0 + box.height * 0.1,
     #                 box.width, box.height * 0.9])
-    #fig.savefig('/Users/jkuck/Downloads/temp.png', bbox_extra_artists=(lgd,), bbox_inches='tight')    
+    #fig.savefig('/Users/jkuck/Downloads/temp.png', bbox_extra_artists=(lgd,), bbox_inches='tight')
 
     if not os.path.exists(results_directory + 'plots/'):
         os.makedirs(results_directory + 'plots/')
@@ -616,10 +616,10 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
         N_MIN = N_MIN_VAL
         N_MAX = N_MAX_VAL
         F_MAX = F_MAX_VAL
-        C_MAX = C_MAX_VAL   
+        C_MAX = C_MAX_VAL
     else:
         assert(False), ("invalid TEST_DATASET")
-        
+
         f5_c5_N10_attFldT
     # plot_name = 'trained=%s_%s_%diters_%d_%d_%.2f_%.2f.png' % (TEST_TRAINED_MODEL, TEST_DATSET, MSG_PASSING_ITERS, N_MIN, N_MAX, F_MAX, C_MAX)
 #     plot_name = 'trained=%s_dataset=%s%d_c%f_f%f_N%d%d_att=%s_%diters_alpha%f.png' % (TEST_TRAINED_MODEL, TEST_DATSET, len(data_loader_pytorchGeometric), C_MAX, F_MAX, N_MIN, N_MAX, ATTRACTIVE_FIELD, MSG_PASSING_ITERS, parameters.alpha)
@@ -627,7 +627,7 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
     plt.savefig(results_directory + 'plots/' + plot_name, bbox_extra_artists=(lgd,), bbox_inches='tight')
     matplotlib.pyplot.clf()
     # plt.show()
-    
+
     return np.sqrt(np.mean(losses)), np.sqrt(np.mean(GNN_losses)), np.sqrt(np.mean(lbp_losses_10iters)), np.sqrt(np.mean(lbp_losses_100iters)),\
            np.sqrt(np.mean(lbp_losses_1000iters)), np.sqrt(np.mean(lbp_losses_1000Seqiters)), np.sqrt(np.mean(mean_field_losses_5kiters))
 
@@ -647,8 +647,8 @@ def test(skip_our_model=False):
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
     sg_models_fg_from = [build_factorgraph_from_SpinGlassModel(sg_model) for sg_model in spin_glass_models_list]
     data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from, batch_size=1)
-    
-    
+
+
     loss_func = torch.nn.MSELoss()
 
     exact_solution_counts = []
@@ -659,7 +659,7 @@ def test(skip_our_model=False):
     lbp_losses = []
     mrftool_lbp_losses = []
     for idx, spin_glass_problem in enumerate(data_loader_pytorchGeometric): #pytorch geometric form
-        # spin_glass_problem.compute_bethe_free_energy()     
+        # spin_glass_problem.compute_bethe_free_energy()
         sg_problem_SGM = spin_glass_models_list[idx]
         exact_ln_partition_function = spin_glass_problem.ln_Z
         if not skip_our_model:
@@ -669,14 +669,14 @@ def test(skip_our_model=False):
             BPNN_estimated_counts.append(estimated_ln_partition_function.item()-exact_ln_partition_function)
             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
             losses.append(loss.item())
-            
+
         libdai_lbp_Z_recompute = sg_problem_SGM.loopyBP_libdai()
-        mrftools_lbp_Z_recompute = sg_problem_SGM.loopyBP_mrftools()   
+        mrftools_lbp_Z_recompute = sg_problem_SGM.loopyBP_mrftools()
         LBPlibdai_estimated_counts.append(libdai_lbp_Z_recompute-exact_ln_partition_function)
-        LBPmrftools_estimated_counts.append(mrftools_lbp_Z_recompute-exact_ln_partition_function)        
+        LBPmrftools_estimated_counts.append(mrftools_lbp_Z_recompute-exact_ln_partition_function)
 #         LBPlibdai_estimated_counts.append(libdai_lbp_Z_est)
 #         LBPmrftools_estimated_counts.append(mrftools_lbp_Z_estimate)
-        
+
         exact_solution_counts.append(exact_ln_partition_function)
 
 #         print("libdai_lbp_Z_recompute:", libdai_lbp_Z_recompute)
@@ -709,21 +709,21 @@ def test(skip_our_model=False):
     plt.plot(exact_solution_counts, LBPlibdai_estimated_counts, 'x', c='b', label='LBP libdai, %d iters, RMSE=%.2f, 10 lrgst removed RMSE=%.2f' % (parameters.LIBDAI_LBP_ITERS, np.sqrt(np.mean(lbp_losses)), np.sqrt(np.mean(lbp_losses[:-10]))))
     plt.plot([min(exact_solution_counts), max(exact_solution_counts)], [0, 0], '-', c='g', label='Exact')
 
-    # plt.axhline(y=math.log(2)*log_2_Z[PROBLEM_NAME], color='y', label='Ground Truth ln(Set Size)') 
+    # plt.axhline(y=math.log(2)*log_2_Z[PROBLEM_NAME], color='y', label='Ground Truth ln(Set Size)')
     plt.xlabel('ln(Exact Model Count)', fontsize=14)
     plt.ylabel('ln(Estimated Model Count) - ln(Exact Model Count)', fontsize=14)
     plt.title('Exact Model Count vs. Estimates', fontsize=20)
-    # plt.legend(fontsize=8, loc=2, prop={'size': 6})    
-    plt.legend(fontsize=12, prop={'size': 8})    
+    # plt.legend(fontsize=8, loc=2, prop={'size': 6})
+    plt.legend(fontsize=12, prop={'size': 8})
     #make the font bigger
-    matplotlib.rcParams.update({'font.size': 10})        
+    matplotlib.rcParams.update({'font.size': 10})
 
     plt.grid(True)
     # Shrink current axis's height by 10% on the bottom
     #box = ax.get_position()
     #ax.set_position([box.x0, box.y0 + box.height * 0.1,
     #                 box.width, box.height * 0.9])
-    #fig.savefig('/Users/jkuck/Downloads/temp.png', bbox_extra_artists=(lgd,), bbox_inches='tight')    
+    #fig.savefig('/Users/jkuck/Downloads/temp.png', bbox_extra_artists=(lgd,), bbox_inches='tight')
 
     if not os.path.exists(ROOT_DIR + 'plots/'):
         os.makedirs(ROOT_DIR + 'plots/')
@@ -732,7 +732,7 @@ def test(skip_our_model=False):
     plot_name = 'trained=%s_dataset=%s%d_%diters_alpha%f.png' % (TEST_TRAINED_MODEL, TEST_DATSET, len(data_loader_pytorchGeometric), MSG_PASSING_ITERS, parameters.alpha)
     plt.savefig(ROOT_DIR + 'plots/' + plot_name)
     # plt.show()
-   
+
 
 
 def create_many_ising_model_figures(results_dir=ROOT_DIR + '/data/experiments/' + EXPERIMENT_NAME, exp_file='ising_model_OOD.pkl'):
@@ -751,20 +751,20 @@ def create_many_ising_model_figures(results_dir=ROOT_DIR + '/data/experiments/' 
                     F_MAX_VAL = f_max
                     C_MAX_VAL = c_max
                     ATTRACTIVE_FIELD_VAL = attractive_field
-                    BPNN, GNN, lbp10, lbp100, lbp1k, lbp1kSeq, mf = create_ising_model_figure(results_directory=results_dir)  
+                    BPNN, GNN, lbp10, lbp100, lbp1k, lbp1kSeq, mf = create_ising_model_figure(results_directory=results_dir)
                     all_results[(attractive_field, n, f_max, c_max)] = (BPNN, GNN, lbp10, lbp100, lbp1k, lbp1kSeq, mf)
-                    
+
                     if not os.path.exists(results_dir):
-                        os.makedirs(results_dir)                    
+                        os.makedirs(results_dir)
                     with open(results_dir + exp_file, 'wb') as f:
                         pickle.dump(all_results, f)
-        
+
 if __name__ == "__main__":
     if MODE == "train":
         train()
-#         cProfile.run("train()") 
-        
+#         cProfile.run("train()")
+
     elif MODE == "test":
 #         test()
         create_ising_model_figure()
-#         create_many_ising_model_figures()    
+#         create_many_ising_model_figures()
