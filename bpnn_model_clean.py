@@ -3,7 +3,7 @@ from torch.nn import Sequential as Seq, Linear, ReLU
 import numpy as np
 from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
-from torch_scatter import scatter_logsumexp
+from torch_scatter import scatter_logsumexp, scatter_max
 from sat_helpers.sat_data import parse_dimacs, SatProblems, build_factorgraph_from_SATproblem
 from utils import dotdict, logminusexp, shift_func #wrote a helper function that is not used in this file: log_normalize
 
@@ -269,7 +269,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert(not torch.isnan(factorToVar_messages).any()), prv_factor_beliefs
 
 
-        var_beliefs = scatter_('max' if self.map_flag else  'add', factorToVar_messages,
+        var_beliefs = scatter_('add', factorToVar_messages,
                                factor_graph.facToVar_edge_idx[1], dim_size=factor_graph.num_vars)
         assert(len(var_beliefs.shape) == 2)
         if normalize_beliefs:
@@ -337,7 +337,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
 #                 factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0], dim_size=factor_graph.numFactors)
 #         factor_beliefs = scatter_('add', varToFactor_expandedMessages, factor_graph.facToVar_edge_idx[0]) #for batching
-        factor_beliefs = scatter_('max' if self.map_flag else 'add', varToFactor_expandedMessages,
+        factor_beliefs = scatter_('add', varToFactor_expandedMessages,
                                   factor_graph.facToVar_edge_idx[0], dim_size=factor_graph.num_factors) #for batching
 
 
@@ -395,7 +395,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 # def logsumexp(tensor, dim):
 #     tensor_exp = tor
 
-    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages, debug=False, fast_logsumexp=True):
+    def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages,
+                            debug=False, fast_logsumexp=True):
         #subtract previous messages from current factor beliefs to get factor to variable messages
         # prv_factor_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_varToFactor_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
@@ -428,16 +429,31 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert((mapped_factor_beliefs[torch.where(mapped_factor_potentials_masks==1)] == LN_ZERO).all())
         mapped_factor_beliefs[torch.where(mapped_factor_beliefs<LN_ZERO)] = LN_ZERO
 
-        num_edges = factor_graph.facToVar_edge_idx.shape[1]
-        assert(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape == factor_graph.facStates_to_varIdx.shape)
-        assert((factor_graph.facStates_to_varIdx <= num_edges*2).all())
-        marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)
-        marginalized_states = marginalized_states_fast[:-1].view(num_edges,2)
+        if not self.map_flag:
+            num_edges = factor_graph.facToVar_edge_idx.shape[1]
+            assert(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape == factor_graph.facStates_to_varIdx.shape)
+            assert((factor_graph.facStates_to_varIdx <= num_edges*2).all())
+            marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)
+            marginalized_states = marginalized_states_fast[:-1].view(num_edges,2)
 
-        assert((prv_varToFactor_messages >= LN_ZERO).all())
+            assert((prv_varToFactor_messages >= LN_ZERO).all())
 
-        #avoid double counting
-        messages = marginalized_states - prv_varToFactor_messages
+            #avoid double counting
+            messages = marginalized_states - prv_varToFactor_messages
+        else:
+            num_edges = factor_graph.facToVar_edge_idx.shape[1]
+            assert(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape == factor_graph.facStates_to_varIdx.shape)
+            assert((factor_graph.facStates_to_varIdx <= num_edges*2).all())
+            marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)
+            catted_prv_varToFactor_messages = torch.cat([
+                prv_varToFactor_messages.view(-1),
+                torch.tensor([LN_ZERO], device=prv_varToFactor_messages.device, dtype=prv_varToFactor_messages.dtype)
+            ], dim=-1)
+            mapped_prv_varToFactor_messages = catted_prv_varToFactor_messages[factor_graph.facStates_to_varIdx].reshape(mapped_factor_beliefs.shape)
+            mapped_factorToVar_messages = mapped_factor_beliefs - mapped_prv_varToFactor_messages
+            mapped_factorToVar_messages[torch.where(mapped_factorToVar_messages<LN_ZERO)] = LN_ZERO
+            messages = scatter_max(src=mapped_factorToVar_messages.view(-1), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)[0]
+            messages = messages[:-1].view(num_edges, 2)
 
         # FIX ME
 #         TO DO:
