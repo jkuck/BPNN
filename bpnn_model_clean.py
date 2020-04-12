@@ -132,11 +132,14 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     """
 
     def __init__(self, learn_BP=True, factor_state_space=None, var_cardinality=None, belief_repeats=None,\
-                 avoid_nans=True, lne_mlp=False, use_MLP1=False, use_MLP2=False):
+                 avoid_nans=True, lne_mlp=False, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
 
         self.use_MLP1 = use_MLP1
         self.use_MLP2 = use_MLP2
+        self.use_MLP3 = use_MLP3
+        self.use_MLP4 = use_MLP4
+        
         self.learn_BP = learn_BP
         self.avoid_nans = avoid_nans
         self.lne_mlp = lne_mlp
@@ -254,9 +257,10 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                                                               normalize_messages=normalize_messages)
 #         print("factorToVar_messages.shape:", factorToVar_messages.shape)
         fTOv_mesg_shape = factorToVar_messages.shape
-        factorToVar_messages = self.mlp3(factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
-        factorToVar_messages = factorToVar_messages.view(fTOv_mesg_shape)
-        factorToVar_messages = torch.clamp(factorToVar_messages, min=LN_ZERO)
+        if self.use_MLP3:
+            factorToVar_messages = self.mlp3(factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
+            factorToVar_messages = factorToVar_messages.view(fTOv_mesg_shape)
+            factorToVar_messages = torch.clamp(factorToVar_messages, min=LN_ZERO)
         
         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1], dim_size=factor_graph.num_vars)
         #var_beliefs has shape [# variables, belief_repeats, variable cardinality]
@@ -274,11 +278,12 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         #update factor beliefs
         varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages,\
                                                         normalize_messages=normalize_messages)
-        vTOf_mesg_shape = varToFactor_messages.shape        
-        varToFactor_messages = self.mlp4(varToFactor_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
-        varToFactor_messages = varToFactor_messages.view(vTOf_mesg_shape)
-        varToFactor_messages = torch.clamp(varToFactor_messages, min=LN_ZERO)
-        
+        if self.use_MLP4:
+            vTOf_mesg_shape = varToFactor_messages.shape        
+            varToFactor_messages = self.mlp4(varToFactor_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
+            varToFactor_messages = varToFactor_messages.view(vTOf_mesg_shape)
+            varToFactor_messages = torch.clamp(varToFactor_messages, min=LN_ZERO)
+
         #varToFactor_messages has shape [# edges, belief_repeats, variable cardinality]       
         assert(len(varToFactor_messages.shape) == 3), (varToFactor_messages.shape)
         assert(varToFactor_messages.shape[1] == factor_graph.belief_repeats), (varToFactor_messages.shape)
@@ -465,7 +470,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert((prv_varToFactor_messages >= LN_ZERO).all()), (torch.min(prv_varToFactor_messages))
 
         #avoid double counting
-        factorToVar_messages = marginalized_states - prv_varToFactor_messages
+        factorToVar_messages = marginalized_states #- prv_varToFactor_messages
         
         # FIX ME
 #         TO DO:
@@ -507,7 +512,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert((prv_factorToVar_messages >= LN_ZERO).all())
 
         #avoid double counting
-        varToFactor_messages = mapped_var_beliefs - prv_factorToVar_messages            
+        varToFactor_messages = mapped_var_beliefs #- prv_factorToVar_messages            
 
         # FIX ME
 #         TO DO:

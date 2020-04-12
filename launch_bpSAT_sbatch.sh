@@ -31,10 +31,13 @@ echo 'hi'
 source /sailhome/jkuck/miniconda2/etc/profile.d/conda.sh
 conda activate /atlas/u/jkuck/learn_BP/venv35
 
-python learn_BP_SAT.py
+python learn_BP_SAT.py --max_factor_state_dimensions $1 --msg_passing_iters $2 --belief_repeats $3 --random_seed $4 --problem_category_train $5 --train_val_split $6 --batch_size $7
 
 # can try the following to list out which GPU you have access to
 #srun /usr/local/cuda/samples/1_Utilities/deviceQuery/deviceQuery
+
+# run this file with e.g.:
+# sbatch launch_bpSAT_sbatch.sh 5 5 2 1 or_50_problems random_shuffle
 
 # done
 echo "Done"

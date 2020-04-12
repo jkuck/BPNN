@@ -83,7 +83,7 @@ MAX_FACTOR_STATE_DIMENSIONS = 2
 VAR_CARDINALITY = 2
 
 MSG_PASSING_ITERS = 10 #the number of iterations of message passing, we have this many layers with their own learnable parameters
-BELIEF_REPEATS = 4
+BELIEF_REPEATS = 1
 
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
@@ -106,13 +106,13 @@ F_MAX_TRAIN = .1
 C_MAX_TRAIN = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
-ATTRACTIVE_FIELD_TRAIN = False
+ATTRACTIVE_FIELD_TRAIN = True
 
 N_MIN_VAL = 10
 N_MAX_VAL = 10
 F_MAX_VAL = .1
 C_MAX_VAL = 5.0
-ATTRACTIVE_FIELD_VAL = False
+ATTRACTIVE_FIELD_VAL = True
 # ATTRACTIVE_FIELD_TEST = True
 
 REGENERATE_DATA = False
@@ -120,14 +120,14 @@ REGENERATE_DATA = False
 DATA_DIR = "./data/spin_glass/"
 
 
-TRAINING_DATA_SIZE = 250
+TRAINING_DATA_SIZE = 50
 VAL_DATA_SIZE = 50#100
 TEST_DATA_SIZE = 200
 
-TRAIN_BATCH_SIZE=250
+TRAIN_BATCH_SIZE=50
 VAL_BATCH_SIZE=50
 
-EPOCH_COUNT = 5000
+EPOCH_COUNT = 1000
 PRINT_FREQUENCY = 10
 VAL_FREQUENCY = 10
 SAVE_FREQUENCY = 100
@@ -135,12 +135,16 @@ SAVE_FREQUENCY = 100
 TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' datasets
 
 ##### Optimizer parameters #####
-STEP_SIZE=2000
+STEP_SIZE=300
 LR_DECAY=.5
 if ATTRACTIVE_FIELD_TRAIN == True:
     #works well for training on attractive field
         LEARNING_RATE = 0.0005        
-#         LEARNING_RATE = 0.001 #testing
+#         LEARNING_RATE = 4*TRAIN_BATCH_SIZE*0.0005        
+
+        LEARNING_RATE = 0.00000005 #testing sgd     
+        LEARNING_RATE = 0.0000002 #testing sgd     
+
 #     LEARNING_RATE = 0.00005 #10layer with Bethe_mlp
 else:
     #think this works for mixed fields
@@ -234,7 +238,8 @@ def train():
     
     lbp_net.train()
     # Initialize optimizer
-    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=LEARNING_RATE)
+#     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=LEARNING_RATE)
+    optimizer = torch.optim.SGD(lbp_net.parameters(), lr=LEARNING_RATE, momentum=0.7)    
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=LR_DECAY) #multiply lr by gamma every step_size epochs    
     loss_func = torch.nn.MSELoss()
 
