@@ -6,9 +6,12 @@ do
     do 
         for mflag in '--model_map_flag' ''
         do 
-            for cflag in '--classification_flag' ''
+            for aflag in '--attractive_flag' ''
             do
-                python run_cpu.py python bp_map_marginal_spinglass.py $cflag $mflag --updates $updates --damping $damping
+                for iter in 10000 5 10 20
+                do
+                    python run_cpu.py python bp_map_marginal_spinglass.py $aflag $mflag --updates $updates --damping $damping --maxiter iter
+                done
             done
         done
     done
