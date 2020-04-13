@@ -16,7 +16,8 @@ from parameters import SHARE_WEIGHTS, BETHE_MLP
 
 class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
-                bethe_MLP=BETHE_MLP, map_flag=False, marginal_flag=False, classification_flag=False):
+                bethe_MLP=BETHE_MLP, map_flag=False, marginal_flag=False, classification_flag=False,
+                alpha=None, alpha2=None):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -35,9 +36,9 @@ class lbp_message_passing_network(nn.Module):
         self.marginal_flag = marginal_flag
         self.classification_flag = classification_flag
         if share_weights:
-            self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions, map_flag=map_flag)
+            self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions, map_flag=map_flag, alpha=alpha, alpha2=alpha2)
         else:
-            self.message_passing_layers = nn.ModuleList([FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions, map_flag=map_flag)\
+            self.message_passing_layers = nn.ModuleList([FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions, map_flag=map_flag, alpha=alpha, alpha2=alpha2)\
                                            for i in range(msg_passing_iters)])
         self.device = device
 
