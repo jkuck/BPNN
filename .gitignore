@@ -5,4 +5,5 @@ data/spin_glass_map/
 trained_models*
 wandb
 batch/*.out
+batch/bp*.sh
 batch/tmp.sh
