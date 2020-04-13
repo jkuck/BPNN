@@ -92,6 +92,24 @@ class SpinGlassModel:
         ln_Z_estimate = mrftools_utils.run_LBP(self)
         return ln_Z_estimate
 
+    def logScore(self, state):
+        N = self.lcl_fld_params.shape[0]
+        assert(N == self.lcl_fld_params.shape[1])
+
+        score = 0
+        for var_idx in range(N**2):
+            r = var_idx//N
+            c = var_idx%N
+            state1 = state[var_idx] > 0.5
+            score += self.lcl_fld_params[r,c]*(1 if state1>0.5 else -1)
+            if r < N-1:
+                state2 = state[var_idx+N] > 0.5
+                score += self.cpl_params_v[r,c]*(-1 if state1^state2 else 1)
+            if c < N-1:
+                state2 = state[var_idx+1] > 0.5
+                score += self.cpl_params_h[r,c]*(-1 if state1^state2 else 1)
+        return score
+
     def junction_tree_libdai(self, map_flag=False):
         '''
         Compute the exact partition function of this spin glass model using the junction tree
