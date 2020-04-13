@@ -10,7 +10,7 @@ jobs = [
         lr, damping, layer_num,
     )
     for dflag in ['--lr_decay_flag', '']
-    for aflag in ['--no_attractive_field', '']
+    for aflag in ['--no_attractive_flag', '']
     for mflag in ['--model_map_flag', '']
     for cflag in ['--classification_flag', '']
     for lr in [1e-2, 1e-3, 1e-4, 1e-5]

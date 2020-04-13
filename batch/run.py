@@ -9,7 +9,7 @@ name = ''.join([a.strip().strip('-')[0] for a in args])
 
 context = '''#!/bin/bash
 #SBATCH --partition=atlas
-#SBATCH --time=12:00:00
+#SBATCH --time=36:00:00
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G

@@ -235,7 +235,7 @@ def test_loss_func(x, y, sg_model):
     diff_prob = torch.abs(prob_x[:,0]-prob_y[:,0]).reshape(-1)
     mse_prob_loss = (diff_prob**2).tolist()
     l1_prob_loss = diff_prob.tolist()
-    cross_entropy_prob_loss = (-torch.sum(prob_y*torch.log(prob_x), dim=1)).tolist()
+    cross_entropy_prob_loss = (-torch.sum(prob_y*torch.log(prob_x+1e-99), dim=1)).tolist()
 
     state_x = (x<=0).float()
     state_y = (y<=0).float()

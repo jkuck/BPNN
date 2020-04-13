@@ -144,7 +144,7 @@ SAVE_FREQUENCY = 100
 TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' datasets
 
 ##### Optimizer parameters #####
-STEP_SIZE=300
+STEP_SIZE=(EPOCH_COUNT//4)
 LR_DECAY=.5
 if ATTRACTIVE_FIELD_TRAIN == True:
     #works well for training on attractive field
@@ -182,6 +182,7 @@ if USE_WANDB:
     wandb.config.VAL_BATCH_SIZE = VAL_BATCH_SIZE
     wandb.config.MODEL_MAP_FLAG = MODEL_MAP_FLAG
     wandb.config.CLASSIFICATION_FLAG = CLASSIFICATION_FLAG
+    wandb.config.LR_DECAY_FLAG = LR_DECAY_FLAG
 
 
 
@@ -238,7 +239,7 @@ lbp_net = lbp_net.to(device)
 
 # lbp_net.double()
 def cross_entropy_loss(x, y):
-    return -torch.mean(torch.sum(y*torch.log(x), dim=1))
+    return -torch.mean(torch.sum(y*torch.log(x+1e-99), dim=1))
 def test_loss_func(x, y, sg_model):
     if CLASSIFICATION_FLAG:
         x = torch.log(x[:,0:-1]/x[:,-1:])
@@ -266,7 +267,7 @@ def test_loss_func(x, y, sg_model):
     diff_prob = torch.abs(prob_x[:,0]-prob_y[:,0]).reshape(-1)
     mse_prob_loss = (diff_prob**2).tolist()
     l1_prob_loss = diff_prob.tolist()
-    cross_entropy_prob_loss = (-torch.sum(prob_y*torch.log(prob_x), dim=1)).tolist()
+    cross_entropy_prob_loss = (-torch.sum(prob_y*torch.log(prob_x+1e-99), dim=1)).tolist()
 
     state_x = (x<=0).float()
     state_y = (y<=0).float()
@@ -304,7 +305,7 @@ def train():
     sg_models_fg_from_train = [build_factorgraph_from_SpinGlassModel(
         sg_model, map_flag=True, marginal_flag=True, classification_flag=CLASSIFICATION_FLAG,
     ) for sg_model in spin_glass_models_list_train]
-    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=TRAIN_BATCH_SIZE)
+    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=TRAIN_BATCH_SIZE, shuffle=False)
 
 
     spin_glass_models_list_val = get_dataset(dataset_type='val')
@@ -312,7 +313,7 @@ def train():
     sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(
         sg_model, map_flag=True, marginal_flag=True, classification_flag=CLASSIFICATION_FLAG,
     ) for sg_model in spin_glass_models_list_val]
-    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
+    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE, shuffle=False)
 #     val_data_loader_pytorchGeometric_batchSize50 = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
 
 #     with autograd.detect_anomaly():
