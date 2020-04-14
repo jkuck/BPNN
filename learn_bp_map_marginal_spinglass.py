@@ -27,6 +27,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_map_flag', action='store_true', default=False)
 parser.add_argument('--classification_flag', action='store_true', default=False)
+parser.add_argument('--no_training_flag', action='store_true', default=False)
 # parser.add_argument('--bethe_flag', action='store_true', default=False)
 parser.add_argument('--lr_decay_flag', action='store_true', default=False)
 parser.add_argument('--no_attractive_flag', action='store_true', default=False)
@@ -38,6 +39,7 @@ args = parser.parse_args()
 print(args)
 MODEL_MAP_FLAG = args.model_map_flag
 CLASSIFICATION_FLAG = args.classification_flag
+TRAINING_FLAG = not args.no_training_flag
 BETHE_MLP = False
 ATTRACTIVE_FIELD = not args.no_attractive_flag
 LEARNING_RATE = args.learning_rate
@@ -136,10 +138,10 @@ TEST_DATA_SIZE = 200
 TRAIN_BATCH_SIZE=50
 VAL_BATCH_SIZE=50
 
-EPOCH_COUNT = 5000
-PRINT_FREQUENCY = 10
-VAL_FREQUENCY = 10
-SAVE_FREQUENCY = 100
+EPOCH_COUNT = 5000 if TRAINING_FLAG else 5
+PRINT_FREQUENCY = 10 if TRAINING_FLAG else 1
+VAL_FREQUENCY = 10 if TRAINING_FLAG else 1
+SAVE_FREQUENCY = 100 if TRAINING_FLAG else 1
 
 TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' datasets
 
@@ -183,6 +185,7 @@ if USE_WANDB:
     wandb.config.MODEL_MAP_FLAG = MODEL_MAP_FLAG
     wandb.config.CLASSIFICATION_FLAG = CLASSIFICATION_FLAG
     wandb.config.LR_DECAY_FLAG = LR_DECAY_FLAG
+    wandb.config.TRAINING_FLAG = TRAINING_FLAG
 
 
 
@@ -389,11 +392,12 @@ def train():
             # print()
             losses.append(loss.item())
 
-        epoch_loss.backward()
-        # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
-        optimizer.step()
-        if LR_DECAY_FLAG:
-            scheduler.step()
+        if TRAINING_FLAG:
+            epoch_loss.backward()
+            # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
+            optimizer.step()
+            if LR_DECAY_FLAG:
+                scheduler.step()
 
 
         if e % PRINT_FREQUENCY == 0:

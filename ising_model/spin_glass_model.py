@@ -101,7 +101,7 @@ class SpinGlassModel:
             r = var_idx//N
             c = var_idx%N
             state1 = state[var_idx] > 0.5
-            score += self.lcl_fld_params[r,c]*(1 if state1>0.5 else -1)
+            score += self.lcl_fld_params[r,c]*(1 if state1 else -1)
             if r < N-1:
                 state2 = state[var_idx+N] > 0.5
                 score += self.cpl_params_v[r,c]*(-1 if state1^state2 else 1)
