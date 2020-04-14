@@ -12,11 +12,12 @@ from utils import neg_inf_to_zero, shift_func
 import math
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
 from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
-from parameters import SHARE_WEIGHTS, BETHE_MLP
+from parameters import SHARE_WEIGHTS, BETHE_MLP, alpha2
 
 class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
-                bethe_MLP=BETHE_MLP, belief_repeats=None, var_cardinality=None):
+                bethe_MLP=BETHE_MLP, belief_repeats=None, var_cardinality=None, learn_bethe_residual_weight=False,
+                initialize_to_exact_bethe = True):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -26,11 +27,20 @@ class lbp_message_passing_network(nn.Module):
         - share_weights (bool): if true, share the same weights across each message passing iteration
         - bethe_MLP (bool): if True, use an MLP to learn a modified Bethe approximation (initialized
                             to the exact Bethe approximation)
+        - learn_bethe_residual_weight (bool): if True, (and bethe_MLP is true) learn use the bethe_MLP
+            to predict the residual between then Bethe approximation and the exact partition function
+        - initialize_to_exact_bethe (bool): if True initialize the bethe_MLP to perform exact computation
+            of the bethe approximation (for beliefs from the last round of message passing).  may make
+            training worse.  should be False if learn_bethe_residual_weight=True
         '''
         super().__init__()        
         self.share_weights = share_weights
         self.msg_passing_iters = msg_passing_iters
         self.bethe_MLP = bethe_MLP
+        self.learn_bethe_residual_weight = learn_bethe_residual_weight
+        if learn_bethe_residual_weight:
+            self.alpha_betheMLP = torch.nn.Parameter(alpha2*torch.ones(1))
+            assert(initialize_to_exact_bethe == False), "Set initialize_to_exact_bethe=False when learn_bethe_residual_weight=True"
         if share_weights:
             self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                                                                                      var_cardinality=var_cardinality, belief_repeats=belief_repeats)
@@ -47,21 +57,26 @@ class lbp_message_passing_network(nn.Module):
             num_ones = belief_repeats*(2*(var_cardinality**max_factor_state_dimensions)+var_cardinality)
             mlp_size =  msg_passing_iters*num_ones
 #             self.final_mlp = Seq(Linear(mlp_size, mlp_size), ReLU(), Linear(mlp_size, 1))
-        
             self.linear1 = Linear(mlp_size, mlp_size)
             self.linear2 = Linear(mlp_size, 1)
-            self.linear1.weight = torch.nn.Parameter(torch.eye(mlp_size))
-            self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-            weight_initialization = torch.zeros((1,mlp_size))
-            weight_initialization[0,-num_ones:] = 1.0/belief_repeats
+            if initialize_to_exact_bethe:  
+#                 print("self.linear1.weight:", self.linear1.weight)
+#                 print("self.linear1.bias:", self.linear1.bias)
+                
+#                 self.linear1.weight *= .001
+#                 print("self.linear1.weight:", self.linear1.weight)
+#                 sleep(alsfdjlksadjflks)
+
+                self.linear1.weight = torch.nn.Parameter(torch.eye(mlp_size))
+                self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                weight_initialization = torch.zeros((1,mlp_size))
+                weight_initialization[0,-num_ones:] = 1.0/belief_repeats
 #             print("self.linear2.weight:", self.linear2.weight)
 #             print("self.linear2.weight.shape:", self.linear2.weight.shape)
-
-            
 #             print("weight_initialization:", weight_initialization)
-            self.linear2.weight = torch.nn.Parameter(weight_initialization)
-
-            self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape)) 
+                self.linear2.weight = torch.nn.Parameter(weight_initialization)
+                self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape)) 
+        
             self.shifted_relu = shift_func(ReLU(), shift=-500)
             self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)  
 #             self.final_mlp = Seq(self.linear1, self.linear2)  
@@ -111,23 +126,23 @@ class lbp_message_passing_network(nn.Module):
 #                     print(check_pool)
 #                     print("cur_pooled_states.shape:", cur_pooled_states.shape)
                     pooled_states.append(cur_pooled_states)
-
                         
         if self.bethe_MLP:
-#             print("torch.cat(pooled_states).shape:", torch.cat(pooled_states, dim=1).shape)
-#             print("torch.cat(pooled_states):", torch.cat(pooled_states, dim=1))
-#             sleep(check_pool2)
-#             print("torch.cat(pooled_states, dim=1):")
-#             print(torch.cat(pooled_states, dim=1))
-#             print()
-            estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
-            
-#             bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-#             estimated_ln_partition_function_orig = -bethe_free_energy
-#             print("estimated_ln_partition_function_orig:", estimated_ln_partition_function_orig)
-#             print("estimated_ln_partition_function:", estimated_ln_partition_function)        
-#             assert(np.isclose(estimated_ln_partition_function_orig.detach().numpy(), estimated_ln_partition_function.detach().numpy(), rtol=1e-03, atol=1e-03)), (estimated_ln_partition_function_orig, estimated_ln_partition_function)
-            return estimated_ln_partition_function
+            learned_estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
+                 
+            if self.learn_bethe_residual_weight:
+                final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                bethe_estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)
+                final_estimate = (1-self.alpha_betheMLP)*learned_estimated_ln_partition_function.squeeze() +\
+                                 self.alpha_betheMLP*bethe_estimated_ln_partition_function.squeeze()
+                
+#                 print("bethe_estimated_ln_partition_function.shape:", bethe_estimated_ln_partition_function.shape)
+#                 print("learned_estimated_ln_partition_function.shape:", learned_estimated_ln_partition_function.shape)
+#                 print("final_estimate.shape:", final_estimate.shape)
+
+                return final_estimate
+            else:
+                return learned_estimated_ln_partition_function
         
         else:
             if False:
@@ -137,8 +152,8 @@ class lbp_message_passing_network(nn.Module):
             
                 debug=True
                 if debug:
-                    cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-                    check_estimated_ln_partition_function = torch.sum(cur_pooled_states)
+                    final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                    check_estimated_ln_partition_function = torch.sum(final_pooled_states)
     #                 print("check_estimated_ln_partition_function:", check_estimated_ln_partition_function)
     #                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
     #                 sleep(debug_bethe)
@@ -146,8 +161,8 @@ class lbp_message_passing_network(nn.Module):
                 return estimated_ln_partition_function
   
             #corrected for batch_size > 1
-            cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-            estimated_ln_partition_function = torch.sum(cur_pooled_states, dim=1)
+            final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+            estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)
             return estimated_ln_partition_function            
 
 
@@ -248,15 +263,15 @@ class lbp_message_passing_network(nn.Module):
 #             print("check_normalization.shape:", check_normalization.shape)
 #             print("check_normalization:", check_normalization)
 #             print()        
-            assert(torch.max(torch.abs(check_normalization-1)) < .001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization)             
+            assert(torch.max(torch.abs(check_normalization-1)) < .00001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization)             
         else:
             normalized_var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim_to_keep=[0,1])#normalize variable beliefs
 #             print("normalized_var_beliefs.shape:", normalized_var_beliefs.shape)
             check_normalization = torch.sum(torch.exp(normalized_var_beliefs), dim=[i for i in range(2,len(var_beliefs.shape))])
 #             print("check_normalization.shape:", check_normalization.shape)
 #             print("check_normalization:", check_normalization)
-
-            assert(torch.max(torch.abs(check_normalization-1)) < .001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization) 
+#             print("var_beliefs[torch.where(torch.abs(check_normalization-1)) >= .00001)]:", var_beliefs[torch.where(torch.abs(check_normalization-1) >= .00001)])
+            assert(torch.max(torch.abs(check_normalization-1)) < .01), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization, var_beliefs) 
 
 #             print("factor_beliefs.shape:", factor_beliefs.shape)                    
             normalized_factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim_to_keep=[0,1])#normalize factor beliefs
@@ -265,7 +280,7 @@ class lbp_message_passing_network(nn.Module):
 #             print("check_normalization.shape:", check_normalization.shape)
 #             print("check_normalization:", check_normalization)
 #             print()        
-            assert(torch.max(torch.abs(check_normalization-1)) < .001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization) 
+            assert(torch.max(torch.abs(check_normalization-1)) < .01), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization) 
             
 #         print("normalized_var_beliefs.shape:", normalized_var_beliefs.shape)
 #         print("factor_beliefs.shape:", factor_beliefs.shape)        

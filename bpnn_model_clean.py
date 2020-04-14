@@ -96,6 +96,7 @@ def logsumexp_multipleDim(tensor, dim_to_keep=None):
     # print("aggregate_dimensions:", aggregate_dimensions)
     # print("tensor:", tensor)
     max_values = max_multipleDim(tensor, axes=aggregate_dimensions, keepdim=True)
+#     print("max_values:", max_values)
     max_values[torch.where(max_values == -np.inf)] = 0
     assert(not torch.isnan(max_values).any())
     assert((max_values > -np.inf).all())
@@ -129,17 +130,32 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     - lne_mlp (bool): if False mlp runs in log space (had trouble with good results), 
         if True we take exponent then run mlp then take log
     - var_cardinality (int): variable cardinality, the number of states each variable can take.
+    
+    - learn_residual_weights (bool): if True, learn residual (skip connection) weights around 
+        neural networks (not implemented for MLP1 and MLP2)
+    - learn_damping_coefficients (bool): if True, learn damping coefficients for message passing
+        (similar to residual weights)
+    - initialize_exact_BP (bool): if True, initialize weights of MLP3 and MLP4 to perform exact BP updates.
+        May make training worse, so False leaves the default initialization.  (not implemented for mlp1 and mlp2)
     """
 
     def __init__(self, learn_BP=True, factor_state_space=None, var_cardinality=None, belief_repeats=None,\
-                 avoid_nans=True, lne_mlp=False, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True):
+                 avoid_nans=True, lne_mlp=True, use_MLP1=True, use_MLP2=True, use_MLP3=False, use_MLP4=False,\
+                 learn_residual_weights=False, learn_damping_coefficients=False, initialize_exact_BP=True):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
-
+        
         self.use_MLP1 = use_MLP1
         self.use_MLP2 = use_MLP2
         self.use_MLP3 = use_MLP3
         self.use_MLP4 = use_MLP4
-        
+        self.learn_residual_weights = learn_residual_weights
+        if learn_residual_weights:
+            assert(initialize_exact_BP == False), "set initialize_exact_BP=False when learn_residual_weights=True"
+        self.learn_damping_coefficients = learn_damping_coefficients
+        if learn_damping_coefficients:
+            self.alpha_fTOv_msg = torch.nn.Parameter(alpha*torch.ones(1))
+            self.alpha_vTOf_msg = torch.nn.Parameter(alpha*torch.ones(1))
+            
         self.learn_BP = learn_BP
         self.avoid_nans = avoid_nans
         self.lne_mlp = lne_mlp
@@ -188,19 +204,24 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 
             self.linear5 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
             self.linear6 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            self.linear5.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
-            self.linear5.bias = torch.nn.Parameter(torch.zeros(self.linear5.bias.shape))
-            self.linear6.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
-            self.linear6.bias = torch.nn.Parameter(torch.zeros(self.linear6.bias.shape))
+            if initialize_exact_BP:
+                self.linear5.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear5.bias = torch.nn.Parameter(torch.zeros(self.linear5.bias.shape))
+                self.linear6.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear6.bias = torch.nn.Parameter(torch.zeros(self.linear6.bias.shape))
             self.mlp3 = Seq(self.linear5, self.linear6)  
-
+            self.alpha_mlp3 = torch.nn.Parameter(alpha2*torch.ones(1))
+            
             self.linear7 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
             self.linear8 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            self.linear7.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
-            self.linear7.bias = torch.nn.Parameter(torch.zeros(self.linear7.bias.shape))
-            self.linear8.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
-            self.linear8.bias = torch.nn.Parameter(torch.zeros(self.linear8.bias.shape))
+            if initialize_exact_BP:
+                self.linear7.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear7.bias = torch.nn.Parameter(torch.zeros(self.linear7.bias.shape))
+                self.linear8.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear8.bias = torch.nn.Parameter(torch.zeros(self.linear8.bias.shape))
             self.mlp4 = Seq(self.linear7, self.linear8)  
+            self.alpha_mlp4 = torch.nn.Parameter(alpha2*torch.ones(1))
+    
             
             
     def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs):
@@ -231,8 +252,10 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             iteration of message passing on.
         - prv_varToFactor_messages (tensor): varToFactor_messages from the last message passing iteration
         - prv_factor_beliefs (tensor): factor beliefs from the last message passing iteration
-        - alpha (float): residual weighting for factorToVar_messages. alpha=1 corresponds to no skip connection, 
-            alpha=0 removes the neural network
+        - alpha (float): message damping: alpha=1 corresponds to no damping, 
+            alpha=0 is total damping
+        - alpha2 (float): skip connection around neural networks: alpha2=1 corresponds to no neural network, 
+            alpha2=0 is no residual connection      
 
         Outputs:
         - varToFactor_messages (tensor): varToFactor_messages in this message passing iteration 
@@ -258,7 +281,29 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #         print("factorToVar_messages.shape:", factorToVar_messages.shape)
         fTOv_mesg_shape = factorToVar_messages.shape
         if self.use_MLP3:
-            factorToVar_messages = self.mlp3(factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
+            factorToVar_messages = factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality) 
+            
+            if self.lne_mlp:
+                assert(not torch.isnan(factorToVar_messages).any()), factorToVar_messages
+                
+                factorToVar_messages_exp = torch.exp(factorToVar_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                assert(not torch.isnan(factorToVar_messages_exp).any()), factorToVar_messages_exp
+#                 print("torch.min(factorToVar_messages_exp):", torch.min(factorToVar_messages_exp))
+#                 print("torch.max(factorToVar_messages_exp):", torch.max(factorToVar_messages_exp))                
+                factorToVar_messages_postMLP = self.mlp3(factorToVar_messages_exp)
+                assert(not torch.isnan(factorToVar_messages_postMLP).any()), factorToVar_messages_postMLP
+                factorToVar_messages_postMLP = torch.clamp(factorToVar_messages_postMLP, min=np.exp(LN_ZERO))
+                assert(not torch.isnan(factorToVar_messages_postMLP).any()), factorToVar_messages_postMLP                
+                factorToVar_messages_postMLP = torch.log(factorToVar_messages_postMLP)
+                factorToVar_messages_postMLP = torch.clamp(factorToVar_messages_postMLP, min=LN_ZERO)
+            else:
+                factorToVar_messages_postMLP = self.mlp3(factorToVar_messages)
+                
+            assert(not torch.isnan(factorToVar_messages_postMLP).any()), factorToVar_messages_postMLP
+            if self.learn_residual_weights:
+                factorToVar_messages = (1-self.alpha_mlp3)*factorToVar_messages_postMLP + self.alpha_mlp3*factorToVar_messages                
+            else:
+                factorToVar_messages = (1-alpha2)*factorToVar_messages_postMLP + alpha2*factorToVar_messages
             factorToVar_messages = factorToVar_messages.view(fTOv_mesg_shape)
             factorToVar_messages = torch.clamp(factorToVar_messages, min=LN_ZERO)
         
@@ -277,10 +322,25 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         
         #update factor beliefs
         varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages,\
-                                                        normalize_messages=normalize_messages)
+                                                        prv_varToFactor_messages=prv_varToFactor_messages, normalize_messages=normalize_messages)
         if self.use_MLP4:
             vTOf_mesg_shape = varToFactor_messages.shape        
-            varToFactor_messages = self.mlp4(varToFactor_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
+            assert(vTOf_mesg_shape[0] == fTOv_mesg_shape[0]), (vTOf_mesg_shape, fTOv_mesg_shape)
+            varToFactor_messages = varToFactor_messages.view(vTOf_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality)
+            
+            if self.lne_mlp:
+                varToFactor_messages_exp = torch.exp(varToFactor_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                varToFactor_messages_postMLP = self.mlp3(varToFactor_messages_exp)
+                varToFactor_messages_postMLP = torch.clamp(varToFactor_messages_postMLP, min=np.exp(LN_ZERO))
+                varToFactor_messages_postMLP = torch.log(varToFactor_messages_postMLP)
+                varToFactor_messages_postMLP = torch.clamp(varToFactor_messages_postMLP, min=LN_ZERO)
+            else:
+                varToFactor_messages_postMLP = self.mlp3(varToFactor_messages)            
+            
+            if self.learn_residual_weights:
+                varToFactor_messages = (1-self.alpha_mlp4)*varToFactor_messages_postMLP + self.alpha_mlp4*varToFactor_messages
+            else:
+                varToFactor_messages = (1-alpha2)*varToFactor_messages_postMLP + alpha2*varToFactor_messages
             varToFactor_messages = varToFactor_messages.view(vTOf_mesg_shape)
             varToFactor_messages = torch.clamp(varToFactor_messages, min=LN_ZERO)
 
@@ -396,7 +456,6 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             assert(torch.max(torch.abs(check_normalization-1)) < .00001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization)        
         
         assert((log_sum_exp_factor_beliefs != -np.inf).all()) #debugging
-        assert((log_sum_exp_factor_beliefs >= LN_ZERO).all()) #debugging
         check_factor_beliefs(factor_beliefs) #debugging
         assert(not torch.isnan(factor_beliefs).any()), (factor_beliefs, factor_graph.numFactors, factor_graph.numVars)
         factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)] = LN_ZERO
@@ -470,7 +529,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert((prv_varToFactor_messages >= LN_ZERO).all()), (torch.min(prv_varToFactor_messages))
 
         #avoid double counting
-        factorToVar_messages = marginalized_states #- prv_varToFactor_messages
+        factorToVar_messages = marginalized_states - prv_varToFactor_messages
         
         # FIX ME
 #         TO DO:
@@ -479,7 +538,13 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #         assert(False), "finish these todos"
 #         #for numerical stability, don't let log messages get smaller than LN_ZERO (constant set in parameters.py)
         factorToVar_messages = torch.clamp(factorToVar_messages, min=LN_ZERO)
-        factorToVar_messages = alpha*factorToVar_messages + (1 - alpha)*prv_factorToVar_messages
+        if self.learn_damping_coefficients:
+#             print("factorToVar_messages:", factorToVar_messages)
+#             print("prv_factorToVar_messages:", prv_factorToVar_messages)
+#             print("self.alpha_fTOv_msg:", self.alpha_fTOv_msg)
+            factorToVar_messages = self.alpha_fTOv_msg*factorToVar_messages + (1 - self.alpha_fTOv_msg)*prv_factorToVar_messages            
+        else:
+            factorToVar_messages = alpha*factorToVar_messages + (1 - alpha)*prv_factorToVar_messages
         if normalize_messages:
 #             print("pre normalization factorToVar_messages:")
 #             print(factorToVar_messages)
@@ -487,7 +552,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
             factorToVar_messages = factorToVar_messages - logsumexp_multipleDim(factorToVar_messages, dim_to_keep=[0,1])#normalize variable beliefs
             check_messages = torch.sum(torch.exp(factorToVar_messages), dim=-1)
-            assert(torch.max(torch.abs(check_messages-1)) < .00001), (torch.sum(torch.abs(check_messages-1)), torch.max(torch.abs(check_messages-1)), check_messages)
+            assert(torch.max(torch.abs(check_messages-1)) < .001), (torch.sum(torch.abs(check_messages-1)), torch.max(torch.abs(check_messages-1)), check_messages)
 
 #             print("post normalization factorToVar_messages:")
 #             print(factorToVar_messages)
@@ -500,7 +565,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert(not torch.isnan(factorToVar_messages).any()), prv_factor_beliefs        
         return factorToVar_messages
 
-    def message_varToFactor(self, var_beliefs, factor_graph, prv_factorToVar_messages, normalize_messages):
+    def message_varToFactor(self, var_beliefs, factor_graph, prv_factorToVar_messages, prv_varToFactor_messages, normalize_messages):
         #subtract previous messages from current variable beliefs to get variable to factor messages
         # var_beliefs has shape [E, X.shape] (double check)
         # factor_graph.prv_factorToVar_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
@@ -512,7 +577,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert((prv_factorToVar_messages >= LN_ZERO).all())
 
         #avoid double counting
-        varToFactor_messages = mapped_var_beliefs #- prv_factorToVar_messages            
+        varToFactor_messages = mapped_var_beliefs - prv_factorToVar_messages            
 
         # FIX ME
 #         TO DO:
@@ -521,12 +586,18 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             
         #for numerical stability, don't let log messages get smaller than LN_ZERO (constant set in parameters.py)
         varToFactor_messages = torch.clamp(varToFactor_messages, min=LN_ZERO)
+        
+        if self.learn_damping_coefficients:
+            varToFactor_messages = self.alpha_vTOf_msg*varToFactor_messages + (1 - self.alpha_vTOf_msg)*prv_varToFactor_messages
+        else:
+            varToFactor_messages = alpha*varToFactor_messages + (1 - alpha)*prv_varToFactor_messages
+        
         if normalize_messages:
             varToFactor_messages = varToFactor_messages - logsumexp_multipleDim(varToFactor_messages, dim_to_keep=[0, 1])#normalize variable beliefs
 #             print("post normalization varToFactor_messages:")
 #             print(varToFactor_messages)
             check_messages = torch.sum(torch.exp(varToFactor_messages), dim=-1)
-            assert(torch.max(torch.abs(check_messages-1)) < .00001), (torch.sum(torch.abs(check_messages-1)), torch.max(torch.abs(check_messages-1)), check_messages)
+            assert(torch.max(torch.abs(check_messages-1)) < .001), (torch.sum(torch.abs(check_messages-1)), torch.max(torch.abs(check_messages-1)), check_messages)
 
         varToFactor_messages = torch.clamp(varToFactor_messages, min=LN_ZERO)
         assert(not torch.isnan(varToFactor_messages).any()), prv_factor_beliefs            

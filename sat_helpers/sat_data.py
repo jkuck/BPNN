@@ -384,7 +384,7 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilo
             if var_idx not in dictionary_of_vars:
                 print(var_idx, "missing from dictionary_of_vars")
     assert(N == len(dictionary_of_vars)), (N, len(dictionary_of_vars))
-
+    print("max_var_degree:", max_var_degree)
     # print("b")
 
     # get largest clause degree

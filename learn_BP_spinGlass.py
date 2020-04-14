@@ -142,8 +142,8 @@ if ATTRACTIVE_FIELD_TRAIN == True:
         LEARNING_RATE = 0.0005        
 #         LEARNING_RATE = 4*TRAIN_BATCH_SIZE*0.0005        
 
-        LEARNING_RATE = 0.00000005 #testing sgd     
-        LEARNING_RATE = 0.0000002 #testing sgd     
+#         LEARNING_RATE = 0.00000005 #testing sgd     
+#         LEARNING_RATE = 0.0000002 #testing sgd     
 
 #     LEARNING_RATE = 0.00005 #10layer with Bethe_mlp
 else:
@@ -224,6 +224,7 @@ def get_dataset(dataset_type):
  
 # device = torch.device('cpu')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print("device:", device)
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS,\
                                       msg_passing_iters=MSG_PASSING_ITERS, device=None,
                                      belief_repeats=BELIEF_REPEATS, var_cardinality=VAR_CARDINALITY)
@@ -238,8 +239,8 @@ def train():
     
     lbp_net.train()
     # Initialize optimizer
-#     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=LEARNING_RATE)
-    optimizer = torch.optim.SGD(lbp_net.parameters(), lr=LEARNING_RATE, momentum=0.7)    
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=LEARNING_RATE)
+#     optimizer = torch.optim.SGD(lbp_net.parameters(), lr=LEARNING_RATE, momentum=0.7)    
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=LR_DECAY) #multiply lr by gamma every step_size epochs    
     loss_func = torch.nn.MSELoss()
 
@@ -358,7 +359,7 @@ def train():
 
         if e % PRINT_FREQUENCY == 0:
             print("epoch loss =", epoch_loss)
-            print("root mean squared training error =", np.sqrt(np.mean(losses)))
+            print("epoch:", e, "root mean squared training error =", np.sqrt(np.mean(losses)))
 
         if e % VAL_FREQUENCY == 0:
 #             print('-'*40, "check weights 1234", '-'*40)

@@ -30,7 +30,7 @@ parser.add_argument('--msg_passing_iters', type=int, default=2)
 #to increasing node feature dimensions in a standard graph neural network
 parser.add_argument('--belief_repeats', type=int, default=1)
 
-parser.add_argument('--batch_size', type=int, default=1)
+parser.add_argument('--batch_size', type=int, default=3)
 
 
 #for reproducing random train/val split
@@ -90,8 +90,8 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 1000
-VAL_DATA_SIZE = 1000#100
+TRAINING_DATA_SIZE = 3
+VAL_DATA_SIZE = 3#100
 TEST_DATA_SIZE = 1000
 
 ########## info by problem groups and categories ##########
@@ -165,10 +165,13 @@ SAVE_FREQUENCY = 100
 VAL_FREQUENCY = 10
 ##########################
 ##### Optimizer parameters #####
-STEP_SIZE=100
+STEP_SIZE=200
 LR_DECAY=.5 
 LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
-LEARNING_RATE = 0.00000001 #testing sgd
+
+LEARNING_RATE = 0.0005 #debugging
+LEARNING_RATE = 0.0005 #debugging
+# LEARNING_RATE = 0.00000001 #testing sgd
 
 # LEARNING_RATE = 4*0.0001*args.batch_size #try to fix bad training for large batch size
 
@@ -179,7 +182,7 @@ LEARNING_RATE = 0.00000001 #testing sgd
 
 # USE_WANDB = False
 # if USE_WANDB:
-# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
+os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 wandb.init(project="learn_BP_sat_oldMLPs1")
 # wandb.init(project="test")
 wandb.config.epochs = EPOCH_COUNT
@@ -203,6 +206,7 @@ wandb.config.random_seed = args.random_seed
 wandb.config.training_batch_size = args.batch_size
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print("device:", device)
 # device = 'cpu'
 
 # tiny_set = ["10.sk_1_46", "27.sk_3_32"]
@@ -210,6 +214,59 @@ lbp_net = lbp_message_passing_network(max_factor_state_dimensions=args.max_facto
                                      belief_repeats=args.belief_repeats, var_cardinality=VAR_CARDINALITY)
 # lbp_net.double()
 lbp_net = lbp_net.to(device)
+
+# for name, param in lbp_net.named_parameters():
+# # for param in lbp_net.parameters():
+#     if param.device.type != 'cuda':
+#         print('param {}, not on GPU!!!!!!!!!!!!!!'.format(name))
+#     else:
+#         print('param {}, has device type {}'.format(name, param.device.type))
+# #         print(param)
+        
+# # sleep(debug)
+
+
+def get_dataset_COPIED_CHANGEME(dataset_type):
+    '''
+    Store/load a list of SpinGlassModels
+    When using, convert to BPNN or GNN form with either 
+    build_factorgraph_from_SpinGlassModel(pytorch_geometric=True) for BPNN or spinGlass_to_torchGeometric() for GNN
+    '''
+    assert(dataset_type in ['train', 'val', 'test'])
+    if dataset_type == 'train':
+        datasize = TRAINING_DATA_SIZE
+        ATTRACTIVE_FIELD = ATTRACTIVE_FIELD_TRAIN
+        N_MIN = N_MIN_TRAIN
+        N_MAX = N_MAX_TRAIN
+        F_MAX = F_MAX_TRAIN
+        C_MAX = C_MAX_TRAIN
+    elif dataset_type == 'val':
+        datasize = VAL_DATA_SIZE
+        ATTRACTIVE_FIELD = ATTRACTIVE_FIELD_VAL
+        N_MIN = N_MIN_VAL
+        N_MAX = N_MAX_VAL
+        F_MAX = F_MAX_VAL
+        C_MAX = C_MAX_VAL        
+    else:
+        datasize = TEST_DATA_SIZE
+        ATTRACTIVE_FIELD = ATTRACTIVE_FIELD_TEST
+        
+    dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f_attField=%s.pkl' % (datasize, N_MIN, N_MAX, F_MAX, C_MAX, ATTRACTIVE_FIELD)
+    if REGENERATE_DATA or (not os.path.exists(dataset_file)):
+        print("REGENERATING DATA!!")
+        spin_glass_models_list = [SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
+                                                f=np.random.uniform(low=0, high=F_MAX),\
+                                                c=np.random.uniform(low=0, high=C_MAX),\
+                                                attractive_field=ATTRACTIVE_FIELD) for i in range(datasize)]
+        if not os.path.exists(DATA_DIR):
+            os.makedirs(DATA_DIR)
+        with open(dataset_file, 'wb') as f:
+            pickle.dump(spin_glass_models_list, f)            
+    else:
+        with open(dataset_file, 'rb') as f:
+            spin_glass_models_list = pickle.load(f)
+    return spin_glass_models_list
+
 
 
 
@@ -258,8 +315,8 @@ def train():
     lbp_net.train()
 
     # Initialize optimizer
-    optimizer = torch.optim.SGD(lbp_net.parameters(), lr=LEARNING_RATE, momentum=0.7)        
-#     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=LEARNING_RATE)
+#     optimizer = torch.optim.SGD(lbp_net.parameters(), lr=LEARNING_RATE, momentum=0.7)        
+    optimizer = torch.optim.Adam(lbp_net.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=LR_DECAY) #multiply lr by gamma every step_size epochs    
 
     loss_func = torch.nn.MSELoss()
@@ -360,7 +417,7 @@ def train():
         assert(len(training_SAT_list) == training_problem_count_check)
         training_RMSE = np.sqrt(loss_sum/training_problem_count_check)
         if e % PRINT_FREQUENCY == 0:
-            print("root mean squared training error =", training_RMSE)
+            print("epoch:", e, "root mean squared training error =", training_RMSE)
             
         if e % VAL_FREQUENCY == 0:
 #             print('-'*40, "check weights 1234", '-'*40)
@@ -393,6 +450,13 @@ def train():
             print("root mean squared validation error =", val_RMSE)
             print()
             wandb.log({"RMSE_val": val_RMSE, "RMSE_training": training_RMSE})   
+            
+        if e%100 == 0:
+            for name, param in lbp_net.named_parameters():
+                if 'alpha' in name:
+                    print("123 parameter name:", name)
+                    print("123 parameter:", param)
+            
         else:
             wandb.log({"RMSE_training": training_RMSE})
             
