@@ -99,6 +99,7 @@ MAX_FACTOR_STATE_DIMENSIONS = 2
 # MSG_PASSING_ITERS = 10 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
+SHARE_WEIGHTS = True if not TRAINING_FLAG  else SHARE_WEIGHTS
 
 # MODEL_NAME = "debugCUDA_spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
 MODEL_NAME = "MAP_spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
@@ -293,10 +294,11 @@ def test_loss_func(x, y, sg_model):
 
 def train():
     if USE_WANDB:
-
         wandb.watch(lbp_net)
-
-    lbp_net.train()
+    if TRAINING_FLAG:
+        lbp_net.train()
+    else:
+        torch.autograd.set_grad_enabled(False)
     # Initialize optimizer
     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=LR_DECAY) #multiply lr by gamma every step_size epochs

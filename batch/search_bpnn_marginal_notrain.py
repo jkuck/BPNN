@@ -12,7 +12,7 @@ jobs = [
     for aflag in ['--no_attractive_flag', '']
     for mflag in ['--model_map_flag', '']
     for damping in [0.999, 0.99, 0.9, 0.7, 0.5, 0.3, 0.1, 0.01, 0.001]
-    for layer_num in [5, 10, 20]
+    for layer_num in [5, 10, 20, 100, 1000]
 ]
 
 random.shuffle(jobs)
