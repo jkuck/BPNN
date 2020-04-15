@@ -139,7 +139,8 @@ STEP_SIZE=300
 LR_DECAY=.5
 if ATTRACTIVE_FIELD_TRAIN == True:
     #works well for training on attractive field
-        LEARNING_RATE = 0.0005        
+        LEARNING_RATE = 0.0005
+#         LEARNING_RATE = 0.0002        
 #         LEARNING_RATE = 4*TRAIN_BATCH_SIZE*0.0005        
 
 #         LEARNING_RATE = 0.00000005 #testing sgd     

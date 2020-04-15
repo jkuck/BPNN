@@ -140,8 +140,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     """
 
     def __init__(self, learn_BP=True, factor_state_space=None, var_cardinality=None, belief_repeats=None,\
-                 avoid_nans=True, lne_mlp=True, use_MLP1=True, use_MLP2=True, use_MLP3=False, use_MLP4=False,\
-                 learn_residual_weights=False, learn_damping_coefficients=False, initialize_exact_BP=True):
+                 avoid_nans=True, lne_mlp=True, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True,\
+                 learn_residual_weights=True, learn_damping_coefficients=False, initialize_exact_BP=False):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
         
         self.use_MLP1 = use_MLP1
@@ -209,6 +209,26 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 self.linear5.bias = torch.nn.Parameter(torch.zeros(self.linear5.bias.shape))
                 self.linear6.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
                 self.linear6.bias = torch.nn.Parameter(torch.zeros(self.linear6.bias.shape))
+            else:    
+                pass
+#                 w5 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+#                 torch.nn.init.uniform_(w5, -.1, .1)
+#                 w5 += torch.eye(var_cardinality*belief_repeats)
+#                 self.linear5.weight = torch.nn.Parameter(w5)
+                
+#                 b5 = torch.empty(self.linear5.bias.shape)
+#                 torch.nn.init.uniform_(w5, -.1, .1)
+#                 self.linear5.bias = torch.nn.Parameter(b5)
+                
+#                 w6 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+#                 torch.nn.init.uniform_(w6, -.1, .1)
+#                 w6 += torch.eye(var_cardinality*belief_repeats)
+#                 self.linear6.weight = torch.nn.Parameter(w6)
+                
+#                 b6 = torch.empty(self.linear6.bias.shape)
+#                 torch.nn.init.uniform_(w6, -.1, .1)
+#                 self.linear6.bias = torch.nn.Parameter(b6)    
+                
             self.mlp3 = Seq(self.linear5, self.linear6)  
             self.alpha_mlp3 = torch.nn.Parameter(alpha2*torch.ones(1))
             
@@ -219,6 +239,27 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 self.linear7.bias = torch.nn.Parameter(torch.zeros(self.linear7.bias.shape))
                 self.linear8.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
                 self.linear8.bias = torch.nn.Parameter(torch.zeros(self.linear8.bias.shape))
+                
+            else:    
+                pass
+#                 w7 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+#                 torch.nn.init.uniform_(w7, -.1, .1)
+#                 w7 += torch.eye(var_cardinality*belief_repeats)
+#                 self.linear7.weight = torch.nn.Parameter(w7)
+                
+#                 b7 = torch.empty(self.linear7.bias.shape)
+#                 torch.nn.init.uniform_(w7, -.1, .1)
+#                 self.linear7.bias = torch.nn.Parameter(b7)
+                
+#                 w8 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+#                 torch.nn.init.uniform_(w8, -.1, .1)
+#                 w8 += torch.eye(var_cardinality*belief_repeats)
+#                 self.linear8.weight = torch.nn.Parameter(w8)
+                
+#                 b8 = torch.empty(self.linear8.bias.shape)
+#                 torch.nn.init.uniform_(w8, -.1, .1)
+#                 self.linear8.bias = torch.nn.Parameter(b8)
+                
             self.mlp4 = Seq(self.linear7, self.linear8)  
             self.alpha_mlp4 = torch.nn.Parameter(alpha2*torch.ones(1))
     
