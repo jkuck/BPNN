@@ -125,7 +125,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     i.e. divide by previously sent messages as in loopy belief propagation
 
     Inputs:
-    - learn_BP (bool): if False run standard looph belief propagation, if True
+    - learn_BP (bool): if False run standard loopy belief propagation, if True
         insert a neural network into message aggregation for learning
     - lne_mlp (bool): if False mlp runs in log space (had trouble with good results), 
         if True we take exponent then run mlp then take log
