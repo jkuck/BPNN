@@ -140,8 +140,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     """
 
     def __init__(self, learn_BP=True, factor_state_space=None, var_cardinality=None, belief_repeats=None,\
-                 avoid_nans=True, lne_mlp=True, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True,\
-                 learn_residual_weights=True, learn_damping_coefficients=False, initialize_exact_BP=False):
+                 lne_mlp=True, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True,\
+                 learn_residual_weights=False, learn_damping_coefficients=False, initialize_exact_BP=True):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
         
         self.use_MLP1 = use_MLP1
@@ -157,7 +157,6 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             self.alpha_vTOf_msg = torch.nn.Parameter(alpha*torch.ones(1))
             
         self.learn_BP = learn_BP
-        self.avoid_nans = avoid_nans
         self.lne_mlp = lne_mlp
         self.var_cardinality = var_cardinality
         print("learn_BP:", learn_BP)
