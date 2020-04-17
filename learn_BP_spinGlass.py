@@ -144,7 +144,7 @@ if ATTRACTIVE_FIELD_TRAIN == True:
         LEARNING_RATE = 0.0005
         LEARNING_RATE = 0.0002  
         LEARNING_RATE = 0.00200001
-        LEARNING_RATE = 0.002
+        LEARNING_RATE = 0.0005
 
 #         LEARNING_RATE = 0.0005        
 #         LEARNING_RATE = 0.002        
