@@ -2,7 +2,7 @@
 
 import random, subprocess as sp
 
-PROCESS_NUM = 10
+PROCESS_NUM = 30
 
 jobs = [
     'python learn_bp_map_marginal_spinglass.py %s %s %s %s -lr %f --alpha %f --layer_num %d'%(
@@ -27,4 +27,4 @@ for i in range(PROCESS_NUM):
     with open(fname, 'w') as f:
         cur_jobs = jobs[indexes[i]:indexes[i+1]]
         f.write('\n'.join(cur_jobs))
-    sp.call(['python', 'run.py', 'python', 'batch/run_scripts.py', fname])
+    sp.call(['python', 'run_cpu.py', 'python', 'batch/run_scripts.py', fname])
