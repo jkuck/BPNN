@@ -40,18 +40,20 @@ EXPERIMENT_NAME = 'trained_attrField_10layer_2MLPs_noFinalBetheMLP/' #used for s
 # 10 layer models
 # BPNN_trained_model_path = './wandb/run-20200209_071429-l8jike8k/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True
 # BPNN_trained_model_path = './wandb/run-20200211_233743-tpiv47ws/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True, 2MLPs per layer, weight sharing across layers
-BPNN_trained_model_path = './wandb/run-20200219_090032-11077pcu/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True, 2MLPs per layer [wandb results](https://app.wandb.ai/jdkuck/learnBP_spinGlass/runs/11077pcu)
+# BPNN_trained_model_path = './wandb/run-20200219_090032-11077pcu/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True, 2MLPs per layer [wandb results](https://app.wandb.ai/jdkuck/learnBP_spinGlass/runs/11077pcu)
+
+BPNN_trained_model_path = './wandb/run-20200416_213644-2qrbkg30/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True, 2MLPs (MLP3 and MLP4 on variable beliefs) per layer, weight sharing https://app.wandb.ai/jdkuck/learnBP_spinGlass_debug/runs/2qrbkg30
+
+
 
 # GNN_trained_model_path = './wandb/run-20200209_091247-wz2g3fjd/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=True
 GNN_trained_model_path = './wandb/run-20200219_051810-bp7hke44/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=True, final MLP takes concatenation of all layers summed node features
 
 
 # 20 layer models
-BPNN_trained_model_path = './wandb/run-20200403_184715-x8p7a0o7/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True, 2MLPs per layer [wandb results](https://app.wandb.ai/jdkuck/learnBP_spinGlass_reproduce/runs/x8p7a0o7?workspace=user-)
+# BPNN_trained_model_path = './wandb/run-20200403_184715-x8p7a0o7/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=True, 2MLPs per layer [wandb results](https://app.wandb.ai/jdkuck/learnBP_spinGlass_reproduce/runs/x8p7a0o7?workspace=user-)
 
-
-
-GNN_trained_model_path = './wandb/run-20200403_191628-s6oaxy9y/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=True, final MLP takes concatenation of all layers summed node features
+# GNN_trained_model_path = './wandb/run-20200403_191628-s6oaxy9y/model.pt' #location of the trained GNN model, trained with ATTRACTIVE_FIELD=True, final MLP takes concatenation of all layers summed node features
 
 
 # BPNN_trained_model_path = './wandb/run-20200209_201644-cj5b13c2/model.pt' #location of the trained BPNN model, trained with ATTRACTIVE_FIELD=False
@@ -140,7 +142,13 @@ LR_DECAY=.5
 if ATTRACTIVE_FIELD_TRAIN == True:
     #works well for training on attractive field
         LEARNING_RATE = 0.0005
-#         LEARNING_RATE = 0.0002        
+        LEARNING_RATE = 0.0002  
+        LEARNING_RATE = 0.00200001
+        LEARNING_RATE = 0.002
+
+#         LEARNING_RATE = 0.0005        
+#         LEARNING_RATE = 0.002        
+        
 #         LEARNING_RATE = 4*TRAIN_BATCH_SIZE*0.0005        
 
 #         LEARNING_RATE = 0.00000005 #testing sgd     
@@ -234,6 +242,8 @@ lbp_net = lbp_net.to(device)
 
 # lbp_net.double()
 def train():
+#     lbp_net.load_state_dict(torch.load(BPNN_trained_model_path))
+    
     if USE_WANDB:
         
         wandb.watch(lbp_net)
@@ -332,6 +342,8 @@ def train():
 #             print("exact_ln_partition_function:", exact_ln_partition_function)
             # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
 #             print(estimated_ln_partition_function.device, exact_ln_partition_function.device)
+
+#             print("exact_ln_partition_function - estimated_ln_partition_function:", exact_ln_partition_function - estimated_ln_partition_function)
 
 
 #             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
@@ -792,6 +804,6 @@ if __name__ == "__main__":
 #         cProfile.run("train()") 
         
     elif MODE == "test":
-#         test()
-        create_ising_model_figure()
+        test()
+#         create_ising_model_figure()
 #         create_many_ising_model_figures()    

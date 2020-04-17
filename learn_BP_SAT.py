@@ -22,7 +22,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 #number of variables in the largest factor -> factor has 2^args.max_factor_state_dimensions states
-parser.add_argument('--max_factor_state_dimensions', type=int, default=3)
+parser.add_argument('--max_factor_state_dimensions', type=int, default=5)
 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 parser.add_argument('--msg_passing_iters', type=int, default=2)
 #messages have var_cardinality states in standard belief propagation.  belief_repeats artificially
@@ -30,14 +30,14 @@ parser.add_argument('--msg_passing_iters', type=int, default=2)
 #to increasing node feature dimensions in a standard graph neural network
 parser.add_argument('--belief_repeats', type=int, default=1)
 
-parser.add_argument('--batch_size', type=int, default=3)
+parser.add_argument('--batch_size', type=int, default=1)
 
 
 #for reproducing random train/val split
 #args.random_seed = 0 and 1 seem to produce very different results for s_problems
 parser.add_argument('--random_seed', type=int, default=1)
 
-parser.add_argument('--problem_category_train', type=str, default='blasted_problems',\
+parser.add_argument('--problem_category_train', type=str, default='or_50_problems',\
     choices=['problems_75','problems_90','or_50_problems','or_60_problems','or_70_problems',\
     'or_100_problems', 'blasted_problems','s_problems','group1','group2','group3','group4'])
 
@@ -90,8 +90,8 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 3
-VAL_DATA_SIZE = 3#100
+TRAINING_DATA_SIZE = 1000
+VAL_DATA_SIZE = 1000#100
 TEST_DATA_SIZE = 1000
 
 ########## info by problem groups and categories ##########
@@ -165,12 +165,12 @@ SAVE_FREQUENCY = 100
 VAL_FREQUENCY = 10
 ##########################
 ##### Optimizer parameters #####
-STEP_SIZE=200
+STEP_SIZE=100
 LR_DECAY=.5 
 LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
 
-LEARNING_RATE = 0.0005 #debugging
-LEARNING_RATE = 0.0005 #debugging
+# LEARNING_RATE = 0.0005 #debugging
+# LEARNING_RATE = 0.02 #debugging
 # LEARNING_RATE = 0.00000001 #testing sgd
 
 # LEARNING_RATE = 4*0.0001*args.batch_size #try to fix bad training for large batch size
@@ -182,8 +182,8 @@ LEARNING_RATE = 0.0005 #debugging
 
 # USE_WANDB = False
 # if USE_WANDB:
-os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
-wandb.init(project="learn_BP_sat_oldMLPs1")
+# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
+wandb.init(project="learn_BP_sat_reproduce6")
 # wandb.init(project="test")
 wandb.config.epochs = EPOCH_COUNT
 wandb.config.train_val_split = args.train_val_split #"random_shuffle"#"easyTrain_hardVal"#'separate_categories'#

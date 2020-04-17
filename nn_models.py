@@ -37,6 +37,7 @@ class lbp_message_passing_network(nn.Module):
         self.share_weights = share_weights
         self.msg_passing_iters = msg_passing_iters
         self.bethe_MLP = bethe_MLP
+        self.belief_repeats = belief_repeats
         self.learn_bethe_residual_weight = learn_bethe_residual_weight
         if learn_bethe_residual_weight:
             self.alpha_betheMLP = torch.nn.Parameter(alpha2*torch.ones(1))
@@ -78,8 +79,8 @@ class lbp_message_passing_network(nn.Module):
                 self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape)) 
         
             self.shifted_relu = shift_func(ReLU(), shift=-500)
-            self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)  
-#             self.final_mlp = Seq(self.linear1, self.linear2)  
+#             self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)  
+            self.final_mlp = Seq(self.linear1, self.linear2)  
 
 
         
@@ -99,9 +100,31 @@ class lbp_message_passing_network(nn.Module):
         
         if self.share_weights:
             for iter in range(self.msg_passing_iters):
-                prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
+                print("BPNN iter:", iter)
+                varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
                     self.message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                           prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+                
+#                 print("varToFactor_messages - prv_varToFactor_messages:", varToFactor_messages - prv_varToFactor_messages)
+#                 print("factorToVar_messages - prv_factorToVar_messages:", factorToVar_messages - prv_factorToVar_messages)
+#                 print("torch.norm(varToFactor_messages - prv_varToFactor_messages):", torch.norm(varToFactor_messages - prv_varToFactor_messages))
+#                 print("torch.norm(factorToVar_messages - prv_factorToVar_messages):", torch.norm(factorToVar_messages - prv_factorToVar_messages))
+
+                check_convergence = False
+                if check_convergence:
+                    print("prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)
+                    print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
+
+                    norm_per_isingmodel_vTOf = torch.norm((varToFactor_messages - prv_varToFactor_messages).view([50, 460*16*2]), dim=1)
+                    norm_per_isingmodel_fTOv = torch.norm((factorToVar_messages - prv_factorToVar_messages).view([50, 460*16*2]), dim=1)
+                    print("norm_per_isingmodel_vTOf:", norm_per_isingmodel_vTOf)
+                    print("norm_per_isingmodel_fTOv:", norm_per_isingmodel_fTOv)                
+                    print()
+                prv_varToFactor_messages = varToFactor_messages
+                prv_factorToVar_messages = factorToVar_messages
+                prv_var_beliefs = var_beliefs
+                prv_factor_beliefs = factor_beliefs
+                
                 if self.bethe_MLP:
                     cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
                     pooled_states.append(cur_pooled_states)            
@@ -162,7 +185,7 @@ class lbp_message_passing_network(nn.Module):
   
             #corrected for batch_size > 1
             final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-            estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)
+            estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)/self.belief_repeats
             return estimated_ln_partition_function            
 
 
