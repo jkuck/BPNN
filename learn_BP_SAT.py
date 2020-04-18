@@ -37,7 +37,7 @@ parser.add_argument('--batch_size', type=int, default=1)
 #args.random_seed = 0 and 1 seem to produce very different results for s_problems
 parser.add_argument('--random_seed', type=int, default=1)
 
-parser.add_argument('--problem_category_train', type=str, default='or_50_problems',\
+parser.add_argument('--problem_category_train', type=str, default='blasted_problems',\
     choices=['problems_75','problems_90','or_50_problems','or_60_problems','or_70_problems',\
     'or_100_problems', 'blasted_problems','s_problems','group1','group2','group3','group4'])
 
@@ -168,6 +168,9 @@ VAL_FREQUENCY = 10
 STEP_SIZE=100
 LR_DECAY=.5 
 LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
+LEARNING_RATE = 0.0005
+# LEARNING_RATE = 0.002
+
 
 # LEARNING_RATE = 0.0005 #debugging
 # LEARNING_RATE = 0.02 #debugging
@@ -183,7 +186,9 @@ LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
 # USE_WANDB = False
 # if USE_WANDB:
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
-wandb.init(project="learn_BP_sat_reproduce6")
+# wandb.init(project="learn_BP_sat_reproduce6")
+wandb.init(project="learn_BP_sat_reproduceFromOldCode")
+
 # wandb.init(project="test")
 wandb.config.epochs = EPOCH_COUNT
 wandb.config.train_val_split = args.train_val_split #"random_shuffle"#"easyTrain_hardVal"#'separate_categories'#
@@ -346,17 +351,16 @@ def train():
         loss_sum = 0
         training_problem_count_check = 0
         epoch_loss = 0
-        optimizer.zero_grad()
+#         optimizer.zero_grad()
         for sat_problem in train_data_loader:
             assert(sat_problem.num_vars == torch.sum(sat_problem.numVars))
-#             optimizer.zero_grad()
+            optimizer.zero_grad()
             sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
             sat_problem.var_cardinality = sat_problem.var_cardinality[0] #hack for batching,
             sat_problem.belief_repeats = sat_problem.belief_repeats[0] #hack for batching,
             
             sat_problem = sat_problem.to(device)
             exact_ln_partition_function = sat_problem.ln_Z
-#             optimizer.zero_grad()
 
             assert(sat_problem.state_dimensions == args.max_factor_state_dimensions)
             estimated_ln_partition_function = lbp_net(sat_problem)
