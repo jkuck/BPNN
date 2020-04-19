@@ -27,8 +27,9 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_map_flag', action='store_true', default=False)
 parser.add_argument('--classification_flag', action='store_true', default=False)
+parser.add_argument('--share_weights_flag', action='store_true', default=False)
 parser.add_argument('--no_training_flag', action='store_true', default=False)
-# parser.add_argument('--bethe_flag', action='store_true', default=False)
+parser.add_argument('--bethe_flag', action='store_true', default=False)
 parser.add_argument('--lr_decay_flag', action='store_true', default=False)
 parser.add_argument('--no_attractive_flag', action='store_true', default=False)
 parser.add_argument('-lr', '--learning_rate', type=float, default=1e-3)
@@ -40,13 +41,14 @@ print(args)
 MODEL_MAP_FLAG = args.model_map_flag
 CLASSIFICATION_FLAG = args.classification_flag
 TRAINING_FLAG = not args.no_training_flag
-BETHE_MLP = False
+BETHE_MLP = args.bethe_flag
 ATTRACTIVE_FIELD = not args.no_attractive_flag
 LEARNING_RATE = args.learning_rate
 LR_DECAY_FLAG = args.lr_decay_flag
 ALPHA = args.alpha
 ALPHA2 = args.alpha2
 MSG_PASSING_ITERS = args.layer_num
+SHARE_WEIGHTS = args.share_weights_flag
 
 
 MODE = "train" #run "test" or "train" mode
@@ -237,13 +239,14 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS,\
                                       msg_passing_iters=MSG_PASSING_ITERS, device=None, bethe_MLP=BETHE_MLP,
                                       map_flag=MODEL_MAP_FLAG, marginal_flag=True, classification_flag=CLASSIFICATION_FLAG,
+                                      share_weights=SHARE_WEIGHTS,
                                       alpha=ALPHA, alpha2=ALPHA2)
 
 lbp_net = lbp_net.to(device)
 
 # lbp_net.double()
 def cross_entropy_loss(x, y):
-    return -torch.mean(torch.sum(y*torch.log(x+1e-99), dim=1))
+    return -torch.mean(torch.sum(y*torch.log(x+1e-30), dim=1))
 def test_loss_func(x, y, sg_model):
     if CLASSIFICATION_FLAG:
         x = torch.log(x[:,0:-1]/x[:,-1:])
@@ -271,7 +274,7 @@ def test_loss_func(x, y, sg_model):
     diff_prob = torch.abs(prob_x[:,0]-prob_y[:,0]).reshape(-1)
     mse_prob_loss = (diff_prob**2).tolist()
     l1_prob_loss = diff_prob.tolist()
-    cross_entropy_prob_loss = (-torch.sum(prob_y*torch.log(prob_x+1e-99), dim=1)).tolist()
+    cross_entropy_prob_loss = (-torch.sum(prob_y*torch.log(prob_x+1e-30), dim=1)).tolist()
 
     state_x = (x<=0).float()
     state_y = (y<=0).float()
@@ -397,6 +400,18 @@ def train():
         if TRAINING_FLAG:
             epoch_loss.backward()
             # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
+            # print(lbp_net.v1.grad.shape, torch.norm(lbp_net.v1.grad.reshape(-1)),
+                  # torch.mean(torch.abs(lbp_net.v1.grad).reshape(-1)),
+                  # torch.sqrt(torch.mean(torch.abs(lbp_net.v1.grad**2).reshape(-1))),
+                  # torch.max(torch.abs(lbp_net.v1.grad).reshape(-1)),)
+            # print(lbp_net.message_passing_layer.linear1.weight.shape,
+                  # torch.mean(torch.abs(lbp_net.message_passing_layer.linear1.weight.grad).reshape(-1)),
+                  # torch.sqrt(torch.mean(torch.abs(lbp_net.message_passing_layer.linear1.weight.grad**2).reshape(-1))),
+                  # torch.max(torch.abs(lbp_net.message_passing_layer.linear1.weight.grad).reshape(-1)),)
+            # print(lbp_net.message_passing_layer.linear1.weight.shape,
+                  # torch.mean(torch.abs(lbp_net.message_passing_layer.linear1.weight).reshape(-1)),
+                  # torch.sqrt(torch.mean(torch.abs(lbp_net.message_passing_layer.linear1.weight**2).reshape(-1))),
+                  # torch.max(torch.abs(lbp_net.message_passing_layer.linear1.weight).reshape(-1)),)
             optimizer.step()
             if LR_DECAY_FLAG:
                 scheduler.step()

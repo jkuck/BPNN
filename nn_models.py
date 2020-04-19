@@ -43,28 +43,45 @@ class lbp_message_passing_network(nn.Module):
         self.device = device
 
         if bethe_MLP:
-            var_states = 2 #2 for binary variables
-            mlp_size =  2*msg_passing_iters*(2**max_factor_state_dimensions) + msg_passing_iters*var_states
-#             self.final_mlp = Seq(Linear(mlp_size, mlp_size), ReLU(), Linear(mlp_size, 1))
+            if not marginal_flag:
+                var_states = 2 #2 for binary variables
+                mlp_size =  2*msg_passing_iters*(2**max_factor_state_dimensions) + msg_passing_iters*var_states
+    #             self.final_mlp = Seq(Linear(mlp_size, mlp_size), ReLU(), Linear(mlp_size, 1))
 
-            self.linear1 = Linear(mlp_size, mlp_size)
-            self.linear2 = Linear(mlp_size, 1)
-            self.linear1.weight = torch.nn.Parameter(torch.eye(mlp_size))
-            self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-            weight_initialization = torch.zeros((1,mlp_size))
-            num_ones = (2*(2**max_factor_state_dimensions)+var_states)
-            weight_initialization[0,-num_ones:] = 1
-#             print("self.linear2.weight:", self.linear2.weight)
-#             print("self.linear2.weight.shape:", self.linear2.weight.shape)
+                self.linear1 = Linear(mlp_size, mlp_size)
+                self.linear2 = Linear(mlp_size, 1)
+                self.linear1.weight = torch.nn.Parameter(torch.eye(mlp_size))
+                self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                weight_initialization = torch.zeros((1,mlp_size))
+                num_ones = (2*(2**max_factor_state_dimensions)+var_states)
+                weight_initialization[0,-num_ones:] = 1
+    #             print("self.linear2.weight:", self.linear2.weight)
+    #             print("self.linear2.weight.shape:", self.linear2.weight.shape)
 
 
-#             print("weight_initialization:", weight_initialization)
-            self.linear2.weight = torch.nn.Parameter(weight_initialization)
+    #             print("weight_initialization:", weight_initialization)
+                self.linear2.weight = torch.nn.Parameter(weight_initialization)
 
-            self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
-            self.shifted_relu = shift_func(ReLU(), shift=-500)
-            self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
-#             self.final_mlp = Seq(self.linear1, self.linear2)
+                self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+                self.shifted_relu = shift_func(ReLU(), shift=-500)
+                self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
+            else:
+                # expand in the depth dimension
+                var_states = 2 #2 for binary variables
+                mlp_size =  msg_passing_iters*var_states
+
+                self.linear1 = Linear(mlp_size, mlp_size)
+                self.linear2 = Linear(mlp_size, var_states)
+                self.linear1.weight = torch.nn.Parameter(torch.eye(mlp_size))
+                self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                weight_initialization = torch.cat([
+                    torch.zeros((var_states,mlp_size-var_states)),
+                    torch.eye(var_states),
+                ], dim=-1)
+                self.linear2.weight = torch.nn.Parameter(weight_initialization)
+                self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+                self.shifted_relu = shift_func(ReLU(), shift=-500)
+                self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
 
 
 
@@ -81,6 +98,7 @@ class lbp_message_passing_network(nn.Module):
 
 
         pooled_states = []
+        pooled_var_beliefs = []
 
         if self.share_weights:
             for iter in range(self.msg_passing_iters):
@@ -88,8 +106,11 @@ class lbp_message_passing_network(nn.Module):
                     self.message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                           prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
                 if self.bethe_MLP:
-                    cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-                    pooled_states.append(cur_pooled_states)
+                    if self.marginal_flag:
+                        pooled_var_beliefs.append(prv_var_beliefs)
+                    else:
+                        cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                        pooled_states.append(cur_pooled_states)
         else:
             for message_passing_layer in self.message_passing_layers:
 #                 print("prv_varToFactor_messages:", prv_varToFactor_messages)
@@ -106,17 +127,29 @@ class lbp_message_passing_network(nn.Module):
     #                 message_passing_layer(factor_graph, prv_varToFactor_messages=factor_graph.prv_varToFactor_messages,
     #                                       prv_factorToVar_messages=factor_graph.prv_factorToVar_messages, prv_factor_beliefs=factor_graph.prv_factor_beliefs)
                 if self.bethe_MLP:
-                    cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-#                     print("cur_pooled_states:", cur_pooled_states)
-#                     print(check_pool)
-#                     print("cur_pooled_states.shape:", cur_pooled_states.shape)
-                    pooled_states.append(cur_pooled_states)
+                    if self.marginal_flag:
+                        pooled_var_beliefs.append(prv_var_beliefs)
+                    else:
+                        cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                        pooled_states.append(cur_pooled_states)
 
 
 
         if self.bethe_MLP:
             if self.marginal_flag:
-                raise NotImplementedError('No implementation for marginal_flag=True and bethe_MLP=True')
+                pooled_beliefs = torch.cat(pooled_var_beliefs, dim=-1)
+                self.v1 = pooled_beliefs
+                self.v1.retain_grad()
+                if self.classification_flag:
+                    # ?put mlp before or after normalization?
+                    # beliefs = torch.exp(self.final_mlp(pooled_beliefs))
+                    beliefs = F.relu(self.final_mlp(torch.exp(pooled_beliefs)))
+                    probabilities = beliefs / torch.sum(beliefs, dim=-1, keepdims=True)
+                    return probabilities
+                else:
+                    beliefs = self.final_mlp(pooled_beliefs)
+                    diff = beliefs[:, :-1]-beliefs[:,-1:]
+                    return diff
             else:
                 estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
                 return estimated_ln_partition_function
