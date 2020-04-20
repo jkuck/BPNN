@@ -36,6 +36,7 @@ parser.add_argument('-lr', '--learning_rate', type=float, default=1e-3)
 parser.add_argument('--alpha', type=float, default=alpha)
 parser.add_argument('--alpha2', type=float, default=alpha2)
 parser.add_argument('--layer_num', type=int, default=10)
+parser.add_argument('--loss_name', type=str, default=None)
 args = parser.parse_args()
 print(args)
 MODEL_MAP_FLAG = args.model_map_flag
@@ -49,6 +50,7 @@ ALPHA = args.alpha
 ALPHA2 = args.alpha2
 MSG_PASSING_ITERS = args.layer_num
 SHARE_WEIGHTS = args.share_weights_flag
+LOSS_NAME = args.loss_name
 
 
 MODE = "train" #run "test" or "train" mode
@@ -189,6 +191,7 @@ if USE_WANDB:
     wandb.config.CLASSIFICATION_FLAG = CLASSIFICATION_FLAG
     wandb.config.LR_DECAY_FLAG = LR_DECAY_FLAG
     wandb.config.TRAINING_FLAG = TRAINING_FLAG
+    wandb.config.LOSS_NAME = LOSS_NAME
 
 
 
@@ -247,6 +250,10 @@ lbp_net = lbp_net.to(device)
 # lbp_net.double()
 def cross_entropy_loss(x, y):
     return -torch.mean(torch.sum(y*torch.log(x+1e-30), dim=1))
+def one_hot_cross_entropy_loss(x, y):
+    # convert continuous labels to one-hot
+    y = torch.eye(y.size(-1))[torch.argmax(y, dim=-1)]
+    return cross_entropy_loss(x, y)
 def test_loss_func(x, y, sg_model):
     if CLASSIFICATION_FLAG:
         x = torch.log(x[:,0:-1]/x[:,-1:])
@@ -305,7 +312,10 @@ def train():
     # Initialize optimizer
     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=LR_DECAY) #multiply lr by gamma every step_size epochs
-    loss_func = torch.nn.MSELoss() if not CLASSIFICATION_FLAG else cross_entropy_loss
+    if LOSS_NAME is None:
+        loss_func = torch.nn.MSELoss() if not CLASSIFICATION_FLAG else cross_entropy_loss
+    else:
+        loss_func = globals()[LOSS_NAME+'_loss']
 
 
     spin_glass_models_list_train = get_dataset(dataset_type='train')
@@ -325,45 +335,20 @@ def train():
 #     val_data_loader_pytorchGeometric_batchSize50 = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
 
 #     with autograd.detect_anomaly():
+    best_train_mse_diff_log_loss, best_train_l1_diff_log_loss = np.inf, np.inf
+    best_train_mse_prob_loss, best_train_l1_prob_loss, best_train_cross_entropy_prob_loss = np.inf, np.inf, np.inf
+    best_train_var_state_accuracy, best_train_graph_state_accuracy = -np.inf, -np.inf
+    best_train_mse_logscore_state_loss, best_train_l1_logscore_state_loss = np.inf, np.inf
+    best_val_mse_diff_log_loss, best_val_l1_diff_log_loss = np.inf, np.inf
+    best_val_mse_prob_loss, best_val_l1_prob_loss, best_val_cross_entropy_prob_loss = np.inf, np.inf, np.inf
+    best_val_var_state_accuracy, best_val_graph_state_accuracy = -np.inf, -np.inf
+    best_val_mse_logscore_state_loss, best_val_l1_logscore_state_loss = np.inf, np.inf
     for e in range(EPOCH_COUNT):
         epoch_loss = 0
         optimizer.zero_grad()
         losses = []
         count = 0
         for spin_glass_problem in train_data_loader_pytorchGeometric: #pytorch geometric form
-#             print("spin_glass_problem.ln_Z:", spin_glass_problem.ln_Z)
-#             print("spin_glass_problem.state_dimensions:", spin_glass_problem.state_dimensions)
-#             print("spin_glass_problem.factor_potentials :", spin_glass_problem.factor_potentials )
-#             print("spin_glass_problem.facStates_to_varIdx:", spin_glass_problem.facStates_to_varIdx)
-#             print("spin_glass_problem.facToVar_edge_idx:", spin_glass_problem.facToVar_edge_idx)
-#             print("spin_glass_problem.edge_index :", spin_glass_problem.edge_index )
-#             print("spin_glass_problem.factor_degrees:", spin_glass_problem.factor_degrees)
-#             print("spin_glass_problem.var_degrees:", spin_glass_problem.var_degrees)
-#             print("spin_glass_problem.numVars:", spin_glass_problem.numVars)
-#             print("spin_glass_problem.numFactors:", spin_glass_problem.numFactors)
-#             print("spin_glass_problem.edge_var_indices:", spin_glass_problem.edge_var_indices)
-#             print("spin_glass_problem.factor_potential_masks :", spin_glass_problem.factor_potential_masks )
-#             print("spin_glass_problem.prv_varToFactor_messages:", spin_glass_problem.prv_varToFactor_messages)
-#             print("spin_glass_problem.prv_factorToVar_messages:", spin_glass_problem.prv_factorToVar_messages)
-#             print("spin_glass_problem.prv_factor_beliefs:", spin_glass_problem.prv_factor_beliefs)
-#             print("spin_glass_problem.prv_var_beliefs:", spin_glass_problem.prv_var_beliefs)
-#             count += 1
-#             if count == 1:
-#                 sleep(debug)
-
-
-#             print("spin_glass_problem.ln_Z.shape:", spin_glass_problem.ln_Z.shape)
-#             print("spin_glass_problem.factor_potentials.shape:", spin_glass_problem.factor_potentials.shape)
-#             print("spin_glass_problem.facToVar_edge_idx.shape:", spin_glass_problem.facToVar_edge_idx.shape)
-#             print("spin_glass_problem.factor_potentials.shape:", spin_glass_problem.factor_potentials.shape)
-#             print("spin_glass_problem.edge_index.shape:", spin_glass_problem.edge_index.shape)
-#             print("-"*80)
-#             sleep(shape_check)
-
-#             print("spin_glass_problem.edge_index.shape:", spin_glass_problem.edge_index.shape)
-#             print("spin_glass_problem.facToVar_edge_idx.shape:", spin_glass_problem.facToVar_edge_idx.shape)
-#             sleep(tempaslkdfjsal)
-
             spin_glass_problem = spin_glass_problem.to(device)
 #             spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
             spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
@@ -373,18 +358,8 @@ def train():
 
             estimated_marginals_function = lbp_net(spin_glass_problem)
 
-#             print("estimated_ln_partition_function:", estimated_ln_partition_function)
-#             print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
-
-#             print("exact_ln_partition_function:", exact_ln_partition_function)
-            # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
-#             print(estimated_ln_partition_function.device, exact_ln_partition_function.device)
-
-
 #             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
             loss = loss_func(estimated_marginals_function.squeeze(), exact_marginals_function.float())
-#             print("loss:", loss)
-#             sleep(check_loss)
             debug = False
             if debug:
                 for idx, val in enumerate(estimated_marginals_function):
@@ -393,8 +368,6 @@ def train():
                     epoch_loss += cur_loss
             else:
                 epoch_loss += loss
-            # print("loss:", loss)
-            # print()
             losses.append(loss.item())
 
         if TRAINING_FLAG:
@@ -467,6 +440,26 @@ def train():
                     'RMSE_LogScore_training': np.sqrt(np.mean(mse_logscore_state_losses)),
                     'L1_LogScore_training': np.mean(l1_logscore_state_losses),
                 })
+                best_train_mse_diff_log_loss = min(best_train_mse_diff_log_loss, np.sqrt(np.mean(mse_diff_log_losses)))
+                best_train_l1_diff_log_loss = min(best_train_l1_diff_log_loss, np.mean(l1_diff_log_losses))
+                best_train_mse_prob_loss = min(best_train_mse_prob_loss, np.sqrt(np.mean(mse_prob_losses)))
+                best_train_l1_prob_loss = min(best_train_l1_prob_loss, np.mean(l1_prob_losses))
+                best_train_cross_entropy_prob_loss = min(best_train_cross_entropy_prob_loss, np.mean(cross_entropy_prob_losses))
+                best_train_var_state_accuracy = max(best_train_var_state_accuracy, np.mean(var_state_accuracies))
+                best_train_graph_state_accuracy = max(best_train_graph_state_accuracy, np.mean(graph_state_accuracies))
+                best_train_mse_logscore_state_loss = min(best_train_mse_logscore_state_loss, np.sqrt(np.mean(mse_logscore_state_losses)))
+                best_train_l1_logscore_state_loss = min(best_train_l1_logscore_state_loss, np.mean(l1_logscore_state_losses))
+                wandb.log({
+                    "Best_RMSE_DiffLog_training": best_train_mse_diff_log_loss,
+                    "Best_L1_DiffLog_training": best_train_l1_diff_log_loss,
+                    'Best_RMSE_Prob_training': best_train_mse_prob_loss,
+                    'Best_L1_Prob_training': best_train_l1_prob_loss,
+                    'Best_CrossEntropy_Prob_training': best_train_cross_entropy_prob_loss,
+                    'Best_ACC_VarState_training': best_train_var_state_accuracy,
+                    'Best_ACC_GraphState_training': best_train_graph_state_accuracy,
+                    'Best_RMSE_LogScore_training': best_train_mse_logscore_state_loss,
+                    'Best_L1_LogScore_training': best_train_l1_logscore_state_loss,
+                })
 
             model_index = 0
             mse_diff_log_losses, l1_diff_log_losses = [], []
@@ -515,6 +508,27 @@ def train():
                     'RMSE_LogScore_val': np.sqrt(np.mean(mse_logscore_state_losses)),
                     'L1_LogScore_val': np.mean(l1_logscore_state_losses),
                 })
+                best_val_mse_diff_log_loss = min(best_val_mse_diff_log_loss, np.sqrt(np.mean(mse_diff_log_losses)))
+                best_val_l1_diff_log_loss = min(best_val_l1_diff_log_loss, np.mean(l1_diff_log_losses))
+                best_val_mse_prob_loss = min(best_val_mse_prob_loss, np.sqrt(np.mean(mse_prob_losses)))
+                best_val_l1_prob_loss = min(best_val_l1_prob_loss, np.mean(l1_prob_losses))
+                best_val_cross_entropy_prob_loss = min(best_val_cross_entropy_prob_loss, np.mean(cross_entropy_prob_losses))
+                best_val_var_state_accuracy = max(best_val_var_state_accuracy, np.mean(var_state_accuracies))
+                best_val_graph_state_accuracy = max(best_val_graph_state_accuracy, np.mean(graph_state_accuracies))
+                best_val_mse_logscore_state_loss = min(best_val_mse_logscore_state_loss, np.sqrt(np.mean(mse_logscore_state_losses)))
+                best_val_l1_logscore_state_loss = min(best_val_l1_logscore_state_loss, np.mean(l1_logscore_state_losses))
+                wandb.log({
+                    "Best_RMSE_DiffLog_val": best_val_mse_diff_log_loss,
+                    "Best_L1_DiffLog_val": best_val_l1_diff_log_loss,
+                    'Best_RMSE_Prob_val': best_val_mse_prob_loss,
+                    'Best_L1_Prob_val': best_val_l1_prob_loss,
+                    'Best_CrossEntropy_Prob_val': best_val_cross_entropy_prob_loss,
+                    'Best_ACC_VarState_val': best_val_var_state_accuracy,
+                    'Best_ACC_GraphState_val': best_val_graph_state_accuracy,
+                    'Best_RMSE_LogScore_val': best_val_mse_logscore_state_loss,
+                    'Best_L1_LogScore_val': best_val_l1_logscore_state_loss,
+                })
+
         else:
             if USE_WANDB:
                 wandb.log({"loss_training": np.mean(losses)})
