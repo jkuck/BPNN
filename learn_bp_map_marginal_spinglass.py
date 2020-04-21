@@ -37,6 +37,7 @@ parser.add_argument('--alpha', type=float, default=alpha)
 parser.add_argument('--alpha2', type=float, default=alpha2)
 parser.add_argument('--layer_num', type=int, default=10)
 parser.add_argument('--loss_name', type=str, default=None)
+parser.add_argument('--one_hot_ratio', type=float, default=1.)
 args = parser.parse_args()
 print(args)
 MODEL_MAP_FLAG = args.model_map_flag
@@ -51,6 +52,7 @@ ALPHA2 = args.alpha2
 MSG_PASSING_ITERS = args.layer_num
 SHARE_WEIGHTS = args.share_weights_flag
 LOSS_NAME = args.loss_name
+ONE_HOT_RATIO = args.one_hot_ratio
 
 
 MODE = "train" #run "test" or "train" mode
@@ -143,7 +145,7 @@ TEST_DATA_SIZE = 200
 TRAIN_BATCH_SIZE=50
 VAL_BATCH_SIZE=50
 
-EPOCH_COUNT = 5000 if TRAINING_FLAG else 5
+EPOCH_COUNT = 10000 if TRAINING_FLAG else 5
 PRINT_FREQUENCY = 10 if TRAINING_FLAG else 1
 VAL_FREQUENCY = 10 if TRAINING_FLAG else 1
 SAVE_FREQUENCY = 100 if TRAINING_FLAG else 1
@@ -192,6 +194,7 @@ if USE_WANDB:
     wandb.config.LR_DECAY_FLAG = LR_DECAY_FLAG
     wandb.config.TRAINING_FLAG = TRAINING_FLAG
     wandb.config.LOSS_NAME = LOSS_NAME
+    wandb.config.ONE_HOT_RATIO = ONE_HOT_RATIO
 
 
 
@@ -252,8 +255,8 @@ def cross_entropy_loss(x, y):
     return -torch.mean(torch.sum(y*torch.log(x+1e-30), dim=1))
 def one_hot_cross_entropy_loss(x, y):
     # convert continuous labels to one-hot
-    y = torch.eye(y.size(-1))[torch.argmax(y, dim=-1)]
-    return cross_entropy_loss(x, y)
+    one_hot_y = torch.eye(y.size(-1))[torch.argmax(y, dim=-1)]
+    return ONE_HOT_RATIO*cross_entropy_loss(x, one_hot_y) * (1-ONE_HOT_RATIO)*cross_entropy_loss(x, y)
 def test_loss_func(x, y, sg_model):
     if CLASSIFICATION_FLAG:
         x = torch.log(x[:,0:-1]/x[:,-1:])
