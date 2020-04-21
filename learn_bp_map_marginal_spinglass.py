@@ -256,7 +256,7 @@ def cross_entropy_loss(x, y):
 def one_hot_cross_entropy_loss(x, y):
     # convert continuous labels to one-hot
     one_hot_y = torch.eye(y.size(-1))[torch.argmax(y, dim=-1)]
-    return ONE_HOT_RATIO*cross_entropy_loss(x, one_hot_y) * (1-ONE_HOT_RATIO)*cross_entropy_loss(x, y)
+    return ONE_HOT_RATIO*cross_entropy_loss(x, one_hot_y) + (1-ONE_HOT_RATIO)*cross_entropy_loss(x, y)
 def test_loss_func(x, y, sg_model):
     if CLASSIFICATION_FLAG:
         x = torch.log(x[:,0:-1]/x[:,-1:])
