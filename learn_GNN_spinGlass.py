@@ -26,7 +26,7 @@ import pickle
 MODE = 'train'
 ##########################################################################################################
 MSG_PASSING_ITERS = 10
-NODE_FEATURE_SIZE = 32
+NODE_FEATURE_SIZE = 4
 
 N_MIN_TRAIN = 10
 N_MAX_TRAIN = 10
@@ -34,8 +34,8 @@ F_MAX_TRAIN = .1
 C_MAX_TRAIN = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
-TRAIN_DATA_SIZE = 250
-ATTRACTIVE_FIELD_TRAIN = False
+TRAIN_DATA_SIZE = 50
+ATTRACTIVE_FIELD_TRAIN = True
 
 # N_MIN_VAL = 10
 # N_MAX_VAL = 10
@@ -46,7 +46,7 @@ N_MAX_VAL = 10
 F_MAX_VAL = .1
 C_MAX_VAL = 5.0
 VAL_DATA_SIZE = 50
-ATTRACTIVE_FIELD_VAL = False
+ATTRACTIVE_FIELD_VAL = True
 
 SAVE_FREQUENCY = 100
 EPOCH_COUNT = 5000
@@ -100,6 +100,7 @@ model = GIN_Network_withEdgeFeatures(input_state_size=1, edge_attr_size=1, hidde
 #works well for attractive field
 if ATTRACTIVE_FIELD_TRAIN:
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5)
 else:
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01) #works for width/hidden_size=4

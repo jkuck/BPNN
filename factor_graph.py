@@ -143,7 +143,7 @@ class FactorGraphData(DataFactorGraph_partial):
         # self.factor_degrees[i] stores the number of variables that appear in factor i
         unique_factor_indices, self.factor_degrees = torch.unique(factorToVar_edge_index[0,:], sorted=True, return_counts=True)
         assert((self.factor_degrees >= 1).all())
-        assert(unique_factor_indices.shape[0] == numFactors)
+        assert(unique_factor_indices.shape[0] == numFactors), (unique_factor_indices.shape[0], numFactors)
 
         # self.var_degrees[i] stores the number of factors that variables i appears in
         unique_var_indices, self.var_degrees = torch.unique(factorToVar_edge_index[1,:], sorted=True, return_counts=True)
