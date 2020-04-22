@@ -76,30 +76,33 @@ def max_multipleDim(input, axes, keepdim=False):
             input = input.max(ax)[0]
     return input
 
-def logsumexp_multipleDim(tensor, dim=None):
+def logsumexp_multipleDim(tensor, dim_to_keep=None):
     """
-    Compute log(sum(exp(tensor), dim)) in a numerically stable way.
+    Compute log(sum(exp(tensor), aggregate_dimensions)) in a numerically stable way.
 
     Inputs:
     - tensor (tensor): input tensor
-    - dim (int): the only dimension to keep in the output.  i.e. for a 4d input tensor with dim=2 (0-indexed):
-        return_tensor[i] = logsumexp(tensor[:,:,i,:])
+    - dim_to_keep (list of ints): the only dimensions to keep in the output.  i.e. 
+        for a 4d input tensor with dim_to_keep=[2] (0-indexed): return_tensor[i] = logsumexp(tensor[:,:,i,:])
 
     Outputs:
-    - return_tensor (1d tensor): logsumexp of input tensor along specified dimension
+    - return_tensor (tensor): logsumexp of input tensor along specified dimensions (those not appearing in dim_to_keep).
+        Has same number of dimensions as the original tensor, but those not appearing in dim_to_keep have size 1
 
     """
     assert(not torch.isnan(tensor).any())
 
     tensor_dimensions = len(tensor.shape)
-    assert(dim < tensor_dimensions and dim >= 0)
-    aggregate_dimensions = [i for i in range(tensor_dimensions) if i != dim]
+    assert((torch.tensor([dim_to_keep]) < tensor_dimensions).all())
+    assert((torch.tensor([dim_to_keep]) >= 0).all())    
+    aggregate_dimensions = [i for i in range(tensor_dimensions) if (i not in dim_to_keep)]
     # print("aggregate_dimensions:", aggregate_dimensions)
     # print("tensor:", tensor)
     max_values = max_multipleDim(tensor, axes=aggregate_dimensions, keepdim=True)
+#     print("max_values:", max_values)
     max_values[torch.where(max_values == -np.inf)] = 0
     assert(not torch.isnan(max_values).any())
-    assert((max_values > -np.inf).any())
+    assert((max_values > -np.inf).all())
     assert(not torch.isnan(tensor - max_values).any())
     assert(not torch.isnan(torch.exp(tensor - max_values)).any())
     assert(not torch.isnan(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)).any())
@@ -109,7 +112,10 @@ def logsumexp_multipleDim(tensor, dim=None):
     # print("max_values:", max_values)
     # print("tensor - max_values", tensor - max_values)
     # print("torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)):", torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)))
-    return_tensor = torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)) + max_values.squeeze()
+#     print("tensor.shape", tensor.shape)
+#     print("max_values.shape", max_values.shape)
+#     sleep(temp)
+    return_tensor = torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions, keepdim=True)) + max_values
     # print("return_tensor:", return_tensor)
     assert(not torch.isnan(return_tensor).any())
     return return_tensor
@@ -128,3 +134,4 @@ class shift_func(torch.nn.Module):
 
     def forward(self, x):
         return self.shift + self.func(x - self.shift)
+

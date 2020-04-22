@@ -12,13 +12,18 @@ import matplotlib
 import numpy as np
 from data.SAT_train_test_split import ALL_TRAIN_PROBLEMS, ALL_TEST_PROBLEMS
 import wandb
-from parameters import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, BETHE_MLP, NUM_MLPS
+from parameters import ROOT_DIR, alpha, alpha2
 import random
 import resource
 import time
 import json
 import argparse
 
+
+def boolean_string(s):    
+    if s not in {'False', 'True'}:
+        raise ValueError('Not a valid boolean string')
+    return s == 'True'
 
 parser = argparse.ArgumentParser()
 #number of variables in the largest factor -> factor has 2^args.max_factor_state_dimensions states
@@ -32,6 +37,32 @@ parser.add_argument('--belief_repeats', type=int, default=1)
 
 parser.add_argument('--batch_size', type=int, default=1)
 
+# 0.0001
+# 0.0005
+parser.add_argument('--learning_rate', type=float, default=0.001)
+
+
+#if true, mlps operate in standard space rather than log space
+parser.add_argument('--lne_mlp', type=boolean_string, default=True)
+
+#original MLPs that operate on factor beliefs (problematic because they're not index invariant)
+parser.add_argument('--use_MLP1', type=boolean_string, default=False)
+parser.add_argument('--use_MLP2', type=boolean_string, default=False)
+
+#new MLPs that operate on variable beliefs
+parser.add_argument('--use_MLP3', type=boolean_string, default=True)
+parser.add_argument('--use_MLP4', type=boolean_string, default=True)
+
+#if true, share the weights between layers in a BPNN
+parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=False)
+
+#if true, subtract previously sent messages (to avoid 'double counting')
+parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True)
+
+#if 'none' then use the standard bethe approximation with no learning
+#otherwise, describes (potential) non linearities in the MLP
+parser.add_argument('--bethe_mlp', type=str, default='standard',\
+    choices=['shifted','standard','linear','none'])
 
 #for reproducing random train/val split
 #args.random_seed = 0 and 1 seem to produce very different results for s_problems
@@ -90,8 +121,8 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 1000
-VAL_DATA_SIZE = 1000#100
+TRAINING_DATA_SIZE = 3
+VAL_DATA_SIZE = 3#100
 TEST_DATA_SIZE = 1000
 
 ########## info by problem groups and categories ##########
@@ -167,8 +198,9 @@ VAL_FREQUENCY = 10
 ##### Optimizer parameters #####
 STEP_SIZE=100
 LR_DECAY=.5 
-LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
-LEARNING_RATE = 0.0005
+LEARNING_RATE = args.learning_rate
+# LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
+# LEARNING_RATE = 0.0005
 # LEARNING_RATE = 0.002
 
 
@@ -197,26 +229,34 @@ wandb.config.PROBLEM_CATEGORY_VAL = PROBLEM_CATEGORY_VAL
 # wandb.config.TRAINING_DATA_SIZE = TRAINING_DATA_SIZE
 wandb.config.alpha = alpha
 wandb.config.alpha2 = alpha2
-wandb.config.SHARE_WEIGHTS = SHARE_WEIGHTS
-wandb.config.BETHE_MLP = BETHE_MLP
 wandb.config.msg_passing_iters = args.msg_passing_iters
 wandb.config.STEP_SIZE = STEP_SIZE
 wandb.config.LR_DECAY = LR_DECAY
 wandb.config.LEARNING_RATE = LEARNING_RATE
-wandb.config.NUM_MLPS = NUM_MLPS
 wandb.config.belief_repeats = args.belief_repeats
 wandb.config.var_cardinality = VAR_CARDINALITY
 wandb.config.max_factor_state_dimensions = args.max_factor_state_dimensions
 wandb.config.random_seed = args.random_seed
 wandb.config.training_batch_size = args.batch_size
 
+wandb.config.BETHE_MLP = args.bethe_mlp
+wandb.config.lne_mlp = args.lne_mlp
+wandb.config.use_MLP1 = args.use_MLP1
+wandb.config.use_MLP2 = args.use_MLP2
+wandb.config.use_MLP3 = args.use_MLP3
+wandb.config.use_MLP4 = args.use_MLP4
+wandb.config.SHARE_WEIGHTS = args.SHARE_WEIGHTS
+wandb.config.subtract_prv_messages = args.subtract_prv_messages
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("device:", device)
 # device = 'cpu'
 
 # tiny_set = ["10.sk_1_46", "27.sk_3_32"]
-lbp_net = lbp_message_passing_network(max_factor_state_dimensions=args.max_factor_state_dimensions, msg_passing_iters=args.msg_passing_iters,
-                                     belief_repeats=args.belief_repeats, var_cardinality=VAR_CARDINALITY)
+lbp_net = lbp_message_passing_network(max_factor_state_dimensions=args.max_factor_state_dimensions, msg_passing_iters=args.msg_passing_iters,\
+    lne_mlp=args.lne_mlp, use_MLP1=args.use_MLP1, use_MLP2=args.use_MLP2, use_MLP3=args.use_MLP3, use_MLP4=args.use_MLP4,\
+    subtract_prv_messages=args.subtract_prv_messages, share_weights = args.SHARE_WEIGHTS, bethe_MLP=args.bethe_mlp,\
+    belief_repeats=args.belief_repeats, var_cardinality=VAR_CARDINALITY)
 # lbp_net.double()
 lbp_net = lbp_net.to(device)
 
@@ -334,7 +374,6 @@ def train():
                dataset_size=TRAINING_DATA_SIZE, epsilon=EPSILON,
                max_factor_dimensions=args.max_factor_state_dimensions, belief_repeats=args.belief_repeats)
     train_data_loader = DataLoader(training_SAT_list, batch_size=args.batch_size)
-    train_data_loader2 = DataLoader(training_SAT_list, batch_size=2)    
    
     val_SAT_list = get_SATproblems_list(problems_to_load=val_problems,
                counts_dir_name=SOLUTION_COUNTS_DIR,
@@ -388,36 +427,6 @@ def train():
         # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
 #         optimizer.step()
 
-# ######DEBUG
-#         for sat_problem in train_data_loader2:
-#             sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
-            
-#             sat_problem = sat_problem.to(device)
-#             exact_ln_partition_function = sat_problem.ln_Z
-#             optimizer.zero_grad()
-
-#             assert(sat_problem.state_dimensions == args.max_factor_state_dimensions)
-#             estimated_ln_partition_function = lbp_net(sat_problem)
-
-#             print("estimated_ln_partition_function:", estimated_ln_partition_function)
-#             # print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
-#             print("exact_ln_partition_function:", exact_ln_partition_function)
-#             # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
-# #             print("estimated_ln_partition_function.shape:", estimated_ln_partition_function.shape)
-# #             print("exact_ln_partition_function.shape:", exact_ln_partition_function.shape)
-            
-#             loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float().squeeze())
-#             # print("loss:", loss)
-#             # print()
-#             losses.append(loss.item())
-#             loss.backward()
-#             # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
-#             optimizer.step()
-
-#         sleep(temptemp)
-
-# ######DEBUG END
-            
         assert(len(training_SAT_list) == training_problem_count_check)
         training_RMSE = np.sqrt(loss_sum/training_problem_count_check)
         if e % PRINT_FREQUENCY == 0:

@@ -6,12 +6,12 @@ import random
 
 from nn_models import lbp_message_passing_network, GIN_Network_withEdgeFeatures
 
-# from ising_model.pytorch_dataset import build_factorgraph_from_SpinGlassModel
-# from ising_model.spin_glass_model import SpinGlassModel
+from ising_model.pytorch_dataset import build_factorgraph_from_SpinGlassModel
+from ising_model.spin_glass_model import SpinGlassModel
 
 #debugging, do we get expected behavior (exact ln(Z) and message convergence) when we run on trees?
-from tree_factor_graph.pytorch_dataset import build_tree_factorgraph_from_TreeSpinGlassModel as build_factorgraph_from_SpinGlassModel
-from tree_factor_graph.tree_spin_glass_model import TreeSpinGlassModel as SpinGlassModel
+# from tree_factor_graph.pytorch_dataset import build_tree_factorgraph_from_TreeSpinGlassModel as build_factorgraph_from_SpinGlassModel
+# from tree_factor_graph.tree_spin_glass_model import TreeSpinGlassModel as SpinGlassModel
 
 from factor_graph import FactorGraphData
 # from torch.utils.data import DataLoader
@@ -39,13 +39,20 @@ def boolean_string(s):
 
 parser = argparse.ArgumentParser()
 #the number of iterations of message passing, we have this many layers with their own learnable parameters
-parser.add_argument('--msg_passing_iters', type=int, default=10)
+parser.add_argument('--msg_passing_iters', type=int, default=20)
 #messages have var_cardinality states in standard belief propagation.  belief_repeats artificially
 #increases this number so that messages have belief_repeats*var_cardinality states, analogous
 #to increasing node feature dimensions in a standard graph neural network
-parser.add_argument('--belief_repeats', type=int, default=10)
+parser.add_argument('--belief_repeats', type=int, default=1)
 
 parser.add_argument('--batch_size', type=int, default=50)
+
+#works well for training on attractive field
+# LEARNING_RATE = 0.0005
+#works well for training on mixed field
+# LEARNING_RATE = 0.005 #10layer        
+# LEARNING_RATE = 0.001 #30layer trial 
+parser.add_argument('--learning_rate', type=float, default=0.00055)
 
 
 #if true, mlps operate in standard space rather than log space
@@ -63,15 +70,15 @@ parser.add_argument('--use_MLP4', type=boolean_string, default=True)
 parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=True)
 
 #if true, subtract previously sent messages (to avoid 'double counting')
-parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True)
+parser.add_argument('--subtract_prv_messages', type=boolean_string, default=False)
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='none',\
+parser.add_argument('--bethe_mlp', type=str, default='standard',\
     choices=['shifted','standard','linear','none'])
 
 #if true, run compute out of distribution validation losses
-parser.add_argument('--val_ood', type=boolean_string, default=False)
+parser.add_argument('--val_ood', type=boolean_string, default=True)
 
 args, _ = parser.parse_known_args()
 
@@ -137,7 +144,7 @@ GNN_trained_model_path = './wandb/run-20200219_051810-bp7hke44/model.pt' #locati
 
 # BPNN_trained_model_path = './wandb/run-20200219_020545-j2ef9bvp/model.pt'
 
-USE_WANDB = False
+USE_WANDB = True
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 ##########################
 ####### Training PARAMETERS #######
@@ -162,19 +169,19 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # N_MAX = 11
 # F_MAX = 5.0
 # C_MAX = 5.0
-N_MIN_TRAIN = 3
-N_MAX_TRAIN = 3
-F_MAX_TRAIN = 1
-C_MAX_TRAIN = 3.0
+N_MIN_TRAIN = 10
+N_MAX_TRAIN = 10
+F_MAX_TRAIN = .1
+C_MAX_TRAIN = 5
 # F_MAX = 1
 # C_MAX = 10.0
-ATTRACTIVE_FIELD_TRAIN = False
+ATTRACTIVE_FIELD_TRAIN = True
 
-N_MIN_VAL = 3
-N_MAX_VAL = 3
-F_MAX_VAL = 1
-C_MAX_VAL = 3.0
-ATTRACTIVE_FIELD_VAL = False
+N_MIN_VAL = 10
+N_MAX_VAL = 10
+F_MAX_VAL = .1
+C_MAX_VAL = 5
+ATTRACTIVE_FIELD_VAL = True
 # ATTRACTIVE_FIELD_TEST = True
 
 REGENERATE_DATA = False
@@ -199,35 +206,30 @@ TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' dat
 ##### Optimizer parameters #####
 STEP_SIZE=300
 LR_DECAY=.5
-if ATTRACTIVE_FIELD_TRAIN == True:
-    #works well for training on attractive field
-    LEARNING_RATE = 0.0005
-    LEARNING_RATE = 0.00
+LEARNING_RATE = args.learning_rate
 
-#         LEARNING_RATE = 0.0002  
-#         LEARNING_RATE = 0.00200001
-#         LEARNING_RATE = 0.00201
+# if ATTRACTIVE_FIELD_TRAIN == True:
+#     #works well for training on attractive field
+#     LEARNING_RATE = 0.0005
+# #     LEARNING_RATE = 0.00
 
-#         LEARNING_RATE = 0.0005        
-#         LEARNING_RATE = 0.002        
+# #         LEARNING_RATE = 0.0002  
+# #         LEARNING_RATE = 0.00200001
+# #         LEARNING_RATE = 0.00201
 
-#         LEARNING_RATE = 4*TRAIN_BATCH_SIZE*0.0005        
+# #         LEARNING_RATE = 0.0005        
+# #         LEARNING_RATE = 0.002        
 
-#         LEARNING_RATE = 0.00000005 #testing sgd     
-#         LEARNING_RATE = 0.0000002 #testing sgd     
+# #         LEARNING_RATE = 4*TRAIN_BATCH_SIZE*0.0005        
 
-#     LEARNING_RATE = 0.00005 #10layer with Bethe_mlp
-else:
-    #think this works for mixed fields
+# #         LEARNING_RATE = 0.00000005 #testing sgd     
+# #         LEARNING_RATE = 0.0000002 #testing sgd     
+
+# #     LEARNING_RATE = 0.00005 #10layer with Bethe_mlp
+# else:
+#     #think this works for mixed fields
 #         LEARNING_RATE = 0.005 #10layer        
-#         LEARNING_RATE = 0.001 #30layer trial 
-    LEARNING_RATE = 0.0005 #10layer with Bethe_mlp
-    LEARNING_RATE = 0.00
-    
-#     LEARNING_RATE = 0.0001
-    
-#     LEARNING_RATE = 0.0000005 #c_max = .5
-
+# #         LEARNING_RATE = 0.001 #30layer trial 
 
 ##########################
 if USE_WANDB:
@@ -239,7 +241,6 @@ if USE_WANDB:
     wandb.config.use_MLP2 = args.use_MLP2
     wandb.config.use_MLP3 = args.use_MLP3
     wandb.config.use_MLP4 = args.use_MLP4
-    wandb.config.SHARE_WEIGHTS = args.SHARE_WEIGHTS
     wandb.config.subtract_prv_messages = args.subtract_prv_messages
     
     wandb.config.BELIEF_REPEATS = BELIEF_REPEATS

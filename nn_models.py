@@ -133,7 +133,7 @@ class lbp_message_passing_network(nn.Module):
 #                 print("torch.norm(varToFactor_messages - prv_varToFactor_messages):", torch.norm(varToFactor_messages - prv_varToFactor_messages))
 #                 print("torch.norm(factorToVar_messages - prv_factorToVar_messages):", torch.norm(factorToVar_messages - prv_factorToVar_messages))
 
-                check_convergence = True
+                check_convergence = False
                 if check_convergence:
             
 #                     print("prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)

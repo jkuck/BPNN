@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
 from torch_scatter import scatter_logsumexp
 from sat_helpers.sat_data import parse_dimacs, SatProblems, build_factorgraph_from_SATproblem
-from utils import dotdict, logminusexp, shift_func #wrote a helper function that is not used in this file: log_normalize
+from utils import dotdict, logminusexp, shift_func, logsumexp_multipleDim #wrote a helper function that is not used in this file: log_normalize
 import time
 import matplotlib.pyplot as plt
 import matplotlib
@@ -73,49 +73,7 @@ def max_multipleDim(input, axes, keepdim=False):
             input = input.max(ax)[0]
     return input
 
-def logsumexp_multipleDim(tensor, dim_to_keep=None):
-    """
-    Compute log(sum(exp(tensor), aggregate_dimensions)) in a numerically stable way.
 
-    Inputs:
-    - tensor (tensor): input tensor
-    - dim_to_keep (list of ints): the only dimensions to keep in the output.  i.e. 
-        for a 4d input tensor with dim_to_keep=[2] (0-indexed): return_tensor[i] = logsumexp(tensor[:,:,i,:])
-
-    Outputs:
-    - return_tensor (tensor): logsumexp of input tensor along specified dimensions (those not appearing in dim_to_keep).
-        Has same number of dimensions as the original tensor, but those not appearing in dim_to_keep have size 1
-
-    """
-    assert(not torch.isnan(tensor).any())
-
-    tensor_dimensions = len(tensor.shape)
-    assert((torch.tensor([dim_to_keep]) < tensor_dimensions).all())
-    assert((torch.tensor([dim_to_keep]) >= 0).all())    
-    aggregate_dimensions = [i for i in range(tensor_dimensions) if (i not in dim_to_keep)]
-    # print("aggregate_dimensions:", aggregate_dimensions)
-    # print("tensor:", tensor)
-    max_values = max_multipleDim(tensor, axes=aggregate_dimensions, keepdim=True)
-#     print("max_values:", max_values)
-    max_values[torch.where(max_values == -np.inf)] = 0
-    assert(not torch.isnan(max_values).any())
-    assert((max_values > -np.inf).all())
-    assert(not torch.isnan(tensor - max_values).any())
-    assert(not torch.isnan(torch.exp(tensor - max_values)).any())
-    assert(not torch.isnan(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)).any())
-    # assert(not (torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions) > 0).all())
-    assert(not torch.isnan(torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions))).any())
-
-    # print("max_values:", max_values)
-    # print("tensor - max_values", tensor - max_values)
-    # print("torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)):", torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions)))
-#     print("tensor.shape", tensor.shape)
-#     print("max_values.shape", max_values.shape)
-#     sleep(temp)
-    return_tensor = torch.log(torch.sum(torch.exp(tensor - max_values), dim=aggregate_dimensions, keepdim=True)) + max_values
-    # print("return_tensor:", return_tensor)
-    assert(not torch.isnan(return_tensor).any())
-    return return_tensor
 
 
 
@@ -195,9 +153,9 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
             self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
-            self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
+#             self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
             if lne_mlp:
-                self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu1) 
+                self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu) 
             else:
                 self.mlp2 = Seq(self.linear3, self.linear4)  
 
@@ -228,8 +186,12 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #                 b6 = torch.empty(self.linear6.bias.shape)
 #                 torch.nn.init.uniform_(w6, -.1, .1)
 #                 self.linear6.bias = torch.nn.Parameter(b6)    
-                
-            self.mlp3 = Seq(self.linear5, self.linear6)  
+ 
+    
+            if lne_mlp:
+                self.mlp3 = Seq(self.linear5, ReLU(), self.linear6, self.shifted_relu)  
+            else:            
+                self.mlp3 = Seq(self.linear5, self.linear6)  
             self.alpha_mlp3 = torch.nn.Parameter(alpha2*torch.ones(1))
             
             self.linear7 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
@@ -260,7 +222,10 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #                 torch.nn.init.uniform_(w8, -.1, .1)
 #                 self.linear8.bias = torch.nn.Parameter(b8)
                 
-            self.mlp4 = Seq(self.linear7, self.linear8)  
+            if lne_mlp:
+                self.mlp4 = Seq(self.linear7, ReLU(), self.linear8, self.shifted_relu)
+            else:     
+                self.mlp4 = Seq(self.linear7, self.linear8)  
             self.alpha_mlp4 = torch.nn.Parameter(alpha2*torch.ones(1))
     
             
