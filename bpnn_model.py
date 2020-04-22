@@ -10,7 +10,8 @@ from utils import dotdict, logminusexp, shift_func #wrote a helper function that
 import matplotlib.pyplot as plt
 import matplotlib
 import mrftools
-from parameters import alpha, alpha2, NUM_MLPS
+from parameters import alpha, alpha2
+NUM_MLPS = 2
 
 __size_error_msg__ = ('All tensors which should get mapped to the same source '
                       'or target nodes must be of same size in dimension 0.')

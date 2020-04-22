@@ -39,19 +39,19 @@ parser.add_argument('--batch_size', type=int, default=1)
 
 # 0.0001
 # 0.0005
-parser.add_argument('--learning_rate', type=float, default=0.001)
+parser.add_argument('--learning_rate', type=float, default=0.0001)
 
 
 #if true, mlps operate in standard space rather than log space
 parser.add_argument('--lne_mlp', type=boolean_string, default=True)
 
 #original MLPs that operate on factor beliefs (problematic because they're not index invariant)
-parser.add_argument('--use_MLP1', type=boolean_string, default=False)
-parser.add_argument('--use_MLP2', type=boolean_string, default=False)
+parser.add_argument('--use_MLP1', type=boolean_string, default=True)
+parser.add_argument('--use_MLP2', type=boolean_string, default=True)
 
 #new MLPs that operate on variable beliefs
-parser.add_argument('--use_MLP3', type=boolean_string, default=True)
-parser.add_argument('--use_MLP4', type=boolean_string, default=True)
+parser.add_argument('--use_MLP3', type=boolean_string, default=False)
+parser.add_argument('--use_MLP4', type=boolean_string, default=False)
 
 #if true, share the weights between layers in a BPNN
 parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=False)
@@ -61,7 +61,7 @@ parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='standard',\
+parser.add_argument('--bethe_mlp', type=str, default='shifted',\
     choices=['shifted','standard','linear','none'])
 
 #for reproducing random train/val split
