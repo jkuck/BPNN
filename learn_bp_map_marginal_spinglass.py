@@ -1,5 +1,6 @@
 import torch
 from torch import autograd
+import torch.nn.functional as F
 import pickle
 import wandb
 import random
@@ -251,6 +252,34 @@ lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STA
 lbp_net = lbp_net.to(device)
 
 # lbp_net.double()
+def logScore(sg_model, probability):
+    # probability for each variable to be set state 1
+    N = sg_model.lcl_fld_params.shape[0]
+    assert(N == sg_model.lcl_fld_params.shape[1])
+    assert(N*N == probability.shape[0]), (N, probability.shape)
+
+    dtype, device = probability.dtype, probability.device
+
+    score = torch.zeros([1,1], dtype=dtype, device=device)
+    for var_idx in range(N**2):
+        r = var_idx//N
+        c = var_idx%N
+        prob1 = probability[var_idx]
+        score += sg_model.lcl_fld_params[r,c]*(2*prob1-1) #(prob-(1-prob))
+        if r < N-1:
+            prob2 = probability[var_idx+N]
+            score += sg_model.cpl_params_v[r,c]*(2*prob1-1)*(2*prob2-1) #prob1*prob2+(1-prob1)*(1-prob2)-prob1*(1-prob2)-(1-prob1)*prob2
+        if c < N-1:
+            prob2 = probability[var_idx+1]
+            score += sg_model.cpl_params_h[r,c]*(2*prob1-1)*(2*prob2-1) #prob1*prob2+(1-prob1)*(1-prob2)-prob1*(1-prob2)-(1-prob1)*prob2
+    return score
+def _logScore_loss(x, y, sg_model):
+    one_hot_y = torch.eye(y.size(-1))[torch.argmax(y, dim=-1)]
+    logScore_x = logScore(sg_model, x[:,1])
+    logScore_y = logScore(sg_model, one_hot_y[:,1])
+    return F.mse_loss(logScore_x, logScore_y)
+def logScore_loss(x, y, sg_model):
+    return ONE_HOT_RATIO*_logScore_loss(x, y, sg_model) + (1-ONE_HOT_RATIO)*cross_entropy_loss(x, y)
 def cross_entropy_loss(x, y):
     return -torch.mean(torch.sum(y*torch.log(x+1e-30), dim=1))
 def one_hot_cross_entropy_loss(x, y):
@@ -351,6 +380,7 @@ def train():
         optimizer.zero_grad()
         losses = []
         count = 0
+        model_index = 0
         for spin_glass_problem in train_data_loader_pytorchGeometric: #pytorch geometric form
             spin_glass_problem = spin_glass_problem.to(device)
 #             spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
@@ -362,7 +392,17 @@ def train():
             estimated_marginals_function = lbp_net(spin_glass_problem)
 
 #             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
-            loss = loss_func(estimated_marginals_function.squeeze(), exact_marginals_function.float())
+            if LOSS_NAME == 'logScore':
+                data_batch = spin_glass_problem.batch_vars
+                model_num = torch.max(data_batch).item()+1
+                loss = torch.zeros([], device=device, dtype=estimated_marginals_function.dtype)
+                for midx in range(model_num):
+                    x, y = estimated_marginals_function[data_batch==midx], exact_marginals_function[data_batch==midx]
+                    loss += logScore_loss(x, y, spin_glass_models_list_train[model_index+midx])
+                model_index += model_num
+                loss = loss / model_num
+            else:
+                loss = loss_func(estimated_marginals_function.squeeze(), exact_marginals_function.float())
             debug = False
             if debug:
                 for idx, val in enumerate(estimated_marginals_function):
