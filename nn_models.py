@@ -13,10 +13,10 @@ import time
 
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
 # from bpnn_model_partialRefactor import FactorGraphMsgPassingLayer_NoDoubleCounting
-from bpnn_model_partialRefactorNoBeliefRepeats import FactorGraphMsgPassingLayer_NoDoubleCounting
-from bpnn_model_clean import logsumexp_multipleDim
+# from bpnn_model_partialRefactorNoBeliefRepeats import FactorGraphMsgPassingLayer_NoDoubleCounting
+# from bpnn_model_clean import logsumexp_multipleDim
 
-# from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
+from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
 
 from parameters import alpha2
 import time
@@ -62,7 +62,7 @@ class lbp_message_passing_network(nn.Module):
             self.alpha_betheMLP = torch.nn.Parameter(alpha2*torch.ones(1))
             assert(initialize_to_exact_bethe == False), "Set initialize_to_exact_bethe=False when learn_bethe_residual_weight=True"
             
-        USE_OLD_CODE = True
+        USE_OLD_CODE = False
         if USE_OLD_CODE:
             if share_weights:
                 self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions)
@@ -224,8 +224,12 @@ class lbp_message_passing_network(nn.Module):
         
         else:
             if True:
+#                 print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
+#                 print("prv_var_beliefs.shape:", prv_var_beliefs.shape)
+#                 print("factor_graph.factor_potentials.shape:", factor_graph.factor_potentials.shape)                
+#                 sleep(asdlfkjsdlkf)
                 #broken for batch_size > 1
-                bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs.squeeze(), var_beliefs=prv_var_beliefs.squeeze(), factor_graph=factor_graph)
                 estimated_ln_partition_function = -bethe_free_energy
             
                 debug=False
@@ -453,7 +457,7 @@ def compute_bethe_free_energy(factor_beliefs, var_beliefs, factor_graph):
             print(val)
     assert(not torch.isnan(factor_beliefs).any()), (factor_beliefs, torch.where(factor_beliefs == torch.tensor(float('nan'))), torch.where(var_beliefs == torch.tensor(float('nan'))))
     assert(not torch.isnan(var_beliefs).any()), var_beliefs
-    return (compute_bethe_average_energy(factor_beliefs=factor_beliefs, factor_potentials=factor_graph.factor_potentials)\
+    return (compute_bethe_average_energy(factor_beliefs=factor_beliefs, factor_potentials=factor_graph.factor_potentials.squeeze())\
             - compute_bethe_entropy(factor_beliefs=factor_beliefs, var_beliefs=var_beliefs, numVars=torch.sum(factor_graph.numVars), var_degrees=factor_graph.var_degrees))
 
 class GIN_Network_withEdgeFeatures(nn.Module):
