@@ -12,8 +12,8 @@ import math
 import time
 
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
-# from bpnn_model_partialRefactor import FactorGraphMsgPassingLayer_NoDoubleCounting
-from bpnn_model_partialRefactorNoBeliefRepeats import FactorGraphMsgPassingLayer_NoDoubleCounting
+from bpnn_model_partialRefactor import FactorGraphMsgPassingLayer_NoDoubleCounting
+# from bpnn_model_partialRefactorNoBeliefRepeats import FactorGraphMsgPassingLayer_NoDoubleCounting
 from bpnn_model_clean import logsumexp_multipleDim
 
 # from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim

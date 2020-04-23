@@ -25,7 +25,7 @@ import json
 import argparse
 
 SET_TRUE_POST_DEBUGGING = False
-SQUEEZE_BELIEF_REPEATS = True
+SQUEEZE_BELIEF_REPEATS = False
 
 def boolean_string(s):    
     if s not in {'False', 'True'}:
