@@ -12,7 +12,8 @@ import math
 import time
 
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
-from bpnn_model_partialRefactor import FactorGraphMsgPassingLayer_NoDoubleCounting
+# from bpnn_model_partialRefactor import FactorGraphMsgPassingLayer_NoDoubleCounting
+from bpnn_model_partialRefactorNoBeliefRepeats import FactorGraphMsgPassingLayer_NoDoubleCounting
 from bpnn_model_clean import logsumexp_multipleDim
 
 # from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
@@ -82,7 +83,6 @@ class lbp_message_passing_network(nn.Module):
 
         if bethe_MLP != 'none':
             var_cardinality = var_cardinality #2 for binary variables
-            belief_repeats = belief_repeats
             num_ones = belief_repeats*(2*(var_cardinality**max_factor_state_dimensions)+var_cardinality)
             mlp_size =  msg_passing_iters*num_ones
 #             self.final_mlp = Seq(Linear(mlp_size, mlp_size), ReLU(), Linear(mlp_size, 1))
@@ -223,12 +223,12 @@ class lbp_message_passing_network(nn.Module):
                 return learned_estimated_ln_partition_function
         
         else:
-            if False:
+            if True:
                 #broken for batch_size > 1
                 bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
                 estimated_ln_partition_function = -bethe_free_energy
             
-                debug=True
+                debug=False
                 if debug:
                     final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
                     check_estimated_ln_partition_function = torch.sum(final_pooled_states)

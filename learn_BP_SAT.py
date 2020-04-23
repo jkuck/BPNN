@@ -1,11 +1,13 @@
 import torch
 from torch import autograd
 from nn_models import lbp_message_passing_network
-from sat_helpers.sat_data import SatProblems, get_SATproblems_list, parse_dimacs
 from sat_helpers.libdai_utils_sat import run_loopyBP
 # from torch.utils.data import DataLoader
 # from torch_geometric.data import DataLoader
+
+# from sat_helpers.sat_data import SatProblems, get_SATproblems_list, parse_dimacs
 # from factor_graph import DataLoader_custom as DataLoader
+from sat_helpers.sat_data_partialRefactor import SatProblems, get_SATproblems_list, parse_dimacs
 from factor_graph_partialRefactor import DataLoader_custom as DataLoader
 import os
 import matplotlib.pyplot as plt
@@ -20,6 +22,7 @@ import time
 import json
 import argparse
 
+SET_TRUE_POST_DEBUGGING = False
 
 def boolean_string(s):    
     if s not in {'False', 'True'}:
@@ -40,7 +43,7 @@ parser.add_argument('--batch_size', type=int, default=1)
 
 # 0.0001
 # 0.0005
-parser.add_argument('--learning_rate', type=float, default=0.0001)
+parser.add_argument('--learning_rate', type=float, default=0.00001)
 
 
 #if true, mlps operate in standard space rather than log space
@@ -62,7 +65,7 @@ parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='shifted',\
+parser.add_argument('--bethe_mlp', type=str, default='none',\
     choices=['shifted','standard','linear','none'])
 
 #for reproducing random train/val split
@@ -122,8 +125,8 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 1
-VAL_DATA_SIZE = 1#100
+TRAINING_DATA_SIZE = 3
+VAL_DATA_SIZE = 3#100
 TEST_DATA_SIZE = 1000
 
 ########## info by problem groups and categories ##########
@@ -382,7 +385,7 @@ def train():
                # dataset_size=50, begin_idx=0, epsilon=EPSILON)
                dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON,
                max_factor_dimensions=args.max_factor_state_dimensions, belief_repeats=args.belief_repeats)
-    val_data_loader = DataLoader(val_SAT_list, batch_size=1000)
+    val_data_loader = DataLoader(val_SAT_list, batch_size=args.batch_size)
 
     # with autograd.detect_anomaly():
     
@@ -393,12 +396,14 @@ def train():
         epoch_loss = 0
 #         optimizer.zero_grad()
         for sat_problem in train_data_loader:
-            assert(sat_problem.num_vars == torch.sum(sat_problem.numVars))
             optimizer.zero_grad()
+            if SET_TRUE_POST_DEBUGGING:
+                assert(sat_problem.num_vars == torch.sum(sat_problem.numVars))
             sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
-            sat_problem.var_cardinality = sat_problem.var_cardinality[0] #hack for batching,
-            sat_problem.belief_repeats = sat_problem.belief_repeats[0] #hack for batching,
-            
+            if SET_TRUE_POST_DEBUGGING:
+                sat_problem.var_cardinality = sat_problem.var_cardinality[0] #hack for batching,
+                sat_problem.belief_repeats = sat_problem.belief_repeats[0] #hack for batching,
+
             sat_problem = sat_problem.to(device)
             exact_ln_partition_function = sat_problem.ln_Z
 
@@ -442,8 +447,9 @@ def train():
 #             for t, (sat_problem, exact_ln_partition_function) in enumerate(val_data_loader):
             for sat_problem in val_data_loader:
                 sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
-                sat_problem.var_cardinality = sat_problem.var_cardinality[0] #hack for batching,
-                sat_problem.belief_repeats = sat_problem.belief_repeats[0] #hack for batching,
+                if SET_TRUE_POST_DEBUGGING:
+                    sat_problem.var_cardinality = sat_problem.var_cardinality[0] #hack for batching,
+                    sat_problem.belief_repeats = sat_problem.belief_repeats[0] #hack for batching,
             
                 sat_problem = sat_problem.to(device)
                 exact_ln_partition_function = sat_problem.ln_Z
@@ -454,7 +460,7 @@ def train():
 #                 print("exact_ln_partition_function:", exact_ln_partition_function)
 #                 print("loss:", loss)
                 
-                assert(estimated_ln_partition_function.numel() == exact_ln_partition_function.numel())
+                assert(estimated_ln_partition_function.numel() == exact_ln_partition_function.numel()), (estimated_ln_partition_function.numel(), exact_ln_partition_function.numel())
                 val_loss_sum += loss.item()*estimated_ln_partition_function.numel()
                 val_problem_count_check += estimated_ln_partition_function.numel()
 
