@@ -238,9 +238,13 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         assert(factor_graph is not None)
         #update variable beliefs
+#        print("123 prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
+#        print("123 prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)        
         factorToVar_messages = alpha*self.message_factorToVar(prv_factor_beliefs=prv_factor_beliefs, factor_graph=factor_graph,\
                                                               prv_varToFactor_messages=prv_varToFactor_messages) +\
                                (1 - alpha)*prv_factorToVar_messages
+#        print("123 factorToVar_messages.shape:", factorToVar_messages.shape)
+        
         assert(not torch.isnan(factorToVar_messages).any()), prv_factor_beliefs
 
         
@@ -282,7 +286,12 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         #print("123debug2 var_beliefs =", var_beliefs)
 
         #update factor beliefs
-        varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages) 
+#        print("123 var_beliefs.shape:", var_beliefs.shape)
+#        print("123 factorToVar_messages.shape:", factorToVar_messages.shape)
+
+        varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages)
+#        print("123 varToFactor_messages.shape:", varToFactor_messages.shape)
+        
         assert(not torch.isnan(varToFactor_messages).any()), prv_factor_beliefs
         
         
@@ -547,6 +556,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
         mapped_factor_beliefs = map_beliefs(prv_factor_beliefs, factor_graph, 'factor')
         mapped_factor_potentials_masks = map_beliefs(factor_graph.factor_potential_masks, factor_graph, 'factor')
+#        print("123 mapped_factor_beliefs.shape:", mapped_factor_beliefs.shape)
 
         
         #print("123debug10 mapped_factor_beliefs =", mapped_factor_beliefs)
@@ -585,18 +595,24 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 assert(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape == factor_graph.facStates_to_varIdx.shape)
                 assert((factor_graph.facStates_to_varIdx <= num_edges*2).all())
 #                 sleep(temp123)
+#                print("1234 mapped_factor_beliefs.shape:", mapped_factor_beliefs.shape)
+
                 marginalized_states_fast = scatter_logsumexp(src=mapped_factor_beliefs.view(mapped_factor_beliefs.numel()), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1) 
+#                print("1234 marginalized_states_fast.shape:", marginalized_states_fast.shape)
+        
                 #print("123debug11 marginalized_states_fast =", marginalized_states_fast)
 #                 print("marginalized_states_fast:", marginalized_states_fast)
 #                 sleep(marginalized_states_fast)
 
                 #exclude 'junk bin' with [:-1]
-#                 marginalized_states = marginalized_states_fast[:-1].view((2,num_edges)).permute(1,0)
+                marginalized_states = marginalized_states_fast[:-1].view((2,num_edges)).permute(1,0)
+#                print("1234 marginalized_states.shape:", marginalized_states.shape)
+        
                 #correct for batch size > 1
-                batch_size = factor_graph.num_graphs
-                edges_per_batch = num_edges//batch_size
-                assert(batch_size*edges_per_batch == num_edges)
-                marginalized_states = marginalized_states_fast[:-1].view(batch_size,2,edges_per_batch).permute(0,2,1).reshape(num_edges,2)
+#                 batch_size = factor_graph.num_graphs
+#                 edges_per_batch = num_edges//batch_size
+#                 assert(batch_size*edges_per_batch == num_edges)
+#                 marginalized_states = marginalized_states_fast[:-1].view(batch_size,2,edges_per_batch).permute(0,2,1).reshape(num_edges,2)
             
                 #print("123debug12 after permute marginalized_states_fast =", marginalized_states)
                 if debug:
@@ -647,8 +663,13 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
 #         print("3 marginalized_states.shape:", marginalized_states.shape)        
 #         print("3 prv_varToFactor_messages_zeroed.shape:", prv_varToFactor_messages_zeroed.shape)        
+#        print("12345 marginalized_states.shape:", marginalized_states.shape)
+#        print("12345 prv_varToFactor_messages_zeroed.shape:", prv_varToFactor_messages_zeroed.shape)
 
-        messages = marginalized_states - prv_varToFactor_messages_zeroed
+        messages = marginalized_states - prv_varToFactor_messages_zeroed.squeeze()
+        messages = messages.unsqueeze(dim=1)
+#        print("12345 messages.shape:", messages.shape)
+        
         #print("123debug13 (just before return) messages =", messages)
 #         print("2 messages.shape:", messages.shape)        
         return messages

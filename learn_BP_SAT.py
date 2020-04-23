@@ -39,7 +39,7 @@ parser.add_argument('--batch_size', type=int, default=1)
 
 # 0.0001
 # 0.0005
-parser.add_argument('--learning_rate', type=float, default=0.0001)
+parser.add_argument('--learning_rate', type=float, default=0.00001)
 
 
 #if true, mlps operate in standard space rather than log space
@@ -61,7 +61,7 @@ parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='shifted',\
+parser.add_argument('--bethe_mlp', type=str, default='none',\
     choices=['shifted','standard','linear','none'])
 
 #for reproducing random train/val split
