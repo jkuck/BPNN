@@ -5,10 +5,12 @@ from sat_helpers.libdai_utils_sat import run_loopyBP
 # from torch.utils.data import DataLoader
 # from torch_geometric.data import DataLoader
 
-# from sat_helpers.sat_data import SatProblems, get_SATproblems_list, parse_dimacs
-# from factor_graph import DataLoader_custom as DataLoader
-from sat_helpers.sat_data_partialRefactor import SatProblems, get_SATproblems_list, parse_dimacs
-from factor_graph_partialRefactor import DataLoader_custom as DataLoader
+from sat_helpers.sat_data import SatProblems, get_SATproblems_list, parse_dimacs
+from factor_graph import DataLoader_custom as DataLoader
+
+# from sat_helpers.sat_data_partialRefactor import SatProblems, get_SATproblems_list, parse_dimacs
+# from factor_graph_partialRefactor import DataLoader_custom as DataLoader
+
 import os
 import matplotlib.pyplot as plt
 import matplotlib
@@ -23,6 +25,7 @@ import json
 import argparse
 
 SET_TRUE_POST_DEBUGGING = False
+SQUEEZE_BELIEF_REPEATS = True
 
 def boolean_string(s):    
     if s not in {'False', 'True'}:
@@ -397,6 +400,20 @@ def train():
 #         optimizer.zero_grad()
         for sat_problem in train_data_loader:
             optimizer.zero_grad()
+            if SQUEEZE_BELIEF_REPEATS:
+                sat_problem.prv_varToFactor_messages = sat_problem.prv_varToFactor_messages.squeeze()
+                sat_problem.prv_factorToVar_messages = sat_problem.prv_factorToVar_messages.squeeze()
+                sat_problem.prv_factor_beliefs = sat_problem.prv_factor_beliefs.squeeze()
+                sat_problem.prv_var_beliefs = sat_problem.prv_var_beliefs.squeeze()   
+                sat_problem.factor_potential_masks = sat_problem.factor_potential_masks.squeeze()   
+                sat_problem.factor_potentials = sat_problem.factor_potentials.squeeze()   
+
+                
+#                 print("sat_problem.prv_varToFactor_messages.shape:", sat_problem.prv_varToFactor_messages.shape)
+#                 print("sat_problem.prv_factorToVar_messages.shape:", sat_problem.prv_factorToVar_messages.shape)
+#                 print("sat_problem.prv_factor_beliefs.shape:", sat_problem.prv_factor_beliefs.shape)
+#                 print("sat_problem.prv_var_beliefs.shape:", sat_problem.prv_var_beliefs.shape)
+                
             if SET_TRUE_POST_DEBUGGING:
                 assert(sat_problem.num_vars == torch.sum(sat_problem.numVars))
             sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
@@ -446,6 +463,20 @@ def train():
             val_problem_count_check = 0
 #             for t, (sat_problem, exact_ln_partition_function) in enumerate(val_data_loader):
             for sat_problem in val_data_loader:
+                if SQUEEZE_BELIEF_REPEATS:
+                    sat_problem.prv_varToFactor_messages = sat_problem.prv_varToFactor_messages.squeeze()
+                    sat_problem.prv_factorToVar_messages = sat_problem.prv_factorToVar_messages.squeeze()
+                    sat_problem.prv_factor_beliefs = sat_problem.prv_factor_beliefs.squeeze()
+                    sat_problem.prv_var_beliefs = sat_problem.prv_var_beliefs.squeeze()   
+                    sat_problem.factor_potential_masks = sat_problem.factor_potential_masks.squeeze()   
+                    sat_problem.factor_potentials = sat_problem.factor_potentials.squeeze()   
+
+
+#                     print("sat_problem.prv_varToFactor_messages.shape:", sat_problem.prv_varToFactor_messages.shape)
+#                     print("sat_problem.prv_factorToVar_messages.shape:", sat_problem.prv_factorToVar_messages.shape)
+#                     print("sat_problem.prv_factor_beliefs.shape:", sat_problem.prv_factor_beliefs.shape)
+#                     print("sat_problem.prv_var_beliefs.shape:", sat_problem.prv_var_beliefs.shape)
+
                 sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
                 if SET_TRUE_POST_DEBUGGING:
                     sat_problem.var_cardinality = sat_problem.var_cardinality[0] #hack for batching,

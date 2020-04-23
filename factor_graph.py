@@ -115,7 +115,26 @@ class FactorGraphData(DataFactorGraph_partial):
         #1 signifies an invalid location (e.g. a dummy dimension in a factor), 0 signifies a valid location 
         self.factor_potential_masks = factor_potential_masks.expand(expansion_list).transpose(1, 0)
         
+#         print("self.factor_potentials.shape:", self.factor_potentials.shape)
+#         print("self.factor_potential_masks.shape:", self.factor_potential_masks.shape) 
         
+#         print("self.factor_potentials[0,0,::].shape:", self.factor_potentials[0,0,::].shape)
+#         print("self.factor_potentials[0,0,::]:", self.factor_potentials[0,0,::])
+#         print("self.factor_potentials[0,1,::]:", self.factor_potentials[0,1,::])        
+        
+# #         for potential_idx in range(factor_potentials.shape[0]):
+#         for potential_idx in range(3):
+#             if (self.factor_potentials[potential_idx,0,::] != self.factor_potentials[potential_idx,1,::]).any():
+#                 print("factor potentials differ at idx:", potential_idx)
+#                 print("self.factor_potentials[potential_idx,0,::].shape:", self.factor_potentials[potential_idx,0,::].shape)                
+#                 print("factor_potentials[potential_idx,0,::]:", self.factor_potentials[potential_idx,0,::])
+#                 print("factor_potentials[potential_idx,1,::]:", self.factor_potentials[potential_idx,1,::])
+#         print("sum =", torch.sum(self.factor_potentials[:,0,::] - self.factor_potentials[:,1,::]))
+#         print(torch.where(factor_potentials[:,0,::] != factor_potentials[:,1,::]))
+        if belief_repeats > 1:
+            assert((self.factor_potentials[:,0,::] == self.factor_potentials[:,1,::]).all())
+            assert((self.factor_potential_masks[:,0,::] == self.factor_potential_masks[:,1,::]).all())
+
         # - factorToVar_edge_index (Tensor): The indices of a general (sparse) edge
         #     matrix with shape :obj:`[numFactors, numVars]`
         #     stored as a [2, E] tensor of [factor_idx, var_idx] for each edge factor to variable edge
