@@ -238,8 +238,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         assert(factor_graph is not None)
         #update variable beliefs
-#        print("123 prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
-#        print("123 prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)        
+        print("123 prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
+        print("123 prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)        
         factorToVar_messages = alpha*self.message_factorToVar(prv_factor_beliefs=prv_factor_beliefs, factor_graph=factor_graph,\
                                                               prv_varToFactor_messages=prv_varToFactor_messages) +\
                                (1 - alpha)*prv_factorToVar_messages

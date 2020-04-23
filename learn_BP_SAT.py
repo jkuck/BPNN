@@ -5,7 +5,8 @@ from sat_helpers.sat_data import SatProblems, get_SATproblems_list, parse_dimacs
 from sat_helpers.libdai_utils_sat import run_loopyBP
 # from torch.utils.data import DataLoader
 # from torch_geometric.data import DataLoader
-from factor_graph import DataLoader_custom as DataLoader
+# from factor_graph import DataLoader_custom as DataLoader
+from factor_graph_partialRefactor import DataLoader_custom as DataLoader
 import os
 import matplotlib.pyplot as plt
 import matplotlib
@@ -39,7 +40,7 @@ parser.add_argument('--batch_size', type=int, default=1)
 
 # 0.0001
 # 0.0005
-parser.add_argument('--learning_rate', type=float, default=0.00001)
+parser.add_argument('--learning_rate', type=float, default=0.0001)
 
 
 #if true, mlps operate in standard space rather than log space
@@ -61,7 +62,7 @@ parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='none',\
+parser.add_argument('--bethe_mlp', type=str, default='shifted',\
     choices=['shifted','standard','linear','none'])
 
 #for reproducing random train/val split
@@ -121,8 +122,8 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 3
-VAL_DATA_SIZE = 3#100
+TRAINING_DATA_SIZE = 1
+VAL_DATA_SIZE = 1#100
 TEST_DATA_SIZE = 1000
 
 ########## info by problem groups and categories ##########
