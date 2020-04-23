@@ -12,9 +12,10 @@ import math
 import time
 
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
-# from bpnn_model_clean import logsumexp_multipleDim
+from bpnn_model_partialRefactor import FactorGraphMsgPassingLayer_NoDoubleCounting
+from bpnn_model_clean import logsumexp_multipleDim
 
-from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
+# from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
 
 from parameters import alpha2
 import time
@@ -60,7 +61,7 @@ class lbp_message_passing_network(nn.Module):
             self.alpha_betheMLP = torch.nn.Parameter(alpha2*torch.ones(1))
             assert(initialize_to_exact_bethe == False), "Set initialize_to_exact_bethe=False when learn_bethe_residual_weight=True"
             
-        USE_OLD_CODE = False
+        USE_OLD_CODE = True
         if USE_OLD_CODE:
             if share_weights:
                 self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions)
