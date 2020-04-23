@@ -12,7 +12,10 @@ import math
 import time
 
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
+# from bpnn_model_clean import logsumexp_multipleDim
+
 from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
+
 from parameters import alpha2
 import time
 class lbp_message_passing_network(nn.Module):
@@ -56,16 +59,25 @@ class lbp_message_passing_network(nn.Module):
         if learn_bethe_residual_weight:
             self.alpha_betheMLP = torch.nn.Parameter(alpha2*torch.ones(1))
             assert(initialize_to_exact_bethe == False), "Set initialize_to_exact_bethe=False when learn_bethe_residual_weight=True"
-        if share_weights:
-            self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
-                var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
-                use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages)
+            
+        USE_OLD_CODE = False
+        if USE_OLD_CODE:
+            if share_weights:
+                self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions)
+            else:
+                self.message_passing_layers = nn.ModuleList([FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions)\
+                                               for i in range(msg_passing_iters)])
         else:
-            self.message_passing_layers = nn.ModuleList([\
-                FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
+            if share_weights:
+                self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                     var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
-                    use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages)\
-                                                         for i in range(msg_passing_iters)])
+                    use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages)
+            else:
+                self.message_passing_layers = nn.ModuleList([\
+                    FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
+                        var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
+                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages)\
+                                                             for i in range(msg_passing_iters)])
 
         if bethe_MLP != 'none':
             var_cardinality = var_cardinality #2 for binary variables

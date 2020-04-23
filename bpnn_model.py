@@ -6,6 +6,7 @@ from torch_geometric.utils import scatter_
 from torch_scatter import scatter_logsumexp
 from sat_helpers.sat_data import parse_dimacs, SatProblems, build_factorgraph_from_SATproblem
 from utils import dotdict, logminusexp, shift_func #wrote a helper function that is not used in this file: log_normalize
+from utils import logsumexp_multipleDim as logsumexp_multipleDim_new
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -21,7 +22,7 @@ SAT_PROBLEM_DIRECTORY = '/Users/jkuck/research/learn_BP/SAT_problems/'
 
 def map_beliefs(beliefs, factor_graph, map_type):
     '''
-    Utility function for propogate().  Maps factor or variable beliefs to edges 
+    Utility function for propagate().  Maps factor or variable beliefs to edges 
     See https://pytorch-geometric.readthedocs.io/en/latest/notes/create_gnn.html
     Inputs:
     - beliefs (tensor): factor_beliefs or var_beliefs, matching map_type
@@ -231,6 +232,9 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         - factor_beliefs (tensor): updated factor_beliefs 
         - var_beliefs (tensor): updated var_beliefs 
         """
+        
+#         print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
+        
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         assert(factor_graph is not None)
@@ -252,7 +256,11 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #         print("factor_graph.numVars:", factor_graph.numVars)
 #         print("factor_graph.numFactors:", factor_graph.numFactors)
 #         print("facToVar_edge_idx:", factor_graph.facToVar_edge_idx)
+
+#         print("factorToVar_messages.shape:", factorToVar_messages.shape)
         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1])
+#         print("var_beliefs.shape:", var_beliefs.shape)
+    
 #         print("factorToVar_messages:", factorToVar_messages)
 #         print("factor_graph.facToVar_edge_idx[1]:", factor_graph.facToVar_edge_idx[1])
 #         print("factor_graph.facToVar_edge_idx:", factor_graph.facToVar_edge_idx)
@@ -263,8 +271,11 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
         if debug:
             print("var_beliefs pre norm:", torch.exp(var_beliefs))
-        assert(len(var_beliefs.shape) == 2)
-        var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim=0).view(-1,1)#normalize variable beliefs
+        assert(len(var_beliefs.shape) == 3), var_beliefs.shape
+#         var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim=0).view(-1,1)#normalize variable beliefs
+        var_beliefs = var_beliefs - logsumexp_multipleDim_new(var_beliefs, dim_to_keep=[0, 1])#normalize variable beliefs   
+#         print("2 var_beliefs.shape:", var_beliefs.shape)
+    
         if debug:
             print("var_beliefs post norm:", torch.exp(var_beliefs))
         assert(not torch.isnan(var_beliefs).any()), var_beliefs
@@ -289,8 +300,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     #         new_shape = list(varToFactor_messages.shape[1:]) + expansion_list
             new_shape = [varToFactor_messages.shape[0]] + expansion_list
 
-
-            assert(len(varToFactor_messages.shape) == 2)
+#             print("varToFactor_messages.shape:", varToFactor_messages.shape)
+            assert(len(varToFactor_messages.shape) == 3)
             fast_expansion_list = [2 for i in range(factor_graph.state_dimensions.item() - 1)] + list(varToFactor_messages.shape)
             varToFactor_messages_expand = varToFactor_messages.expand(fast_expansion_list)
             varToFactor_messages_expand = varToFactor_messages_expand.transpose(-2, 0).transpose(-1, 1)
@@ -343,9 +354,14 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         if self.learn_BP:
             if self.num_mlps == 2:
                 
-                normalization_view = [1 for i in range(len(varToFactor_expandedMessages.shape))]
-                normalization_view[0] = -1
-                varToFactor_expandedMessages = varToFactor_expandedMessages - logsumexp_multipleDim(varToFactor_expandedMessages, dim=0).view(normalization_view)#normalize factor beliefs
+#                 normalization_view = [1 for i in range(len(varToFactor_expandedMessages.shape))]
+#                 normalization_view[0] = -1
+#                 varToFactor_expandedMessages = varToFactor_expandedMessages - logsumexp_multipleDim(varToFactor_expandedMessages, dim=0).view(normalization_view)#normalize factor beliefs
+                
+#                 print("1 varToFactor_expandedMessages.shape:", varToFactor_expandedMessages.shape)
+                varToFactor_expandedMessages = varToFactor_expandedMessages - logsumexp_multipleDim_new(varToFactor_expandedMessages, dim_to_keep=[0])#normalize   
+#                 print("2 varToFactor_expandedMessages.shape:", varToFactor_expandedMessages.shape)
+#                 print(torch.exp(varToFactor_expandedMessages))
 
                 varToFactor_expandedMessages_shape = varToFactor_expandedMessages.shape
                 assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
@@ -382,14 +398,23 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
                 check_factor_beliefs(factor_beliefs) #debugging
                 factor_beliefs_temp = (1-alpha2)*self.mlp2(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) + alpha2*factor_beliefs_clone
-                valid_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs!=-np.inf))
+                valid_locations = torch.where((factor_graph.factor_potential_masks.squeeze()==0) & (factor_beliefs!=-np.inf))
                 # valid_locations = torch.where((factor_beliefs!=-np.inf) & (factor_beliefs_temp>0))
                 factor_beliefs = -np.inf*torch.ones_like(factor_beliefs)
+                
+#                 factor_beliefs = factor_beliefs.unsqueeze(dim=1)
+#                 factor_beliefs_temp = factor_beliefs_temp.unsqueeze(dim=1)
+                                
+#                 print("factor_beliefs_temp.shape:", factor_beliefs_temp.shape)
+#                 print("factor_beliefs.shape:", factor_beliefs.shape)
+#                 print("factor_graph.factor_potential_masks.shape:", factor_graph.factor_potential_masks.shape)
+
                 factor_beliefs[valid_locations] = torch.log(factor_beliefs_temp[valid_locations])
                 # check_factor_beliefs(factor_beliefs) #debugging
                 assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
 
 
+                factor_beliefs = factor_beliefs.unsqueeze(dim=1)
                 factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
 
 
@@ -689,8 +714,10 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #                 assert(batch_size*edges_per_batch == num_edges), (batch_size, edges_per_batch, num_edges)
 #                 marginalized_states = marginalized_states_fast[:-1].view(batch_size,2,edges_per_batch).permute(0,2,1).reshape(num_edges,2)
             
+#                 print("1 marginalized_states_fast.shape:", marginalized_states_fast.shape)
                 #correct for batch size > 1
-                marginalized_states = marginalized_states_fast[:-1].view(num_edges,2)
+                marginalized_states = marginalized_states_fast[:-1].view(num_edges,1,2)
+#                 print("2 marginalized_states_fast.shape:", marginalized_states.shape)
                 
 
                 
@@ -747,8 +774,12 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         #avoid double counting
 #         messages = marginalized_states_orig - prv_varToFactor_messages_zeroed
 
+#         print("3 marginalized_states.shape:", marginalized_states.shape)        
+#         print("3 prv_varToFactor_messages_zeroed.shape:", prv_varToFactor_messages_zeroed.shape)        
+
         messages = marginalized_states - prv_varToFactor_messages_zeroed
         #print("123debug13 (just before return) messages =", messages)
+#         print("2 messages.shape:", messages.shape)        
         return messages
 
     def message_varToFactor(self, var_beliefs, factor_graph, prv_factorToVar_messages):
@@ -757,12 +788,15 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         # factor_graph.edge_var_indices has shape [2, E]. 
         #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
         #   [1, i] indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
+#         print("111var_beliefs.shape:", var_beliefs.shape)
 
         mapped_var_beliefs = map_beliefs(var_beliefs, factor_graph, 'var')
 
         prv_factorToVar_messages_zeroed = prv_factorToVar_messages.clone()
         prv_factorToVar_messages_zeroed[prv_factorToVar_messages_zeroed == -np.inf] = 0
         #avoid double counting
+#         print("mapped_var_beliefs.shape:", mapped_var_beliefs.shape)
+#         print("prv_factorToVar_messages_zeroed.shape:", prv_factorToVar_messages_zeroed.shape)
         messages = mapped_var_beliefs - prv_factorToVar_messages_zeroed            
 
         return messages

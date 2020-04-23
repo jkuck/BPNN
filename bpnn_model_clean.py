@@ -20,7 +20,7 @@ SAT_PROBLEM_DIRECTORY = '/Users/jkuck/research/learn_BP/SAT_problems/'
 
 def map_beliefs(beliefs, factor_graph, map_type):
     '''
-    Utility function for propogate().  Maps factor or variable beliefs to edges 
+    Utility function for propagate().  Maps factor or variable beliefs to edges 
     See https://pytorch-geometric.readthedocs.io/en/latest/notes/create_gnn.html
     Inputs:
     - beliefs (tensor): factor_beliefs or var_beliefs, matching map_type
@@ -317,13 +317,19 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             factorToVar_messages = factorToVar_messages.view(fTOv_mesg_shape)
             factorToVar_messages = torch.clamp(factorToVar_messages, min=LN_ZERO)
         
+#         print("factorToVar_messages.shape:", factorToVar_messages.shape)
+        
         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1], dim_size=factor_graph.num_vars)
+#         print("var_beliefs.shape:", var_beliefs.shape)
+        
         #var_beliefs has shape [# variables, belief_repeats, variable cardinality]
         assert(len(var_beliefs.shape) == 3)
         assert(var_beliefs.shape[1] == factor_graph.belief_repeats), (var_beliefs.shape)
         assert(var_beliefs.shape[2] == factor_graph.var_cardinality), (var_beliefs.shape)         
         
         if normalize_beliefs:
+#             print("var_beliefs.shape:", var_beliefs.shape)
+#             sleep(varshapecheck)
             var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim_to_keep=[0, 1])#normalize variable beliefs
             check_normalization = torch.sum(torch.exp(var_beliefs), dim=-1)
             assert(torch.max(torch.abs(check_normalization-1)) < .00001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization)
@@ -385,7 +391,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
 #         # FIX ME, DO NOT THINK WE SHUOLD NORMALIZE AFTER EXPANDING!! actually don't think anything wrong with this, just a weird place...
 #         varToFactor_expandedMessages = varToFactor_expandedMessages - logsumexp_multipleDim(varToFactor_expandedMessages, dim=0).view(normalization_view)#normalize factor beliefs
-
+        varToFactor_expandedMessages = varToFactor_expandedMessages - logsumexp_multipleDim(varToFactor_expandedMessages, dim_to_keep=[0])#normalize  
 
         if self.use_MLP1:
             if self.lne_mlp:
