@@ -224,7 +224,7 @@ LEARNING_RATE = args.learning_rate
 
 # USE_WANDB = False
 # if USE_WANDB:
-# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
+os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 # wandb.init(project="learn_BP_sat_reproduce6")
 wandb.init(project="learn_BP_sat_reproduceFromOldCode")
 

@@ -244,7 +244,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     
     #testing a simplified version, modelling GIN, that preserves no double counting computation graph
     def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs,\
-                  alpha=alpha, alpha2=alpha2, debug=False, normalize_messages=True, normalize_beliefs=False):
+                  alpha=alpha, alpha2=alpha2, debug=False, normalize_messages=False, normalize_beliefs=False):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
 
@@ -374,6 +374,15 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #         print("factor_graph.factor_potentials.shape:", factor_graph.factor_potentials.shape)
 #         sleep(temp)
         varToFactor_messages_expand_flatten = varToFactor_messages_expand.flatten()
+    
+        print("567 varToFactor_messages.shape:", varToFactor_messages.shape)               
+        print("567 varToFactor_messages_expand_flatten.shape:", varToFactor_messages_expand_flatten.shape)   
+
+        print("567 varToFactor_messages_expand_flatten[0:32]]:", varToFactor_messages_expand_flatten[0:32])
+        print("567 factor_graph.varToFactorMsg_scatter_indices[0:32]]:", factor_graph.varToFactorMsg_scatter_indices[0:32])            
+    
+        sleep(temp_debug)
+    
         varToFactor_expandedMessages = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)            
         
         new_shape = [varToFactor_messages.shape[0], factor_graph.belief_repeats] +\

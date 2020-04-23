@@ -231,7 +231,16 @@ class lbp_message_passing_network(nn.Module):
                 #broken for batch_size > 1
                 bethe_free_energy = compute_bethe_free_energy(factor_beliefs=prv_factor_beliefs.squeeze(), var_beliefs=prv_var_beliefs.squeeze(), factor_graph=factor_graph)
                 estimated_ln_partition_function = -bethe_free_energy
-            
+#                 print("prv_factor_beliefs.squeeze():", prv_factor_beliefs.squeeze())
+#                 print("prv_var_beliefs.squeeze():", prv_var_beliefs.squeeze())
+                
+#                 print("factor_graph.factor_potentials.squeeze():", factor_graph.factor_potentials.squeeze())
+#                 print("factor_graph.numVars:", factor_graph.numVars)
+#                 print("factor_graph.var_degrees:", factor_graph.var_degrees)
+                
+#                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
+#                 sleep(nn_models_debug_alsfj)
+                
                 debug=False
                 if debug:
                     final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
