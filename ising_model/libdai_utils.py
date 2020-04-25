@@ -255,9 +255,6 @@ def marginal_junction_tree(sg_model, verbose=False, map_flag=True, classificatio
       else:
         return the difference of log-marginals
     '''
-    if not map_flag:
-        raise NotImplementedError('Sum marginal hasn\'t been implemented yet in marginal_junction_tree')
-
     # Set some constants
     maxiter = 10000
     tol = 1e-9
@@ -268,35 +265,57 @@ def marginal_junction_tree(sg_model, verbose=False, map_flag=True, classificatio
     opts["tol"] = str(tol)           # Tolerance for convergence
     opts["verbose"] = str(verb)      # Verbosity (amount of output generated)bpopts["updates"] = "SEQRND"
     opts["updates"] = "HUGIN"
-    opts["inference"] = "MAXPROD" if map_flag else "SUMPROD"
 
     N = sg_model.lcl_fld_params.shape[0]
     log_marginals = np.zeros([N*N, 2])
 
-    sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
-    jt = dai.JTree( sg_FactorGraph, opts )
-    jt.init()
-    jt.run()
-    state = jt.findMaximum()
-    score = sg_FactorGraph.logScore(state)
-    log_marginals[np.arange(N*N), np.array(state)] = score
-
-    for vi, s in enumerate(state):
-        sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={vi:(1 if s==0 else -1)})
+    if not map_flag:
+        opts["inference"] = "MAXPROD"
+        sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
         jt = dai.JTree( sg_FactorGraph, opts )
         jt.init()
         jt.run()
-        cur_state = jt.findMaximum()
-        cur_score = sg_FactorGraph.logScore(cur_state)
-        log_marginals[vi,1-s] = cur_score
-
-    normalized_log_marginals = log_marginals-log_marginals[:,-1:]
-    if classification_flag:
-        marginals = np.exp(normalized_log_marginals)
-        probability = marginals / np.sum(marginals, axis=-1, keepdims=True)
-        return probability.tolist()
+        logZ = jt.logZ()
+        for vi in range(N*N):
+            sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={vi:-1})
+            jt = dai.JTree( sg_FactorGraph, opts )
+            jt.init()
+            jt.run()
+            log_marginals[vi,0] = jt.logZ()
+        probability = np.exp(log_marginals-logZ)
+        probability[:,1] = 1-probability[:,0]
+        if classification_flag:
+            return probability.tolist()
+        else:
+            log_marginals = np.log(probability)
+            normalized_log_marginals = log_marginals - log_marginals[:,-1:]
+            return normalized_log_marginals[:,0:-1].tolist()
     else:
-        return normalized_log_marginals[:,0:-1].tolist()
+        opts["inference"] = "SUMPROD"
+        sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
+        jt = dai.JTree( sg_FactorGraph, opts )
+        jt.init()
+        jt.run()
+        state = jt.findMaximum()
+        score = sg_FactorGraph.logScore(state)
+        log_marginals[np.arange(N*N), np.array(state)] = score
+
+        for vi, s in enumerate(state):
+            sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={vi:(1 if s==0 else -1)})
+            jt = dai.JTree( sg_FactorGraph, opts )
+            jt.init()
+            jt.run()
+            cur_state = jt.findMaximum()
+            cur_score = sg_FactorGraph.logScore(cur_state)
+            log_marginals[vi,1-s] = cur_score
+
+        normalized_log_marginals = log_marginals-log_marginals[:,-1:]
+        if classification_flag:
+            marginals = np.exp(normalized_log_marginals)
+            probability = marginals / np.sum(marginals, axis=-1, keepdims=True)
+            return probability.tolist()
+        else:
+            return normalized_log_marginals[:,0:-1].tolist()
 
 def run_marginal_loopyBP(sg_model, maxiter=None, updates="SEQRND", damping=None,
                          map_flag=True, classification_flag=True):
