@@ -25,6 +25,7 @@ import cProfile
 
 import argparse
 parser = argparse.ArgumentParser()
+parser.add_argument('--data_map_flag', action='store_true', default=False)
 parser.add_argument('--model_map_flag', action='store_true', default=False)
 parser.add_argument('--attractive_flag', action='store_false', default=True)
 parser.add_argument('--updates', type=str, default="SEQRND")
@@ -32,6 +33,7 @@ parser.add_argument('--damping', type=float, default=0.)
 parser.add_argument('--maxiter', type=int, default=None)
 args = parser.parse_args()
 print(args)
+DATA_MAP_FLAG = args.data_map_flag
 MODEL_MAP_FLAG = args.model_map_flag
 ATTRACTIVE_FIELD = args.attractive_flag
 UPDATES = args.updates
@@ -155,6 +157,7 @@ else:
 if USE_WANDB:
     wandb.init(project="BP_map_marginal_spinGlass_new")
     wandb.config.epochs = EPOCH_COUNT
+    wandb.config.DATA_MAP_FLAG = DATA_MAP_FLAG
     wandb.config.MODEL_MAP_FLAG = MODEL_MAP_FLAG
     wandb.config.UPDATES = UPDATES
     wandb.config.DAMPING = DAMPING
@@ -235,7 +238,8 @@ def test_loss_func(x, y, sg_model):
     diff_prob = torch.abs(prob_x[:,0]-prob_y[:,0]).reshape(-1)
     mse_prob_loss = (diff_prob**2).tolist()
     l1_prob_loss = diff_prob.tolist()
-    cross_entropy_prob_loss = (-torch.sum(prob_y*torch.log(prob_x+1e-99), dim=1)).tolist()
+    cross_entropy_prob_loss = (-torch.sum(prob_y*torch.log(prob_x+1e-30), dim=1)).tolist()
+    kl_div_prob_loss = (torch.sum(prob_y*torch.log(prob_y/(prob_x+1e-30)+1e-30), dim=1)).tolist()
 
     state_x = (x<=0).float()
     state_y = (y<=0).float()
@@ -251,7 +255,8 @@ def test_loss_func(x, y, sg_model):
 
     return(
         mse_diff_log_loss, l1_diff_log_loss,
-        mse_prob_loss, l1_prob_loss, cross_entropy_prob_loss,
+        mse_prob_loss, l1_prob_loss,
+        cross_entropy_prob_loss, kl_div_prob_loss,
         var_state_accuracy, graph_state_accuracy,
         mse_logscore_state_loss, l1_logscore_state_loss,
     )
@@ -285,13 +290,13 @@ def train():
 #     with autograd.detect_anomaly():
     for e in range(EPOCH_COUNT):
         mse_diff_log_losses, l1_diff_log_losses = [], []
-        mse_prob_losses, l1_prob_losses, cross_entropy_prob_losses = [], [], []
+        mse_prob_losses, l1_prob_losses, cross_entropy_prob_losses, kl_div_prob_losses = [], [], [], []
         var_state_accuracies, graph_state_accuracies = [], []
         mse_logscore_state_losses, l1_logscore_state_losses = [], []
 
         for spin_glass_problem in spin_glass_models_list_train:
             exact_ln_partition_function = spin_glass_problem.marginal_junction_tree_libdai(
-                map_flag=True, classification_flag=False,)
+                map_flag=DATA_MAP_FLAG, classification_flag=False,)
             estimated_ln_partition_function = spin_glass_problem.marginal_loopyBP_libdai(
                 map_flag=MODEL_MAP_FLAG, updates=UPDATES,
                 damping=DAMPING, classification_flag=False,
@@ -299,7 +304,8 @@ def train():
             )
 
             mse_diff_log_loss, l1_diff_log_loss, \
-                mse_prob_loss, l1_prob_loss, cross_entropy_prob_loss,\
+                mse_prob_loss, l1_prob_loss, \
+                cross_entropy_prob_loss, kl_div_prob_loss,\
                 var_state_accuracy, graph_state_accuracy,\
                 mse_logscore_state_loss, l1_logscore_state_loss\
                 = test_loss_func(torch.tensor(estimated_ln_partition_function),
@@ -310,6 +316,7 @@ def train():
             mse_prob_losses += mse_prob_loss
             l1_prob_losses += l1_prob_loss
             cross_entropy_prob_losses += cross_entropy_prob_loss
+            kl_div_prob_losses += kl_div_prob_loss
             var_state_accuracies += var_state_accuracy
             graph_state_accuracies += graph_state_accuracy
             mse_logscore_state_losses += mse_logscore_state_loss
@@ -323,6 +330,7 @@ def train():
                 'RMSE_Prob_training': np.sqrt(np.mean(mse_prob_losses)),
                 'L1_Prob_training': np.mean(l1_prob_losses),
                 'CrossEntropy_Prob_training': np.mean(cross_entropy_prob_losses),
+                'KLDivergence_Prob_training': np.mean(kl_div_prob_losses),
                 'ACC_VarState_training': np.mean(var_state_accuracies),
                 'ACC_GraphState_training': np.mean(graph_state_accuracies),
                 'RMSE_LogScore_training': np.sqrt(np.mean(mse_logscore_state_losses)),
@@ -330,12 +338,12 @@ def train():
             })
 
         mse_diff_log_losses, l1_diff_log_losses = [], []
-        mse_prob_losses, l1_prob_losses, cross_entropy_prob_losses = [], [], []
+        mse_prob_losses, l1_prob_losses, cross_entropy_prob_losses, kl_div_prob_losses = [], [], [], []
         var_state_accuracies, graph_state_accuracies = [], []
         mse_logscore_state_losses, l1_logscore_state_losses = [], []
         for spin_glass_problem in spin_glass_models_list_val:
             exact_ln_partition_function = spin_glass_problem.marginal_junction_tree_libdai(
-                map_flag=True, classification_flag=False,)
+                map_flag=DATA_MAP_FLAG, classification_flag=False,)
             estimated_ln_partition_function = spin_glass_problem.marginal_loopyBP_libdai(
                 map_flag=MODEL_MAP_FLAG, updates=UPDATES,
                 damping=DAMPING, classification_flag=False,
@@ -343,7 +351,8 @@ def train():
             )
 
             mse_diff_log_loss, l1_diff_log_loss, \
-                mse_prob_loss, l1_prob_loss, cross_entropy_prob_loss,\
+                mse_prob_loss, l1_prob_loss, \
+                cross_entropy_prob_loss, kl_div_prob_loss,\
                 var_state_accuracy, graph_state_accuracy,\
                 mse_logscore_state_loss, l1_logscore_state_loss\
                 = test_loss_func(torch.tensor(estimated_ln_partition_function),
@@ -354,6 +363,7 @@ def train():
             mse_prob_losses += mse_prob_loss
             l1_prob_losses += l1_prob_loss
             cross_entropy_prob_losses += cross_entropy_prob_loss
+            kl_div_prob_losses += kl_div_prob_loss
             var_state_accuracies += var_state_accuracy
             graph_state_accuracies += graph_state_accuracy
             mse_logscore_state_losses += mse_logscore_state_loss
@@ -368,6 +378,7 @@ def train():
                 'RMSE_Prob_val': np.sqrt(np.mean(mse_prob_losses)),
                 'L1_Prob_val': np.mean(l1_prob_losses),
                 'CrossEntropy_Prob_val': np.mean(cross_entropy_prob_losses),
+                'KLDivergence_Prob_val': np.mean(kl_div_prob_losses),
                 'ACC_VarState_val': np.mean(var_state_accuracies),
                 'ACC_GraphState_val': np.mean(graph_state_accuracies),
                 'RMSE_LogScore_val': np.sqrt(np.mean(mse_logscore_state_losses)),
