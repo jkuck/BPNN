@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 #import mrftools
 from parameters_sbm import alpha, alpha2, LN_ZERO
-import mrftools
+#import mrftools
 
 __size_error_msg__ = ('All tensors which should get mapped to the same source '
                       'or target nodes must be of same size in dimension 0.')

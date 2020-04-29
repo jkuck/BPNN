@@ -1,4 +1,4 @@
-mport torch
+import torch
 from torch import autograd
 import pickle
 import wandb
@@ -18,7 +18,7 @@ import numpy as np
 import parameters_sbm
 from parameters_sbm import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, FINAL_MLP, BETHE_MLP, NUM_MLPS, N, A, B, C, NUM_SAMPLES_TRAIN, NUM_SAMPLES_VAL, SMOOTHING, BELIEF_REPEATS 
 
-USE_WANDB = True
+USE_WANDB = False
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 MODE = "test" #run "test" or "train" mode
 
@@ -429,13 +429,13 @@ if __name__ == "__main__":
 
     sbm_models_list_train = get_dataset(dataset_type='train')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sbm_models_fg_train = [build_factorgraph_from_sbm(sbm_model, BELIEF_REPEATS) for sbm_model in sbm_models_list_train]
+    sbm_models_fg_train = [build_factorgraph_from_sbm(sbm_model, C_TRAIN, BELIEF_REPEATS) for sbm_model in sbm_models_list_train]
     train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_train, batch_size=1)
 
     
     sbm_models_list_val = get_dataset(dataset_type='val')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sbm_models_fg_val = [build_factorgraph_from_sbm(sbm_model, BELIEF_REPEATS) for sbm_model in sbm_models_list_val]
+    sbm_models_fg_val = [build_factorgraph_from_sbm(sbm_model, C_TRAIN, BELIEF_REPEATS) for sbm_model in sbm_models_list_val]
     val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_val, batch_size=1)
     init_test_acc, init_test_overlap, init_test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, sbm_models_list_val, device=torch.device('cpu'), run_fc = False, initial = True)
     print("Initial BP Overlap: " + str(init_test_overlap))
