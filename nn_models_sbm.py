@@ -130,7 +130,10 @@ class lbp_message_passing_network(nn.Module):
                     pooled_states.append(cur_pooled_states)
         var_beliefs = torch.exp(prv_var_beliefs)
         if self.final_mlp:
+            var_beliefs = torch.flatten(var_beliefs, start_dim = 1, end_dim = 2) 
             var_beliefs = self.final_fc(var_beliefs)
+        else:
+            var_beliefs = torch.mean(var_beliefs, dim = 1)
         return var_beliefs
 
         if self.bethe_MLP:

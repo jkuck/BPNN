@@ -189,7 +189,7 @@ def train(model, data, optim, loss, scheduler, device):
         sbm_problem.to(device)
         labels = sbm_problem.gt_variable_labels
         optim.zero_grad()
-        var_beliefs = model(sbm_problem, return_beliefs = True, run_fc = True)
+        var_beliefs = model(sbm_problem)
         #print(var_beliefs)
         #time.sleep(1)
         #train_loss = loss(var_beliefs, labels)
@@ -308,7 +308,7 @@ def test(model, data, orig_data, device, run_fc = True, initial = False):
         sbm_model.to(device)
         if not initial:
             with torch.no_grad():
-                var_beliefs = model(sbm_model, return_beliefs = True, run_fc = run_fc)
+                var_beliefs = model(sbm_model)
         else:
             sbm_model_orig = orig_data[i]
             var_beliefs = runLBPLibdai(sbm_model_orig)
@@ -437,8 +437,8 @@ if __name__ == "__main__":
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
     sbm_models_fg_val = [build_factorgraph_from_sbm(sbm_model, C_TRAIN, BELIEF_REPEATS) for sbm_model in sbm_models_list_val]
     val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_val, batch_size=1)
-    init_test_acc, init_test_overlap, init_test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, sbm_models_list_val, device=torch.device('cpu'), run_fc = False, initial = True)
-    print("Initial BP Overlap: " + str(init_test_overlap))
+    #init_test_acc, init_test_overlap, init_test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, sbm_models_list_val, device=torch.device('cpu'), run_fc = False, initial = True)
+    #print("Initial BP Overlap: " + str(init_test_overlap))
     #time.sleep(100000)
     if USE_WANDB:
         wandb.log({"Initial BP Overlap": init_test_overlap, "Initial Loss": init_test_loss})        

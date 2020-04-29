@@ -478,7 +478,6 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         if normalize_beliefs:
             factor_beliefs = factor_beliefs - log_sum_exp_factor_beliefs#normalize factor beliefs
             check_normalization = torch.sum(torch.exp(factor_beliefs), dim=[i for i in range(2,2+factor_graph.state_dimensions)])
-            check_normalization = torch.sum(torch.exp(factor_beliefs), dim=[i for i in range(2,2+self.state_dimensions)])
             assert(torch.max(torch.abs(check_normalization-1)) < .00001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization)        
         
         assert((log_sum_exp_factor_beliefs != -np.inf).all()) #debugging
