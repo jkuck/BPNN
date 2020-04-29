@@ -9,6 +9,8 @@ from utils import dotdict, logminusexp, shift_func #wrote a helper function that
 
 import matplotlib.pyplot as plt
 import matplotlib
+#import mrftools
+from parameters_sbm import alpha, alpha2, LN_ZERO
 import mrftools
 from parameters import alpha, alpha2, LN_ZERO
 
@@ -140,8 +142,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     """
 
     def __init__(self, learn_BP=True, factor_state_space=None, var_cardinality=None, belief_repeats=None,\
-                 avoid_nans=True, lne_mlp=True, use_MLP1=True, use_MLP2=True, use_MLP3=False, use_MLP4=False,\
-                 learn_residual_weights=False, learn_damping_coefficients=False, initialize_exact_BP=True):
+                 avoid_nans=True, lne_mlp=True, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True,\
+                 learn_residual_weights=False, learn_damping_coefficients=False, initialize_exact_BP=False):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
         
         self.use_MLP1 = use_MLP1
@@ -163,6 +165,16 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         print("learn_BP:", learn_BP)
         if learn_BP:
             assert(factor_state_space is not None)     
+            self.linear1 = Linear(factor_state_space, factor_state_space*2)
+            self.linear2 = Linear(factor_state_space*2, factor_state_space)
+            #self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+            #self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+            #self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+            #self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+
+            self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space           
+            if lne_mlp:            
+                self.mlp1 = Seq(self.linear1, torch.nn.BatchNorm1d(factor_state_space * 2), ReLU(), self.linear2, torch.nn.BatchNorm1d(factor_state_space), torch.nn.Sigmoid())  
             self.linear1 = Linear(factor_state_space, factor_state_space)
             self.linear2 = Linear(factor_state_space, factor_state_space)
             self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
@@ -188,39 +200,51 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #                 self.shifted_relu1 = shift_func(ReLU(), shift=-50) #allow beliefs less than 0    
 
             #add factor potential after MLP
-            self.linear3 = Linear(factor_state_space, factor_state_space)
-            self.linear4 = Linear(factor_state_space, factor_state_space)
-            self.linear3.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-            self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-            self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-            self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+            self.linear3 = Linear(factor_state_space, factor_state_space*2)
+            self.linear4 = Linear(factor_state_space*2, factor_state_space)
+            #self.linear3.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+            #self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+            #self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+            #self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
             self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
             if lne_mlp:
-                self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu1) 
+                self.mlp2 = Seq(self.linear3, torch.nn.BatchNorm1d(factor_state_space*2), torch.nn.LeakyReLU(.2), self.linear4, torch.nn.BatchNorm1d(factor_state_space), torch.nn.Sigmoid()) 
             else:
                 self.mlp2 = Seq(self.linear3, self.linear4)  
 
-                
+            weight = torch.eye(var_cardinality*belief_repeats)
+            weights = [(weight + torch.randn_like(weight) * .1) * weight for i in range(4)]
+            rand = [torch.abs(torch.randn_like(weight)*.3) * (torch.ones_like(weight) - weight) for i in range(4)]
+            weight5 = weights[0] + rand[0]
+            weight6 = weights[1] + rand[1]
+            weight7 = weights[2] + rand[2]
+            weight8 = weights[3] + rand[3]
             self.linear5 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            self.linear55 = Linear(var_cardinality*belief_repeats*2, var_cardinality*belief_repeats*2)
             self.linear6 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
             if initialize_exact_BP:
-                self.linear5.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear5.weight = torch.nn.Parameter(weight5)
                 self.linear5.bias = torch.nn.Parameter(torch.zeros(self.linear5.bias.shape))
-                self.linear6.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear6.weight = torch.nn.Parameter(weight6)
                 self.linear6.bias = torch.nn.Parameter(torch.zeros(self.linear6.bias.shape))
-            self.mlp3 = Seq(self.linear5, self.linear6)  
+            #self.mlp3 = Seq(self.linear5, torch.nn.LeakyReLU(.2), self.linear6, torch.nn.Sigmoid())
+            self.mlp3 = Seq(self.linear5, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.LeakyReLU(.2), self.linear6, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())
+            #self.mlp3 = Seq(self.linear5, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear55, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear6, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())  
             self.alpha_mlp3 = torch.nn.Parameter(alpha2*torch.ones(1))
             
             self.linear7 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            self.linear75 = Linear(var_cardinality*belief_repeats*2, var_cardinality*belief_repeats*2)
             self.linear8 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
             if initialize_exact_BP:
-                self.linear7.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear7.weight = torch.nn.Parameter(weight7)
                 self.linear7.bias = torch.nn.Parameter(torch.zeros(self.linear7.bias.shape))
-                self.linear8.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear8.weight = torch.nn.Parameter(weight8)
                 self.linear8.bias = torch.nn.Parameter(torch.zeros(self.linear8.bias.shape))
-            self.mlp4 = Seq(self.linear7, self.linear8)  
-            self.alpha_mlp4 = torch.nn.Parameter(alpha2*torch.ones(1))
+            #self.mlp4 = Seq(self.linear7, torch.nn.LeakyReLU(.2), self.linear8, torch.nn.Sigmoid())
+            self.mlp4 = Seq(self.linear7, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.LeakyReLU(.2), self.linear8, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())
+            #self.mlp4 = Seq(self.linear7, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear75, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear8, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())  
+   
     
             
             
@@ -238,6 +262,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     
     #testing a simplified version, modelling GIN, that preserves no double counting computation graph
     def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs,\
+                  alpha=alpha, alpha2=alpha2, debug=False, normalize_messages=True, normalize_beliefs=True):
                   alpha=alpha, alpha2=alpha2, debug=False, normalize_messages=True, normalize_beliefs=False):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
@@ -288,6 +313,10 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 
                 factorToVar_messages_exp = torch.exp(factorToVar_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
                 assert(not torch.isnan(factorToVar_messages_exp).any()), factorToVar_messages_exp
+                #print("torch.min(factorToVar_messages_exp):", torch.min(factorToVar_messages_exp))
+                #print("torch.max(factorToVar_messages_exp):", torch.max(factorToVar_messages_exp))                
+                factorToVar_messages_postMLP = self.mlp3(factorToVar_messages_exp)
+                assert(not torch.isnan(factorToVar_messages_postMLP).any()), list(self.mlp3.parameters())
 #                 print("torch.min(factorToVar_messages_exp):", torch.min(factorToVar_messages_exp))
 #                 print("torch.max(factorToVar_messages_exp):", torch.max(factorToVar_messages_exp))                
                 factorToVar_messages_postMLP = self.mlp3(factorToVar_messages_exp)
@@ -330,11 +359,13 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             
             if self.lne_mlp:
                 varToFactor_messages_exp = torch.exp(varToFactor_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                varToFactor_messages_postMLP = self.mlp4(varToFactor_messages_exp)
                 varToFactor_messages_postMLP = self.mlp3(varToFactor_messages_exp)
                 varToFactor_messages_postMLP = torch.clamp(varToFactor_messages_postMLP, min=np.exp(LN_ZERO))
                 varToFactor_messages_postMLP = torch.log(varToFactor_messages_postMLP)
                 varToFactor_messages_postMLP = torch.clamp(varToFactor_messages_postMLP, min=LN_ZERO)
             else:
+                varToFactor_messages_postMLP = self.mlp4(varToFactor_messages)            
                 varToFactor_messages_postMLP = self.mlp3(varToFactor_messages)            
             
             if self.learn_residual_weights:
@@ -452,6 +483,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         assert(len(factor_beliefs.shape) == (factor_graph.state_dimensions + 2))#dimension for #factors, belief_repeats, each state dimension
         if normalize_beliefs:
             factor_beliefs = factor_beliefs - log_sum_exp_factor_beliefs#normalize factor beliefs
+            check_normalization = torch.sum(torch.exp(factor_beliefs), dim=[i for i in range(2,2+factor_graph.state_dimensions)])
             check_normalization = torch.sum(torch.exp(factor_beliefs), dim=[i for i in range(2,2+self.state_dimensions)])
             assert(torch.max(torch.abs(check_normalization-1)) < .00001), (torch.sum(torch.abs(check_normalization-1)), torch.max(torch.abs(check_normalization-1)), check_normalization)        
         
