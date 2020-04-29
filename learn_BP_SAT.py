@@ -1,31 +1,36 @@
 import torch
 from torch import autograd
-from nn_models import lbp_message_passing_network
+from nn_models import lbp_message_passing_network, USE_OLD_CODE
 from sat_helpers.libdai_utils_sat import run_loopyBP
 # from torch.utils.data import DataLoader
 # from torch_geometric.data import DataLoader
 
-from sat_helpers.sat_data import SatProblems, get_SATproblems_list, parse_dimacs
-from factor_graph import DataLoader_custom as DataLoader
-
-# from sat_helpers.sat_data_partialRefactor import SatProblems, get_SATproblems_list, parse_dimacs
-# from factor_graph_partialRefactor import DataLoader_custom as DataLoader
-
+if USE_OLD_CODE:
+# if False:
+    from sat_helpers.sat_data_partialRefactor import SatProblems, get_SATproblems_list, parse_dimacs
+    from factor_graph_partialRefactor import DataLoader_custom as DataLoader
+    SQUEEZE_BELIEF_REPEATS = True
+    
+else:
+    from sat_helpers.sat_data import SatProblems, get_SATproblems_list, get_SATproblems_list_parallel, parse_dimacs
+    from factor_graph import DataLoader_custom as DataLoader
+    SQUEEZE_BELIEF_REPEATS = False
+    
+    
 import os
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
 from data.SAT_train_test_split import ALL_TRAIN_PROBLEMS, ALL_TEST_PROBLEMS
 import wandb
-from parameters import ROOT_DIR, alpha, alpha2
+from parameters import ROOT_DIR, alpha2
 import random
 import resource
 import time
 import json
 import argparse
 
-SET_TRUE_POST_DEBUGGING = False
-SQUEEZE_BELIEF_REPEATS = False
+SET_TRUE_POST_DEBUGGING = True
 
 def boolean_string(s):    
     if s not in {'False', 'True'}:
@@ -46,19 +51,24 @@ parser.add_argument('--batch_size', type=int, default=1)
 
 # 0.0001
 # 0.0005
-parser.add_argument('--learning_rate', type=float, default=0.00001)
+parser.add_argument('--learning_rate', type=float, default=0.0001)
+# parser.add_argument('--learning_rate', type=float, default=0.000)
+
+#damping parameter
+parser.add_argument('--alpha_damping_FtoV', type=float, default=1.0)
+parser.add_argument('--alpha_damping_VtoF', type=float, default=1.0)
 
 
 #if true, mlps operate in standard space rather than log space
 parser.add_argument('--lne_mlp', type=boolean_string, default=True)
 
 #original MLPs that operate on factor beliefs (problematic because they're not index invariant)
-parser.add_argument('--use_MLP1', type=boolean_string, default=True)
-parser.add_argument('--use_MLP2', type=boolean_string, default=True)
+parser.add_argument('--use_MLP1', type=boolean_string, default=False)
+parser.add_argument('--use_MLP2', type=boolean_string, default=False)
 
 #new MLPs that operate on variable beliefs
-parser.add_argument('--use_MLP3', type=boolean_string, default=False)
-parser.add_argument('--use_MLP4', type=boolean_string, default=False)
+parser.add_argument('--use_MLP3', type=boolean_string, default=True)
+parser.add_argument('--use_MLP4', type=boolean_string, default=True)
 
 #if true, share the weights between layers in a BPNN
 parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=False)
@@ -68,8 +78,12 @@ parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='none',\
+parser.add_argument('--bethe_mlp', type=str, default='linear',\
     choices=['shifted','standard','linear','none'])
+
+#if True, use the old Bethe approximation that doesn't work with batches
+#only valid for bethe_mlp='none'
+parser.add_argument('--use_old_bethe', type=boolean_string, default=False)
 
 #for reproducing random train/val split
 #args.random_seed = 0 and 1 seem to produce very different results for s_problems
@@ -129,7 +143,7 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
 TRAINING_DATA_SIZE = 3
-VAL_DATA_SIZE = 3#100
+VAL_DATA_SIZE = 3 #100
 TEST_DATA_SIZE = 1000
 
 ########## info by problem groups and categories ##########
@@ -194,6 +208,7 @@ PROBLEM_CATEGORY_TEST = 'or_60_problems'
 #contains .txt files for each sat probolem with solution counts
 # SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_counts_uai/"
 SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/exact_SAT_counts_noIndSets/"
+# SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/dummy_debugging_counts/"
 # SOLUTION_COUNTS_DIR = TRAINING_DATA_DIR + "SAT_problems_solved"
 
 
@@ -203,7 +218,7 @@ SAVE_FREQUENCY = 100
 VAL_FREQUENCY = 10
 ##########################
 ##### Optimizer parameters #####
-STEP_SIZE=100
+STEP_SIZE=200
 LR_DECAY=.5 
 LEARNING_RATE = args.learning_rate
 # LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
@@ -224,9 +239,11 @@ LEARNING_RATE = args.learning_rate
 
 # USE_WANDB = False
 # if USE_WANDB:
-os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
+# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 # wandb.init(project="learn_BP_sat_reproduce6")
-wandb.init(project="learn_BP_sat_reproduceFromOldCode")
+# wandb.init(project="learn_BP_sat_reproduceFromOldCode")
+# wandb.init(project="learn_BP_sat_compareParams2_allProblems")
+wandb.init(project="learn_BP_sat_debug")
 
 # wandb.init(project="test")
 wandb.config.epochs = EPOCH_COUNT
@@ -234,7 +251,8 @@ wandb.config.train_val_split = args.train_val_split #"random_shuffle"#"easyTrain
 wandb.config.PROBLEM_CATEGORY_TRAIN = args.problem_category_train
 wandb.config.PROBLEM_CATEGORY_VAL = PROBLEM_CATEGORY_VAL
 # wandb.config.TRAINING_DATA_SIZE = TRAINING_DATA_SIZE
-wandb.config.alpha = alpha
+wandb.config.alpha_damping_FtoV = args.alpha_damping_FtoV
+wandb.config.alpha_damping_VtoF = args.alpha_damping_VtoF
 wandb.config.alpha2 = alpha2
 wandb.config.msg_passing_iters = args.msg_passing_iters
 wandb.config.STEP_SIZE = STEP_SIZE
@@ -255,15 +273,18 @@ wandb.config.use_MLP4 = args.use_MLP4
 wandb.config.SHARE_WEIGHTS = args.SHARE_WEIGHTS
 wandb.config.subtract_prv_messages = args.subtract_prv_messages
 
+wandb.config.use_old_bethe = args.use_old_bethe
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print("device:", device)
 # device = 'cpu'
+print("device:", device)
 
 # tiny_set = ["10.sk_1_46", "27.sk_3_32"]
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=args.max_factor_state_dimensions, msg_passing_iters=args.msg_passing_iters,\
     lne_mlp=args.lne_mlp, use_MLP1=args.use_MLP1, use_MLP2=args.use_MLP2, use_MLP3=args.use_MLP3, use_MLP4=args.use_MLP4,\
     subtract_prv_messages=args.subtract_prv_messages, share_weights = args.SHARE_WEIGHTS, bethe_MLP=args.bethe_mlp,\
-    belief_repeats=args.belief_repeats, var_cardinality=VAR_CARDINALITY)
+    belief_repeats=args.belief_repeats, var_cardinality=VAR_CARDINALITY, alpha_damping_FtoV=args.alpha_damping_FtoV,\
+    alpha_damping_VtoF=args.alpha_damping_VtoF, use_old_bethe=args.use_old_bethe)
 # lbp_net.double()
 lbp_net = lbp_net.to(device)
 
@@ -426,10 +447,13 @@ def train():
 
             assert(sat_problem.state_dimensions == args.max_factor_state_dimensions)
             estimated_ln_partition_function = lbp_net(sat_problem)
-
-#             print("estimated_ln_partition_function:", estimated_ln_partition_function)
+            
+            # print("estimated_ln_partition_function:", estimated_ln_partition_function)
+            # print("exact_ln_partition_function:", exact_ln_partition_function)            
+#             time.sleep(.5)
+#             
+#             sleep(stop_early)
             # print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
-#             print("exact_ln_partition_function:", exact_ln_partition_function)
             # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
 #             print("estimated_ln_partition_function.shape:", estimated_ln_partition_function.shape)
 #             print("exact_ln_partition_function.shape:", exact_ln_partition_function.shape)
@@ -437,7 +461,7 @@ def train():
             loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float().squeeze())
             # print("loss:", loss)
             # print()
-            assert(estimated_ln_partition_function.numel() == exact_ln_partition_function.numel())
+            assert(estimated_ln_partition_function.numel() == exact_ln_partition_function.numel()), (estimated_ln_partition_function.numel(), exact_ln_partition_function.numel())
             loss_sum += loss.item()*estimated_ln_partition_function.numel()
             training_problem_count_check += estimated_ln_partition_function.numel()
 #             epoch_loss += loss

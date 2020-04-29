@@ -12,11 +12,14 @@ import math
 import time
 
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
-from bpnn_model_partialRefactor import FactorGraphMsgPassingLayer_NoDoubleCounting
 # from bpnn_model_partialRefactorNoBeliefRepeats import FactorGraphMsgPassingLayer_NoDoubleCounting
-from bpnn_model_clean import logsumexp_multipleDim
-
-# from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
+USE_OLD_CODE = False
+if USE_OLD_CODE:
+    from bpnn_model_partialRefactorNoBeliefRepeats import FactorGraphMsgPassingLayer_NoDoubleCounting
+#     from bpnn_model_partialRefactor import FactorGraphMsgPassingLayer_NoDoubleCounting
+    from bpnn_model_clean import logsumexp_multipleDim
+else:
+    from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
 
 from parameters import alpha2
 import time
@@ -24,7 +27,7 @@ class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, lne_mlp, use_MLP1, use_MLP2, use_MLP3, use_MLP4,
                  subtract_prv_messages, share_weights, bethe_MLP,
                 belief_repeats=None, var_cardinality=None, learn_bethe_residual_weight=False,
-                 initialize_to_exact_bethe = True):
+                 initialize_to_exact_bethe = True, alpha_damping_FtoV=None, alpha_damping_VtoF=None, use_old_bethe=None):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -58,11 +61,11 @@ class lbp_message_passing_network(nn.Module):
         self.bethe_MLP = bethe_MLP
         self.belief_repeats = belief_repeats
         self.learn_bethe_residual_weight = learn_bethe_residual_weight
+        self.use_old_bethe = use_old_bethe
         if learn_bethe_residual_weight:
             self.alpha_betheMLP = torch.nn.Parameter(alpha2*torch.ones(1))
             assert(initialize_to_exact_bethe == False), "Set initialize_to_exact_bethe=False when learn_bethe_residual_weight=True"
             
-        USE_OLD_CODE = True
         if USE_OLD_CODE:
             if share_weights:
                 self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions)
@@ -73,12 +76,12 @@ class lbp_message_passing_network(nn.Module):
             if share_weights:
                 self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                     var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
-                    use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages)
+                    use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)
             else:
                 self.message_passing_layers = nn.ModuleList([\
                     FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                         var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
-                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages)\
+                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)\
                                                              for i in range(msg_passing_iters)])
 
         if bethe_MLP != 'none':
@@ -223,7 +226,7 @@ class lbp_message_passing_network(nn.Module):
                 return learned_estimated_ln_partition_function
         
         else:
-            if True:
+            if self.use_old_bethe:
 #                 print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
 #                 print("prv_var_beliefs.shape:", prv_var_beliefs.shape)
 #                 print("factor_graph.factor_potentials.shape:", factor_graph.factor_potentials.shape)                

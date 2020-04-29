@@ -13,8 +13,11 @@ import matplotlib
 import mrftools
 from parameters import alpha, alpha2, NUM_MLPS
 
+import time
 
 COMPARE_REFACTOR = False
+
+PRINT_INFO = False
 
 __size_error_msg__ = ('All tensors which should get mapped to the same source '
                       'or target nodes must be of same size in dimension 0.')
@@ -234,26 +237,25 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         - factor_beliefs (tensor): updated factor_beliefs 
         - var_beliefs (tensor): updated var_beliefs 
         """
-        
-#         print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
-        
+        if PRINT_INFO:
+            print()
+            print("123 propagate just called :)")
+            print("factor_graph.factor_potentials:", factor_graph.factor_potentials)
+            print("123 prv_varToFactor_messages:", prv_varToFactor_messages)                       
+            print("123 prv_factorToVar_messages:", prv_factorToVar_messages)         
+            print("123 prv_factor_beliefs:", prv_factor_beliefs)         
+
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         assert(not torch.isnan(prv_factor_beliefs).any()), prv_factor_beliefs
         assert(factor_graph is not None)
         #update variable beliefs
-#         print("123 prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
-#         print("123 prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)        
         factorToVar_messages = alpha*self.message_factorToVar(prv_factor_beliefs=prv_factor_beliefs, factor_graph=factor_graph,\
                                                               prv_varToFactor_messages=prv_varToFactor_messages) +\
                                (1 - alpha)*prv_factorToVar_messages
-#        print("123 factorToVar_messages.shape:", factorToVar_messages.shape)
         
         assert(not torch.isnan(factorToVar_messages).any()), prv_factor_beliefs
 
         
-        #print("123debug0 factorToVar_messages =", factorToVar_messages)
-#         print("factor_graph.numVars:", factor_graph.numVars)
-#         sleep(temp)
 
         #works with batch_size=1
 #         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1], dim_size=factor_graph.numVars)
@@ -265,22 +267,17 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
 #         print("factorToVar_messages.shape:", factorToVar_messages.shape)
         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1])
-#         print("var_beliefs.shape:", var_beliefs.shape)
-    
-#         print("factorToVar_messages:", factorToVar_messages)
-#         print("factor_graph.facToVar_edge_idx[1]:", factor_graph.facToVar_edge_idx[1])
-#         print("factor_graph.facToVar_edge_idx:", factor_graph.facToVar_edge_idx)
-#         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1])#, dim_size=torch.sum(factor_graph.numVars))
-#         print("var_beliefs:", var_beliefs)
 
-        #print("123debug1 var_beliefs =", var_beliefs)
+        if PRINT_INFO:
+            print("123 factorToVar_messages:", factorToVar_messages)                       
+            print("123 var_beliefs:", var_beliefs)         
 
         if debug:
             print("var_beliefs pre norm:", torch.exp(var_beliefs))
         assert(len(var_beliefs.shape) == 3), var_beliefs.shape
 #         var_beliefs = var_beliefs - logsumexp_multipleDim(var_beliefs, dim=0).view(-1,1)#normalize variable beliefs
         var_beliefs = var_beliefs - logsumexp_multipleDim_new(var_beliefs, dim_to_keep=[0, 1])#normalize variable beliefs   
-        #print("567 var_beliefs[0,::]:", var_beliefs[0,::])
+        #print("567var_beliefs[0,::]:", var_beliefs[0,::])
         if COMPARE_REFACTOR:
             var_beliefs_sq = var_beliefs.squeeze()
             var_beliefs_sq = var_beliefs_sq - logsumexp_multipleDim(var_beliefs_sq, dim=0).view(-1,1)#normalize variable beliefs
@@ -306,17 +303,18 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #        print("123 var_beliefs.shape:", var_beliefs.shape)
 #        print("123 factorToVar_messages.shape:", factorToVar_messages.shape)
 
+              
+
         varToFactor_messages = self.message_varToFactor(var_beliefs, factor_graph, prv_factorToVar_messages=factorToVar_messages)
 #        print("123 varToFactor_messages.shape:", varToFactor_messages.shape)
         
+        if PRINT_INFO:
+            print("123 varToFactor_messages:", varToFactor_messages)                       
+    
+    
         assert(not torch.isnan(varToFactor_messages).any()), prv_factor_beliefs
         
-        
-        #print("123debug2 varToFactor_messages =", varToFactor_messages)
-        
-#         print("!"*10)
-#         print("varToFactor_messages.shape:", varToFactor_messages.shape)        
-#         print("factor_graph.state_dimensions:", factor_graph.state_dimensions)
+                
         expansion_list = [2 for i in range(factor_graph.state_dimensions - 1)] + [-1,] #messages have states for one variable, add dummy dimensions for the other variables in factors
 
         fast_expansion = True
@@ -333,18 +331,13 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             varToFactor_messages_expand = varToFactor_messages_expand.transpose(-2, 0).transpose(-1, 1)
             varToFactor_messages_expand_flatten = varToFactor_messages_expand.flatten()
             
-            #print("567 varToFactor_messages.shape:", varToFactor_messages.shape)               
-            #print("567 varToFactor_messages_expand_flatten.shape:", varToFactor_messages_expand_flatten.shape)   
-                        
-            #print("567 varToFactor_messages_expand_flatten[0:32]]:", varToFactor_messages_expand_flatten[0:32])
-            #print("567 factor_graph.varToFactorMsg_scatter_indices[0:32]]:", factor_graph.varToFactorMsg_scatter_indices[0:32])            
+           
             
-#             sleep(temp_234)
             varToFactor_expandedMessages = scatter_('add', src=varToFactor_messages_expand_flatten, index=factor_graph.varToFactorMsg_scatter_indices, dim=0)            
             varToFactor_expandedMessages = varToFactor_expandedMessages.reshape(new_shape)
             #print("123debug2 varToFactor_expandedMessages =", varToFactor_expandedMessages)
-            #print("567 1 varToFactor_expandedMessages[0,::]:", varToFactor_expandedMessages[0,::])
-            #print("567 varToFactor_expandedMessages.shape:", varToFactor_expandedMessages.shape)
+            #print("5671 varToFactor_expandedMessages[0,::]:", varToFactor_expandedMessages[0,::])
+            #print("567varToFactor_expandedMessages.shape:", varToFactor_expandedMessages.shape)
             
             compare_with_pairwise_factor_method = False
             if compare_with_pairwise_factor_method:
@@ -395,7 +388,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 
 #                 print("1 varToFactor_expandedMessages.shape:", varToFactor_expandedMessages.shape)
                 varToFactor_expandedMessages = varToFactor_expandedMessages - logsumexp_multipleDim_new(varToFactor_expandedMessages, dim_to_keep=[0])#normalize   
-                #print("567 varToFactor_expandedMessages[0,::]:", varToFactor_expandedMessages[0,::])
+                #print("567varToFactor_expandedMessages[0,::]:", varToFactor_expandedMessages[0,::])
                 if COMPARE_REFACTOR:
                     normalization_view = [1 for i in range(len(varToFactor_expandedMessages.shape))]
                     normalization_view[0] = -1
@@ -459,6 +452,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
                 factor_beliefs = factor_beliefs.unsqueeze(dim=1)
                 factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
+                if PRINT_INFO:
+                    print("123 factor_beliefs:", factor_beliefs)                       
 
 
 
@@ -576,6 +571,12 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             print("factor_graph.facToVar_edge_idx:", factor_graph.facToVar_edge_idx)
             sleep(debug34)
         
+        if PRINT_INFO:
+            print("123 final factor_beliefs:", factor_beliefs)                       
+            print("finished message passing layer, returning :)")                       
+            time.sleep(.5)
+            print()
+        
         return varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs
 
 
@@ -639,9 +640,16 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #                 print("marginalized_states_fast:", marginalized_states_fast)
 #                 sleep(marginalized_states_fast)
 
+
+
                 #exclude 'junk bin' with [:-1]
                 marginalized_states = marginalized_states_fast[:-1].view((2,num_edges)).permute(1,0)
-#                print("1234 marginalized_states.shape:", marginalized_states.shape)
+               
+                if PRINT_INFO:
+                    print("mapped_factor_beliefs:", mapped_factor_beliefs)
+                    print("factor_graph.facStates_to_varIdx:", factor_graph.facStates_to_varIdx)
+                    print("marginalized_states_fast:", marginalized_states_fast)
+                    print("123 marginalized_states:", marginalized_states)
         
                 #correct for batch size > 1
 #                 batch_size = factor_graph.num_graphs
@@ -701,10 +709,12 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 #         print("12345 marginalized_states.shape:", marginalized_states.shape)
 #         print("12345 prv_varToFactor_messages_zeroed.shape:", prv_varToFactor_messages_zeroed.shape)
 
+
         messages = marginalized_states - prv_varToFactor_messages_zeroed.squeeze()
-        #print("567 marginalized_states[0,::]:", marginalized_states[0,::])
-        #print("567 prv_varToFactor_messages_zeroed[0,::]:", prv_varToFactor_messages_zeroed[0,::])
-        #print("567 messages[0,::]:", messages[0,::])        
+        
+        #print("567marginalized_states[0,::]:", marginalized_states[0,::])
+        #print("567prv_varToFactor_messages_zeroed[0,::]:", prv_varToFactor_messages_zeroed[0,::])
+        #print("567messages[0,::]:", messages[0,::])        
 #         print("messages:", messages)
 #         sleep(aslkdfjlaksf)
         
