@@ -12,7 +12,6 @@ import matplotlib
 #import mrftools
 from parameters_sbm import alpha, alpha2, LN_ZERO
 import mrftools
-from parameters import alpha, alpha2, LN_ZERO
 
 __size_error_msg__ = ('All tensors which should get mapped to the same source '
                       'or target nodes must be of same size in dimension 0.')
@@ -244,7 +243,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             #self.mlp4 = Seq(self.linear7, torch.nn.LeakyReLU(.2), self.linear8, torch.nn.Sigmoid())
             self.mlp4 = Seq(self.linear7, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.LeakyReLU(.2), self.linear8, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())
             #self.mlp4 = Seq(self.linear7, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear75, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear8, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())  
-   
+            self.alpha_mlp4 = torch.nn.Parameter(alpha2*torch.ones(1)) 
     
             
             
@@ -263,7 +262,6 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     #testing a simplified version, modelling GIN, that preserves no double counting computation graph
     def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs,\
                   alpha=alpha, alpha2=alpha2, debug=False, normalize_messages=True, normalize_beliefs=True):
-                  alpha=alpha, alpha2=alpha2, debug=False, normalize_messages=True, normalize_beliefs=False):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
 
@@ -316,13 +314,11 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 #print("torch.min(factorToVar_messages_exp):", torch.min(factorToVar_messages_exp))
                 #print("torch.max(factorToVar_messages_exp):", torch.max(factorToVar_messages_exp))                
                 factorToVar_messages_postMLP = self.mlp3(factorToVar_messages_exp)
-                assert(not torch.isnan(factorToVar_messages_postMLP).any()), list(self.mlp3.parameters())
+                #assert(not torch.isnan(factorToVar_messages_postMLP).any()), list(self.mlp3.parameters())
 #                 print("torch.min(factorToVar_messages_exp):", torch.min(factorToVar_messages_exp))
 #                 print("torch.max(factorToVar_messages_exp):", torch.max(factorToVar_messages_exp))                
-                factorToVar_messages_postMLP = self.mlp3(factorToVar_messages_exp)
                 assert(not torch.isnan(factorToVar_messages_postMLP).any()), factorToVar_messages_postMLP
                 factorToVar_messages_postMLP = torch.clamp(factorToVar_messages_postMLP, min=np.exp(LN_ZERO))
-                assert(not torch.isnan(factorToVar_messages_postMLP).any()), factorToVar_messages_postMLP                
                 factorToVar_messages_postMLP = torch.log(factorToVar_messages_postMLP)
                 factorToVar_messages_postMLP = torch.clamp(factorToVar_messages_postMLP, min=LN_ZERO)
             else:
@@ -360,13 +356,11 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             if self.lne_mlp:
                 varToFactor_messages_exp = torch.exp(varToFactor_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
                 varToFactor_messages_postMLP = self.mlp4(varToFactor_messages_exp)
-                varToFactor_messages_postMLP = self.mlp3(varToFactor_messages_exp)
                 varToFactor_messages_postMLP = torch.clamp(varToFactor_messages_postMLP, min=np.exp(LN_ZERO))
                 varToFactor_messages_postMLP = torch.log(varToFactor_messages_postMLP)
                 varToFactor_messages_postMLP = torch.clamp(varToFactor_messages_postMLP, min=LN_ZERO)
             else:
                 varToFactor_messages_postMLP = self.mlp4(varToFactor_messages)            
-                varToFactor_messages_postMLP = self.mlp3(varToFactor_messages)            
             
             if self.learn_residual_weights:
                 varToFactor_messages = (1-self.alpha_mlp4)*varToFactor_messages_postMLP + self.alpha_mlp4*varToFactor_messages
