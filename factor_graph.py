@@ -708,7 +708,7 @@ class DataLoader_custom(torch.utils.data.DataLoader):
     def __init__(self,
                  dataset,
                  batch_size=1,
-                 shuffle=False,
+                 shuffle=True,
                  follow_batch=[],
                  **kwargs):
         super(DataLoader_custom, self).__init__(
