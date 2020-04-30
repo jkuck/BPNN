@@ -53,7 +53,7 @@ parser.add_argument('--batch_size', type=int, default=50)
 # LEARNING_RATE = 0.005 #10layer        
 # LEARNING_RATE = 0.001 #30layer trial 
 parser.add_argument('--learning_rate', type=float, default=0.0005)
-# parser.add_argument('--learning_rate', type=float, default=0.000)
+# parser.add_argument('--learning_rate', type=float, default=0.002)
 
 #damping parameter
 parser.add_argument('--alpha_damping_FtoV', type=float, default=1.0)

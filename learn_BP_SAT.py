@@ -71,14 +71,14 @@ parser.add_argument('--use_MLP3', type=boolean_string, default=True)
 parser.add_argument('--use_MLP4', type=boolean_string, default=True)
 
 #if true, share the weights between layers in a BPNN
-parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=True)
+parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=False)
 
 #if true, subtract previously sent messages (to avoid 'double counting')
 parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True)
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='none',\
+parser.add_argument('--bethe_mlp', type=str, default='linear',\
     choices=['shifted','standard','linear','none'])
 
 #if True, use the old Bethe approximation that doesn't work with batches
@@ -142,8 +142,8 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 1000
-VAL_DATA_SIZE = 1000 #100
+TRAINING_DATA_SIZE = 3
+VAL_DATA_SIZE = 3 #100
 TEST_DATA_SIZE = 1000
 
 ########## info by problem groups and categories ##########
@@ -242,7 +242,7 @@ LEARNING_RATE = args.learning_rate
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 # wandb.init(project="learn_BP_sat_reproduce6")
 # wandb.init(project="learn_BP_sat_reproduceFromOldCode")
-wandb.init(project="learn_BP_sat_compareParams_mlp4Debug")
+wandb.init(project="learn_BP_sat_compareParams_mlp4Debug_normalizeBeliefs")
 # wandb.init(project="learn_BP_sat_debug")
 
 # wandb.init(project="test")
@@ -447,9 +447,13 @@ def train():
 
             assert(sat_problem.state_dimensions == args.max_factor_state_dimensions)
             estimated_ln_partition_function = lbp_net(sat_problem)
-            
-            print("estimated_ln_partition_function:", estimated_ln_partition_function)
-            print("exact_ln_partition_function:", exact_ln_partition_function)            
+            # estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
+            #     prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)
+            # vTof_convergence_loss = loss_func(prv_varToFactor_messages, prv_prv_varToFactor_messages)
+            # fTov_convergence_loss = loss_func(prv_factorToVar_messages, prv_prv_factorToVar_messages)
+
+            # print("estimated_ln_partition_function:", estimated_ln_partition_function)
+            # print("exact_ln_partition_function:", exact_ln_partition_function)            
 #             time.sleep(.5)
 #             
 #             sleep(stop_early)
@@ -478,6 +482,8 @@ def train():
         training_RMSE = np.sqrt(loss_sum/training_problem_count_check)
         if e % PRINT_FREQUENCY == 0:
             print("epoch:", e, "root mean squared training error =", training_RMSE)
+            # print("vTof_convergence_loss =", vTof_convergence_loss)
+            # print("fTov_convergence_loss =", fTov_convergence_loss)
             
         if e % VAL_FREQUENCY == 0:
 #             print('-'*40, "check weights 1234", '-'*40)
@@ -509,7 +515,10 @@ def train():
                 sat_problem = sat_problem.to(device)
                 exact_ln_partition_function = sat_problem.ln_Z
                 assert(sat_problem.state_dimensions == args.max_factor_state_dimensions)
-                estimated_ln_partition_function = lbp_net(sat_problem)                
+                estimated_ln_partition_function = lbp_net(sat_problem)   
+                # estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
+                #     prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)                
+
                 loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float().squeeze())
 #                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
 #                 print("exact_ln_partition_function:", exact_ln_partition_function)

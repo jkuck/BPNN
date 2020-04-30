@@ -255,7 +255,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     
     #testing a simplified version, modelling GIN, that preserves no double counting computation graph
     def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs,\
-                  alpha2=alpha2, debug=False, normalize_messages=True, normalize_beliefs=False):
+                  alpha2=alpha2, debug=False, normalize_messages=False, normalize_beliefs=True):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
 
