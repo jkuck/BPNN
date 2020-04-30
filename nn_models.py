@@ -77,6 +77,10 @@ class lbp_message_passing_network(nn.Module):
                 self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                     var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
                     use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)
+                
+                self.fixed_BP_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
+                    var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=False, use_MLP2=False, 
+                    use_MLP3=False, use_MLP4=False, subtract_prv_messages=True, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF) 
             else:
                 self.message_passing_layers = nn.ModuleList([\
                     FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
@@ -138,8 +142,10 @@ class lbp_message_passing_network(nn.Module):
         pooled_states = []
         
         if self.share_weights:
-            for iter in range(self.msg_passing_iters):
-#                 print("BPNN iter:", iter)
+            # for iter in range(self.msg_passing_iters):
+            random_msg_passing_iters = np.random.randint(10, 30)
+            # random_msg_passing_iters = 300
+            for iter in range(random_msg_passing_iters):
                 varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
                     self.message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                           prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
@@ -175,6 +181,9 @@ class lbp_message_passing_network(nn.Module):
 #                     time.sleep(.05)                    
 #                     print()
                     
+                prv_prv_varToFactor_messages = prv_varToFactor_messages
+                prv_prv_factorToVar_messages = prv_factorToVar_messages
+
                 prv_varToFactor_messages = varToFactor_messages
                 prv_factorToVar_messages = factorToVar_messages
                 prv_var_beliefs = var_beliefs
@@ -182,7 +191,28 @@ class lbp_message_passing_network(nn.Module):
                 
                 if self.bethe_MLP != 'none':
                     cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-                    pooled_states.append(cur_pooled_states)            
+                    pooled_states.append(cur_pooled_states)  
+
+            #apply BP for a random number of iterations
+            #goal is to get consistency between variable and factor beleifs
+            random_fixed_BP_iters = np.random.randint(10, 30)
+            # random_msg_passing_iters = 300
+            for iter in range(random_msg_passing_iters):
+                varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
+                    self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                                          prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+    
+                prv_prv_varToFactor_messages = prv_varToFactor_messages
+                prv_prv_factorToVar_messages = prv_factorToVar_messages
+
+                prv_varToFactor_messages = varToFactor_messages
+                prv_factorToVar_messages = factorToVar_messages
+                prv_var_beliefs = var_beliefs
+                prv_factor_beliefs = factor_beliefs
+                    
+                
+
+
         else:
             for message_passing_layer in self.message_passing_layers:
 #                 print("prv_varToFactor_messages:", prv_varToFactor_messages)
@@ -257,7 +287,8 @@ class lbp_message_passing_network(nn.Module):
             #corrected for batch_size > 1
             final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
             estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)/self.belief_repeats
-            return estimated_ln_partition_function            
+            return estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages, prv_varToFactor_messages, prv_factorToVar_messages
+            # return estimated_ln_partition_function            
 
 
 
@@ -370,6 +401,17 @@ class lbp_message_passing_network(nn.Module):
 #             print("factor_beliefs.shape:", factor_beliefs.shape)                    
             normalized_factor_beliefs = factor_beliefs - logsumexp_multipleDim(factor_beliefs, dim_to_keep=[0,1])#normalize factor beliefs
             check_normalization = torch.sum(torch.exp(normalized_factor_beliefs), dim=[i for i in range(2,len(factor_beliefs.shape))])
+
+            CHECK_CONSISTENCY = False
+            if CHECK_CONSISTENCY:
+                print("normalized_factor_beliefs:", normalized_factor_beliefs)
+                print("unary factor beliefs:", normalized_factor_beliefs[:10,:,:,0])
+                print("normalized_var_beliefs:", normalized_var_beliefs[:10,::])                
+                print("normalized_factor_beliefs.shape:", normalized_factor_beliefs.shape)
+                print("normalized_var_beliefs.shape:", normalized_var_beliefs.shape)
+                # sleep(temp)
+                # assert(normalized_var_beliefs)
+
 #             print("normalized_factor_beliefs.shape:", normalized_factor_beliefs.shape)        
 #             print("check_normalization.shape:", check_normalization.shape)
 #             print("check_normalization:", check_normalization)

@@ -39,7 +39,7 @@ def boolean_string(s):
 
 parser = argparse.ArgumentParser()
 #the number of iterations of message passing, we have this many layers with their own learnable parameters
-parser.add_argument('--msg_passing_iters', type=int, default=20)
+parser.add_argument('--msg_passing_iters', type=int, default=10)
 #messages have var_cardinality states in standard belief propagation.  belief_repeats artificially
 #increases this number so that messages have belief_repeats*var_cardinality states, analogous
 #to increasing node feature dimensions in a standard graph neural network
@@ -52,8 +52,12 @@ parser.add_argument('--batch_size', type=int, default=50)
 #works well for training on mixed field
 # LEARNING_RATE = 0.005 #10layer        
 # LEARNING_RATE = 0.001 #30layer trial 
-parser.add_argument('--learning_rate', type=float, default=0.00055)
+parser.add_argument('--learning_rate', type=float, default=0.0005)
+# parser.add_argument('--learning_rate', type=float, default=0.000)
 
+#damping parameter
+parser.add_argument('--alpha_damping_FtoV', type=float, default=1.0)
+parser.add_argument('--alpha_damping_VtoF', type=float, default=1.0) #this damping wasn't used in the old code
 
 #if true, mlps operate in standard space rather than log space
 parser.add_argument('--lne_mlp', type=boolean_string, default=True)
@@ -70,15 +74,19 @@ parser.add_argument('--use_MLP4', type=boolean_string, default=True)
 parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=True)
 
 #if true, subtract previously sent messages (to avoid 'double counting')
-parser.add_argument('--subtract_prv_messages', type=boolean_string, default=False)
+parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True)
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='standard',\
+parser.add_argument('--bethe_mlp', type=str, default='none',\
     choices=['shifted','standard','linear','none'])
 
 #if true, run compute out of distribution validation losses
-parser.add_argument('--val_ood', type=boolean_string, default=True)
+parser.add_argument('--val_ood', type=boolean_string, default=False)
+
+#if True, use the old Bethe approximation that doesn't work with batches
+#only valid for bethe_mlp='none'
+parser.add_argument('--use_old_bethe', type=boolean_string, default=False)
 
 args, _ = parser.parse_known_args()
 
@@ -233,7 +241,7 @@ LEARNING_RATE = args.learning_rate
 
 ##########################
 if USE_WANDB:
-    wandb.init(project="learnBP_spinGlass_debug11")
+    wandb.init(project="learnBP_spinGlass_debug12")
     wandb.config.SHARE_WEIGHTS = args.SHARE_WEIGHTS
     wandb.config.BETHE_MLP = args.bethe_mlp
     wandb.config.lne_mlp = args.lne_mlp
@@ -248,6 +256,8 @@ if USE_WANDB:
     
     wandb.config.alpha = alpha
     wandb.config.alpha2 = alpha2    
+    wandb.config.alpha_damping_FtoV = args.alpha_damping_FtoV
+    wandb.config.alpha_damping_VtoF = args.alpha_damping_VtoF    
     wandb.config.epochs = EPOCH_COUNT
     wandb.config.N_MIN_TRAIN = N_MIN_TRAIN
     wandb.config.N_MAX_TRAIN = N_MAX_TRAIN
@@ -264,6 +274,7 @@ if USE_WANDB:
     wandb.config.VAL_BATCH_SIZE = VAL_BATCH_SIZE
     wandb.config.VAR_CARDINALITY = VAR_CARDINALITY
 
+    wandb.config.use_old_bethe = args.use_old_bethe
 
     
 def get_dataset(dataset_type, F_MAX=None, C_MAX=None):
@@ -317,13 +328,17 @@ print("device:", device)
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS,\
     lne_mlp=args.lne_mlp, use_MLP1=args.use_MLP1, use_MLP2=args.use_MLP2, use_MLP3=args.use_MLP3, use_MLP4=args.use_MLP4, 
     subtract_prv_messages=args.subtract_prv_messages, share_weights = args.SHARE_WEIGHTS, bethe_MLP=args.bethe_mlp,\
-    belief_repeats=BELIEF_REPEATS, var_cardinality=VAR_CARDINALITY)
+    belief_repeats=BELIEF_REPEATS, var_cardinality=VAR_CARDINALITY, alpha_damping_FtoV=args.alpha_damping_FtoV,\
+    alpha_damping_VtoF=args.alpha_damping_VtoF, use_old_bethe=args.use_old_bethe)
 
 lbp_net = lbp_net.to(device)
 
 # lbp_net.double()
 def train():
-#     lbp_net.load_state_dict(torch.load(BPNN_trained_model_path))
+    # BPNN_trained_model_path = './wandb/run-20200429_174814-p2zlvain/model.pt'
+    # BPNN_trained_model_path = './wandb/run-20200429_175446-sqkf5wcj/model.pt'
+    BPNN_trained_model_path = './wandb/run-20200430_051111-g1m3f3ho/model.pt'
+    lbp_net.load_state_dict(torch.load(BPNN_trained_model_path))
     
     if USE_WANDB:
         
@@ -392,16 +407,43 @@ def train():
             exact_ln_partition_function = spin_glass_problem.ln_Z
             assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
 
-            estimated_ln_partition_function = lbp_net(spin_glass_problem)
+            # estimated_ln_partition_function = lbp_net(spin_glass_problem)
+            estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
+                prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem)
 
-#             print("estimated_ln_partition_function:", estimated_ln_partition_function)
+            # print("estimated_ln_partition_function.shape:", estimated_ln_partition_function.shape)
+            # print("prv_prv_varToFactor_messages.shape:", prv_prv_varToFactor_messages.shape)
+            # print("prv_prv_factorToVar_messages.shape:", prv_prv_factorToVar_messages.shape)
+            # print("prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)
+            # print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
+            vTof_convergence_loss = loss_func(prv_varToFactor_messages, prv_prv_varToFactor_messages)
+            fTov_convergence_loss = loss_func(prv_factorToVar_messages, prv_prv_factorToVar_messages)
+            # print("vTof_convergence_loss.shape:", vTof_convergence_loss.shape)
+            # print("vTof_convergence_loss:", vTof_convergence_loss)
+            # print("hi")
+
+            # sleep(temp1)
+
 #             print("type(estimated_ln_partition_function):", type(estimated_ln_partition_function))
+            PRINT_INFO = False
+            if PRINT_INFO:
+                print("estimated_ln_partition_function:", estimated_ln_partition_function)
+                print("exact_ln_partition_function:", exact_ln_partition_function)
+                # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
+    #             print(estimated_ln_partition_function.device, exact_ln_partition_function.device)
 
-#             print("exact_ln_partition_function:", exact_ln_partition_function)
-            # print("type(exact_ln_partition_function):", type(exact_ln_partition_function))
-#             print(estimated_ln_partition_function.device, exact_ln_partition_function.device)
+                print("exact_ln_partition_function - estimated_ln_partition_function:", exact_ln_partition_function - estimated_ln_partition_function)
 
-#             print("exact_ln_partition_function - estimated_ln_partition_function:", exact_ln_partition_function - estimated_ln_partition_function)
+                message_count = 460#25 #10 # 10
+                batch_size=50
+                norm_per_isingmodel_vTOf = torch.norm((prv_prv_varToFactor_messages - prv_varToFactor_messages).view([batch_size, message_count*args.belief_repeats*2]), dim=1)
+                norm_per_isingmodel_fTOv = torch.norm((prv_prv_factorToVar_messages - prv_factorToVar_messages).view([batch_size, message_count*args.belief_repeats*2]), dim=1)
+                print("norm_per_isingmodel_vTOf:", norm_per_isingmodel_vTOf)
+                print("norm_per_isingmodel_fTOv:", norm_per_isingmodel_fTOv)
+                print("torch.max(prv_prv_factorToVar_messages - prv_factorToVar_messages):", torch.max(prv_prv_factorToVar_messages - prv_factorToVar_messages))
+                print("torch.max(prv_prv_varToFactor_messages - prv_varToFactor_messages):", torch.max(prv_prv_varToFactor_messages - prv_varToFactor_messages))
+                print()
+                sleep(temp)
 
 
 #             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
@@ -417,7 +459,7 @@ def train():
 #                     print("cur_loss between", val, "and", exact_ln_partition_function.float()[idx], "is:", cur_loss)
                     epoch_loss += cur_loss
             else:
-                epoch_loss += loss
+                epoch_loss += loss #+ vTof_convergence_loss + fTov_convergence_loss
             # print("loss:", loss)
             # print()
             losses.append(loss.item())
@@ -432,6 +474,9 @@ def train():
 
         if e % PRINT_FREQUENCY == 0:
             print("epoch loss =", epoch_loss)
+            print("partition function loss =", loss)
+            print("vTof_convergence_loss =", vTof_convergence_loss)
+            print("fTov_convergence_loss =", fTov_convergence_loss)
             print("epoch:", e, "root mean squared training error =", np.sqrt(np.mean(losses)))
 
         if e % VAL_FREQUENCY == 0:
@@ -466,7 +511,10 @@ def train():
                 spin_glass_problem.var_cardinality = spin_glass_problem.var_cardinality[0] #hack for batching,
                 spin_glass_problem.belief_repeats = spin_glass_problem.belief_repeats[0] #hack for batching,
                 
-                estimated_ln_partition_function = lbp_net(spin_glass_problem)            
+                # estimated_ln_partition_function = lbp_net(spin_glass_problem)   
+                estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
+                    prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem)
+
                 loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
 #                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
 #                 print("exact_ln_partition_function:", exact_ln_partition_function)

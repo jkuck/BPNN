@@ -10,6 +10,8 @@
 #SBATCH --output=slurm-%j.out
 
 # only use the following on partition with GPUs
+#SBATCH --gres=gpu:1
+#SBATCH --exclude=atlas19,atlas20,atlas21,atlas22,atlas3,atlas8,atlas5
 
 # only use the following if you want email notification
 ####SBATCH --mail-user=youremailaddress
@@ -37,7 +39,8 @@ echo $5
 source /sailhome/jkuck/miniconda2/etc/profile.d/conda.sh
 conda activate /atlas/u/jkuck/learn_BP/venv35
 
-python learn_BP_spinGlass.py --use_MLP1 $1 --use_MLP2 $1 --use_MLP3 $2 --use_MLP4 $2 --SHARE_WEIGHTS $3 --subtract_prv_messages $4 --bethe_mlp $5
+# python learn_BP_spinGlass.py --use_MLP1 $1 --use_MLP2 $1 --use_MLP3 $2 --use_MLP4 $2 --SHARE_WEIGHTS $3 --subtract_prv_messages $4 --bethe_mlp $5
+python learn_BP_spinGlass.py
 
 # can try the following to list out which GPU you have access to
 #srun /usr/local/cuda/samples/1_Utilities/deviceQuery/deviceQuery

@@ -6,8 +6,8 @@
 #SBATCH --mem=8G
 
 # only use the following on partition with GPUs
-#SBATCH --gres=gpu:1
-#SBATCH --exclude=atlas19,atlas20,atlas21,atlas22,atlas3,atlas8,atlas5
+####SBATCH --gres=gpu:1
+####SBATCH --exclude=atlas19,atlas20,atlas21,atlas22,atlas3,atlas8,atlas5
 
 #SBATCH --job-name="learnBP_SAT"
 #SBATCH --output=slurm-%j.out
@@ -47,8 +47,8 @@ echo ${11}
 echo ${12}
 echo ${13}
 
-# python learn_BP_SAT.py --max_factor_state_dimensions $1 --msg_passing_iters $2 --belief_repeats $3 --random_seed $4 --problem_category_train $5 --train_val_split $6 --batch_size $7 --lne_mlp $8 --alpha_damping_FtoV $9 --alpha_damping_VtoF ${10} --use_MLP1 ${11} --use_MLP2 ${11} --use_MLP3 ${12} --use_MLP4 ${12} --bethe_mlp ${13}
-python learn_BP_SAT.py --problem_category_train $1
+python learn_BP_SAT.py --max_factor_state_dimensions $1 --msg_passing_iters $2 --belief_repeats $3 --random_seed $4 --problem_category_train $5 --train_val_split $6 --batch_size $7 --lne_mlp $8 --alpha_damping_FtoV $9 --alpha_damping_VtoF ${10} --use_MLP1 ${11} --use_MLP2 ${11} --use_MLP3 ${12} --use_MLP4 ${12} --bethe_mlp ${13} --SHARE_WEIGHTS ${14}
+# python learn_BP_SAT.py --problem_category_train $1
 
 
 # can try the following to list out which GPU you have access to

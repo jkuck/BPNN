@@ -51,12 +51,12 @@ parser.add_argument('--batch_size', type=int, default=1)
 
 # 0.0001
 # 0.0005
+# parser.add_argument('--learning_rate', type=float, default=0.0001)
 parser.add_argument('--learning_rate', type=float, default=0.0001)
-# parser.add_argument('--learning_rate', type=float, default=0.000)
 
 #damping parameter
 parser.add_argument('--alpha_damping_FtoV', type=float, default=1.0)
-parser.add_argument('--alpha_damping_VtoF', type=float, default=1.0)
+parser.add_argument('--alpha_damping_VtoF', type=float, default=1.0) #this damping wasn't used in the old code
 
 
 #if true, mlps operate in standard space rather than log space
@@ -71,14 +71,14 @@ parser.add_argument('--use_MLP3', type=boolean_string, default=True)
 parser.add_argument('--use_MLP4', type=boolean_string, default=True)
 
 #if true, share the weights between layers in a BPNN
-parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=False)
+parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=True)
 
 #if true, subtract previously sent messages (to avoid 'double counting')
 parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True)
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='linear',\
+parser.add_argument('--bethe_mlp', type=str, default='none',\
     choices=['shifted','standard','linear','none'])
 
 #if True, use the old Bethe approximation that doesn't work with batches
@@ -142,8 +142,8 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 3
-VAL_DATA_SIZE = 3 #100
+TRAINING_DATA_SIZE = 1000
+VAL_DATA_SIZE = 1000 #100
 TEST_DATA_SIZE = 1000
 
 ########## info by problem groups and categories ##########
@@ -184,7 +184,7 @@ TEST_DATA_SIZE = 1000
 # PROBLEM_CATEGORY_TRAIN = ['or_70_problems']
 # PROBLEM_CATEGORY_TRAIN = ['or_100_problems']
 # PROBLEM_CATEGORY_TRAIN = ['blasted_problems']
-PROBLEM_CATEGORY_TRAIN = ['s_problems']
+# PROBLEM_CATEGORY_TRAIN = ['s_problems']
 
 if args.problem_category_train == 'group1':
     PROBLEM_CATEGORY_VAL =  ['or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems']#['problems_75', 'problems_90', 'blasted_problems', 's_problems']
@@ -242,8 +242,8 @@ LEARNING_RATE = args.learning_rate
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 # wandb.init(project="learn_BP_sat_reproduce6")
 # wandb.init(project="learn_BP_sat_reproduceFromOldCode")
-# wandb.init(project="learn_BP_sat_compareParams2_allProblems")
-wandb.init(project="learn_BP_sat_debug")
+wandb.init(project="learn_BP_sat_compareParams_mlp4Debug")
+# wandb.init(project="learn_BP_sat_debug")
 
 # wandb.init(project="test")
 wandb.config.epochs = EPOCH_COUNT
@@ -448,8 +448,8 @@ def train():
             assert(sat_problem.state_dimensions == args.max_factor_state_dimensions)
             estimated_ln_partition_function = lbp_net(sat_problem)
             
-            # print("estimated_ln_partition_function:", estimated_ln_partition_function)
-            # print("exact_ln_partition_function:", exact_ln_partition_function)            
+            print("estimated_ln_partition_function:", estimated_ln_partition_function)
+            print("exact_ln_partition_function:", exact_ln_partition_function)            
 #             time.sleep(.5)
 #             
 #             sleep(stop_early)
