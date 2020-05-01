@@ -102,11 +102,15 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     - alpha_damping_FtoV (float): message damping from factors to variables: alpha_damping_FtoV=1 corresponds to no damping, 
         alpha_damping_FtoV=0 is total damping  
     - alpha_damping_VtoF (float): message damping from variables to factors: alpha_damping_VtoF=1 corresponds to no damping, 
-        alpha_damping_VtoF=0 is total damping               
+        alpha_damping_VtoF=0 is total damping         
+
+    - use_MLP1/use_MLP2 (bool): Original MLPs      
+    - use_MLP3/use_MLP4 (bool): MLPs that operate of messages
+    - use_MLP5 (bool): MLP that adds to factor belief, hopefully maintains belief consistency
     """
 
     def __init__(self, learn_BP=True, factor_state_space=None, var_cardinality=None, belief_repeats=None,\
-                 lne_mlp=True, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True, subtract_prv_messages=True,\
+                 lne_mlp=True, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True, use_MLP5=False, subtract_prv_messages=True,\
                  learn_residual_weights=False, learn_damping_coefficients=False, initialize_exact_BP=True,\
                  alpha_damping_FtoV=None, alpha_damping_VtoF=None):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
@@ -115,6 +119,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         self.use_MLP2 = use_MLP2
         self.use_MLP3 = use_MLP3
         self.use_MLP4 = use_MLP4
+        self.use_MLP5 = use_MLP5
         self.subtract_prv_messages = subtract_prv_messages
         self.learn_residual_weights = learn_residual_weights
         self.alpha_damping_FtoV = alpha_damping_FtoV
@@ -241,6 +246,10 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     
             
             
+            self.linear9 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+            self.linear10 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+            self.mlp5 = Seq(self.linear9, ReLU(), self.linear10) 
+
     def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs):
         '''
         Inputs:
@@ -498,6 +507,12 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
         factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)] = LN_ZERO
         
+
+        if self.use_MLP5:
+            factor_beliefs_shape = factor_beliefs.shape
+            learned_multiplier = self.mlp5(factor_beliefs.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) 
+            factor_beliefs = factor_beliefs + .1*learned_multiplier
+
         if PRINT_INFO:
             print("123 factor_beliefs:", factor_beliefs)                       
         

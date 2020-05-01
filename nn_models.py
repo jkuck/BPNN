@@ -24,7 +24,7 @@ else:
 from parameters import alpha2
 import time
 class lbp_message_passing_network(nn.Module):
-    def __init__(self, max_factor_state_dimensions, msg_passing_iters, lne_mlp, use_MLP1, use_MLP2, use_MLP3, use_MLP4,
+    def __init__(self, max_factor_state_dimensions, msg_passing_iters, lne_mlp, use_MLP1, use_MLP2, use_MLP3, use_MLP4, use_MLP5,
                  subtract_prv_messages, share_weights, bethe_MLP,
                 belief_repeats=None, var_cardinality=None, learn_bethe_residual_weight=False,
                  initialize_to_exact_bethe = True, alpha_damping_FtoV=None, alpha_damping_VtoF=None, use_old_bethe=None,
@@ -87,18 +87,18 @@ class lbp_message_passing_network(nn.Module):
                 self.message_passing_layers = nn.ModuleList([\
                     FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                         var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
-                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)
+                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, use_MLP5=use_MLP5, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)
                                                              for i in range(BPNN_layers_per_shared_weight_layer)])
                 
 
                 self.fixed_BP_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                     var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=False, use_MLP2=False, 
-                    use_MLP3=False, use_MLP4=False, subtract_prv_messages=True, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF) 
+                    use_MLP3=False, use_MLP4=False, use_MLP5=False, subtract_prv_messages=True, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF) 
             else:
                 self.message_passing_layers = nn.ModuleList([\
                     FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                         var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
-                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)\
+                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, use_MLP5=use_MLP5, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)\
                                                              for i in range(msg_passing_iters)])
 
         if bethe_MLP != 'none':

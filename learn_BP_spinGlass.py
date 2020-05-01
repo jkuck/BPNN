@@ -75,8 +75,12 @@ parser.add_argument('--use_MLP1', type=boolean_string, default=False)
 parser.add_argument('--use_MLP2', type=boolean_string, default=False)
 
 #new MLPs that operate on variable beliefs
-parser.add_argument('--use_MLP3', type=boolean_string, default=True)
-parser.add_argument('--use_MLP4', type=boolean_string, default=True)
+parser.add_argument('--use_MLP3', type=boolean_string, default=False)
+parser.add_argument('--use_MLP4', type=boolean_string, default=False)
+
+#new MLP that hopefully preservers consistency
+parser.add_argument('--use_MLP5', type=boolean_string, default=True)
+
 
 #if true, share the weights between layers in a BPNN
 parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=True)
@@ -260,6 +264,7 @@ if USE_WANDB:
     wandb.config.use_MLP2 = args.use_MLP2
     wandb.config.use_MLP3 = args.use_MLP3
     wandb.config.use_MLP4 = args.use_MLP4
+    wandb.config.use_MLP5 = args.use_MLP5
     wandb.config.subtract_prv_messages = args.subtract_prv_messages
     
     wandb.config.BELIEF_REPEATS = BELIEF_REPEATS
@@ -391,7 +396,7 @@ class MyOwnDataset(InMemoryDataset):
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("device:", device)
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS,\
-    lne_mlp=args.lne_mlp, use_MLP1=args.use_MLP1, use_MLP2=args.use_MLP2, use_MLP3=args.use_MLP3, use_MLP4=args.use_MLP4, 
+    lne_mlp=args.lne_mlp, use_MLP1=args.use_MLP1, use_MLP2=args.use_MLP2, use_MLP3=args.use_MLP3, use_MLP4=args.use_MLP4, use_MLP5=args.use_MLP5,
     subtract_prv_messages=args.subtract_prv_messages, share_weights = args.SHARE_WEIGHTS, bethe_MLP=args.bethe_mlp,\
     belief_repeats=BELIEF_REPEATS, var_cardinality=VAR_CARDINALITY, alpha_damping_FtoV=args.alpha_damping_FtoV,\
     alpha_damping_VtoF=args.alpha_damping_VtoF, use_old_bethe=args.use_old_bethe)
