@@ -50,15 +50,19 @@ def create_scatter_indices_varToFactorMsgs(original_indices, variable_cardinalit
     return scatter_indices
 
 
+
+
 #this class requires input arguments in the constructor.  This doesn't work nicely
 #with the batching implementation, which is why DataFactorGraph_partial was implemented
 #A cleaner approach probably exists
+
+##UPDATE: no longer requires arguments, probably can get rid of DataFactorGraph_partial
 class FactorGraphData(DataFactorGraph_partial):
     '''
     Representation of a factor graph in pytorch geometric Data format
     '''
-    def __init__(self, factor_potentials, factorToVar_edge_index, numVars, numFactors, 
-                 edge_var_indices, state_dimensions, factor_potential_masks, ln_Z=None,
+    def __init__(self, factor_potentials=None, factorToVar_edge_index=None, numVars=None, numFactors=None, 
+                 edge_var_indices=None, state_dimensions=None, factor_potential_masks=None, ln_Z=None,
                  factorToVar_double_list=None, gt_variable_labels=None,
                  var_cardinality=None, belief_repeats=None):
         '''
@@ -103,20 +107,29 @@ class FactorGraphData(DataFactorGraph_partial):
             self.ln_Z = torch.tensor([ln_Z], dtype=float)
         
         # (int) the largest node degree
-        self.state_dimensions = torch.tensor([state_dimensions])
-        
+        if state_dimensions is not None:
+            self.state_dimensions = torch.tensor([state_dimensions])
+        else:
+            self.state_dimensions = None
+
 #         self.var_cardinality = torch.tensor([var_cardinality])
         self.var_cardinality = var_cardinality
         self.belief_repeats = belief_repeats
                 
         #final shape is [# of factors, belief_repeats, followed by individual factor shape]
         #transpose required to get belief_repeats in second dimension
-        expansion_list = [belief_repeats] + list(factor_potentials.shape)        
         #potentials defining the factor graph
-        self.factor_potentials = factor_potentials.expand(expansion_list).transpose(1, 0)
+        if factor_potentials is not None:
+            expansion_list = [belief_repeats] + list(factor_potentials.shape)        
+            self.factor_potentials = factor_potentials.expand(expansion_list).transpose(1, 0)
+        else:
+            self.factor_potentials = None
         #1 signifies an invalid location (e.g. a dummy dimension in a factor), 0 signifies a valid location 
-        self.factor_potential_masks = factor_potential_masks.expand(expansion_list).transpose(1, 0)
-        
+        if factor_potentials is not None:        
+            assert(factor_potentials is not None)
+            self.factor_potential_masks = factor_potential_masks.expand(expansion_list).transpose(1, 0)
+        else:
+            self.factor_potential_masks = None
 #         print("self.factor_potentials.shape:", self.factor_potentials.shape)
 #         print("self.factor_potential_masks.shape:", self.factor_potential_masks.shape) 
         
@@ -133,7 +146,7 @@ class FactorGraphData(DataFactorGraph_partial):
 #                 print("factor_potentials[potential_idx,1,::]:", self.factor_potentials[potential_idx,1,::])
 #         print("sum =", torch.sum(self.factor_potentials[:,0,::] - self.factor_potentials[:,1,::]))
 #         print(torch.where(factor_potentials[:,0,::] != factor_potentials[:,1,::]))
-        if belief_repeats > 1:
+        if (belief_repeats is not None) and (belief_repeats > 1):
             assert((self.factor_potentials[:,0,::] == self.factor_potentials[:,1,::]).all())
             assert((self.factor_potential_masks[:,0,::] == self.factor_potential_masks[:,1,::]).all())
 
@@ -149,8 +162,13 @@ class FactorGraphData(DataFactorGraph_partial):
             #    'junk' bin after scatter operation.            
             self.facStates_to_varIdx, self.facToVar_edge_idx = self.create_factorStates_to_varIndices(factorToVar_double_list)
 #             self.facStates_to_varIdx_FIXED, self.facToVar_edge_idx_FIXED = self.create_factorStates_to_varIndices_FIXED(factorToVar_double_list)
-        else:
+        elif factorToVar_edge_index is not None:
             self.facToVar_edge_idx = factorToVar_edge_index
+            self.facStates_to_varIdx = None
+        else:
+            self.facToVar_edge_idx = None
+            self.facStates_to_varIdx = None
+
 
 #         print("facStates_to_varIdx.shape:", self.facStates_to_varIdx.shape)
 #         print("facToVar_edge_idx.shape:", self.facToVar_edge_idx.shape)
@@ -161,19 +179,32 @@ class FactorGraphData(DataFactorGraph_partial):
 
 
 
-        # self.factor_degrees[i] stores the number of variables that appear in factor i
-        unique_factor_indices, self.factor_degrees = torch.unique(factorToVar_edge_index[0,:], sorted=True, return_counts=True)
-        assert((self.factor_degrees >= 1).all())
-        assert(unique_factor_indices.shape[0] == numFactors), (unique_factor_indices.shape[0], numFactors)
+        if factorToVar_edge_index is not None:
+            # self.factor_degrees[i] stores the number of variables that appear in factor i
+            unique_factor_indices, self.factor_degrees = torch.unique(factorToVar_edge_index[0,:], sorted=True, return_counts=True)
+            assert((self.factor_degrees >= 1).all())
+            assert(unique_factor_indices.shape[0] == numFactors), (unique_factor_indices.shape[0], numFactors)
 
-        # self.var_degrees[i] stores the number of factors that variables i appears in
-        unique_var_indices, self.var_degrees = torch.unique(factorToVar_edge_index[1,:], sorted=True, return_counts=True)
-        assert((self.var_degrees >= 1).all())
-        assert(unique_var_indices.shape[0] == numVars)
+            # self.var_degrees[i] stores the number of factors that variables i appears in
+            unique_var_indices, self.var_degrees = torch.unique(factorToVar_edge_index[1,:], sorted=True, return_counts=True)
+            assert((self.var_degrees >= 1).all())
+            assert(unique_var_indices.shape[0] == numVars)              
+        else:
+            self.factor_degrees = None
+            self.var_degrees = None
+
+
 
         #when batching, numVars and numFactors record the number of variables and factors for each graph in the batch
-        self.numVars = torch.tensor([numVars])
-        self.numFactors = torch.tensor([numFactors])
+        if numVars is not None:
+            self.numVars = torch.tensor([numVars])
+        else:
+            self.numVars = None
+
+        if numFactors is not None:
+            self.numFactors = torch.tensor([numFactors])
+        else:
+            self.numFactors = None
         #when batching, see num_vars and num_factors to access the cumulative number of variables and factors in all
         #graphs in the batch, like num_nodes
         
@@ -182,22 +213,31 @@ class FactorGraphData(DataFactorGraph_partial):
         #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
         #   [1, i] IS CURRENTLY UNUSED AND BROKEN, BUT IN GENERAL FOR PYTORCH GEOMETRIC SHOULD indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
         self.edge_var_indices = edge_var_indices
-        assert(self.facToVar_edge_idx.shape == self.edge_var_indices.shape)
+        if edge_var_indices is not None:
+            assert(self.facToVar_edge_idx.shape == self.edge_var_indices.shape)
         
-        self.varToFactorMsg_scatter_indices = create_scatter_indices_varToFactorMsgs(original_indices=self.edge_var_indices[0, :],\
-                                                                                     variable_cardinality=self.var_cardinality,\
-                                                                                     state_dimensions=state_dimensions,\
-                                                                                     belief_repeats=self.belief_repeats)
-
+        if edge_var_indices is not None:
+            self.varToFactorMsg_scatter_indices = create_scatter_indices_varToFactorMsgs(original_indices=self.edge_var_indices[0, :],\
+                                                                                         variable_cardinality=self.var_cardinality,\
+                                                                                         state_dimensions=state_dimensions,\
+                                                                                         belief_repeats=self.belief_repeats)
+        else:
+            self.varToFactorMsg_scatter_indices = None
         
-        prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = self.get_initial_beliefs_and_messages()
-        self.prv_varToFactor_messages = prv_varToFactor_messages
-        self.prv_factorToVar_messages = prv_factorToVar_messages
-        self.prv_factor_beliefs = prv_factor_beliefs
-        self.prv_var_beliefs = prv_var_beliefs
-        
-        assert(self.prv_factor_beliefs.size(0) == self.numFactors)
-        assert(self.prv_var_beliefs.size(0) == self.numVars)        
+        if self.var_cardinality is not None:
+            prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = self.get_initial_beliefs_and_messages()
+            self.prv_varToFactor_messages = prv_varToFactor_messages
+            self.prv_factorToVar_messages = prv_factorToVar_messages
+            self.prv_factor_beliefs = prv_factor_beliefs
+            self.prv_var_beliefs = prv_var_beliefs
+            assert(self.prv_factor_beliefs.size(0) == self.numFactors)
+            assert(self.prv_var_beliefs.size(0) == self.numVars)              
+        else:
+            self.prv_varToFactor_messages = None
+            self.prv_factorToVar_messages = None
+            self.prv_factor_beliefs = None
+            self.prv_var_beliefs = None           
+      
 #         print("added prv_varToFactor_messages!!1234")
 #         print("prv_varToFactor_messages:", prv_varToFactor_messages)
 #         sleep(temp23)

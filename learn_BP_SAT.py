@@ -142,8 +142,8 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored her
 # TEST_PROBLEMS_DIR = "/atlas/u/jkuck/GNN_sharpSAT/data/training_SAT_problems/"
 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"
 
-TRAINING_DATA_SIZE = 3
-VAL_DATA_SIZE = 3 #100
+TRAINING_DATA_SIZE = 1000
+VAL_DATA_SIZE = 1000 #100
 TEST_DATA_SIZE = 1000
 
 ########## info by problem groups and categories ##########

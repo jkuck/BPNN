@@ -27,7 +27,8 @@ class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, lne_mlp, use_MLP1, use_MLP2, use_MLP3, use_MLP4,
                  subtract_prv_messages, share_weights, bethe_MLP,
                 belief_repeats=None, var_cardinality=None, learn_bethe_residual_weight=False,
-                 initialize_to_exact_bethe = True, alpha_damping_FtoV=None, alpha_damping_VtoF=None, use_old_bethe=None):
+                 initialize_to_exact_bethe = True, alpha_damping_FtoV=None, alpha_damping_VtoF=None, use_old_bethe=None,
+                 APPLY_BP_POST_BPNN=False, APPLY_BP_EVERY_ITER=False, BPNN_layers_per_shared_weight_layer=1):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -54,6 +55,9 @@ class lbp_message_passing_network(nn.Module):
             of the bethe approximation (for beliefs from the last round of message passing).  may make
             training worse.  should be False if learn_bethe_residual_weight=True
             
+        - APPLY_BP_POST_BPNN (bool): if True, apply standard BP message passing iterations (no learned MLPs) after BPNN layers
+        - APPLY_BP_EVERY_ITER (bool): if True, apply a standard BP message passing interation (no learned MLPS) after every shared weight BPNN layer
+        - BPNN_layers_per_shared_weight_layer (int): apply this many BP layers (with different weights) in every shared weight layer
         '''
         super().__init__()        
         self.share_weights = share_weights
@@ -62,6 +66,8 @@ class lbp_message_passing_network(nn.Module):
         self.belief_repeats = belief_repeats
         self.learn_bethe_residual_weight = learn_bethe_residual_weight
         self.use_old_bethe = use_old_bethe
+        self.APPLY_BP_POST_BPNN = APPLY_BP_POST_BPNN
+        self.APPLY_BP_EVERY_ITER = APPLY_BP_EVERY_ITER
         if learn_bethe_residual_weight:
             self.alpha_betheMLP = torch.nn.Parameter(alpha2*torch.ones(1))
             assert(initialize_to_exact_bethe == False), "Set initialize_to_exact_bethe=False when learn_bethe_residual_weight=True"
@@ -74,10 +80,17 @@ class lbp_message_passing_network(nn.Module):
                                                for i in range(msg_passing_iters)])
         else:
             if share_weights:
-                self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
-                    var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
-                    use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)
+                # self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
+                #     var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
+                #     use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)
                 
+                self.message_passing_layers = nn.ModuleList([\
+                    FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
+                        var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
+                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)
+                                                             for i in range(BPNN_layers_per_shared_weight_layer)])
+                
+
                 self.fixed_BP_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                     var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=False, use_MLP2=False, 
                     use_MLP3=False, use_MLP4=False, subtract_prv_messages=True, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF) 
@@ -144,16 +157,27 @@ class lbp_message_passing_network(nn.Module):
         if self.share_weights:
             # for iter in range(self.msg_passing_iters):
             random_msg_passing_iters = np.random.randint(10, 30)
-            # random_msg_passing_iters = 300
+            # random_msg_passing_iters = 40
             for iter in range(random_msg_passing_iters):
-                varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
-                    self.message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
-                                          prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
-                
-#                 print("varToFactor_messages - prv_varToFactor_messages:", varToFactor_messages - prv_varToFactor_messages)
-#                 print("factorToVar_messages - prv_factorToVar_messages:", factorToVar_messages - prv_factorToVar_messages)
-#                 print("torch.norm(varToFactor_messages - prv_varToFactor_messages):", torch.norm(varToFactor_messages - prv_varToFactor_messages))
-#                 print("torch.norm(factorToVar_messages - prv_factorToVar_messages):", torch.norm(factorToVar_messages - prv_factorToVar_messages))
+                single_layer = False
+                if single_layer:
+                    varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
+                        self.message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                                            prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+                    
+                else:
+                    tmp_varToFactor_messages = prv_varToFactor_messages
+                    tmp_factorToVar_messages = prv_factorToVar_messages
+                    tmp_factor_beliefs = prv_factor_beliefs
+                    for message_passing_layer in self.message_passing_layers:
+                        tmp_varToFactor_messages, tmp_factorToVar_messages, tmp_var_beliefs, tmp_factor_beliefs =\
+                            message_passing_layer(factor_graph, prv_varToFactor_messages=tmp_varToFactor_messages,
+                                                prv_factorToVar_messages=tmp_factorToVar_messages, prv_factor_beliefs=tmp_factor_beliefs)
+
+                    varToFactor_messages = tmp_varToFactor_messages
+                    factorToVar_messages = tmp_factorToVar_messages
+                    var_beliefs = tmp_var_beliefs
+                    factor_beliefs = tmp_factor_beliefs
 
                 check_convergence = False
                 if check_convergence:
@@ -189,27 +213,48 @@ class lbp_message_passing_network(nn.Module):
                 prv_var_beliefs = var_beliefs
                 prv_factor_beliefs = factor_beliefs
                 
+                if self.APPLY_BP_EVERY_ITER:
+                    random_BP_iters = np.random.randint(0, 4)
+                    # print("applying BP :)!!!!!!!")
+                    # random_BP_iters = 300
+                    for BP_iter in range(random_BP_iters):
+                        varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
+                            self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                                                prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+            
+                        prv_varToFactor_messages = varToFactor_messages
+                        prv_factorToVar_messages = factorToVar_messages
+                        prv_var_beliefs = var_beliefs
+                        prv_factor_beliefs = factor_beliefs                                   
+
+
+
                 if self.bethe_MLP != 'none':
                     cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
                     pooled_states.append(cur_pooled_states)  
 
-            #apply BP for a random number of iterations
-            #goal is to get consistency between variable and factor beleifs
-            random_fixed_BP_iters = np.random.randint(10, 30)
-            # random_msg_passing_iters = 300
-            for iter in range(random_msg_passing_iters):
-                varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
-                    self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
-                                          prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
-    
-                prv_prv_varToFactor_messages = prv_varToFactor_messages
-                prv_prv_factorToVar_messages = prv_factorToVar_messages
 
-                prv_varToFactor_messages = varToFactor_messages
-                prv_factorToVar_messages = factorToVar_messages
-                prv_var_beliefs = var_beliefs
-                prv_factor_beliefs = factor_beliefs
-                    
+            if self.APPLY_BP_POST_BPNN:
+                #apply BP for a random number of iterations
+                #goal is to get consistency between variable and factor beleifs
+                # random_fixed_BP_iters = np.random.randint(10, 30)
+                random_msg_passing_iters = 5
+                for iter in range(random_msg_passing_iters):
+                    varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
+                        self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                                            prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+        
+                    prv_prv_varToFactor_messages = prv_varToFactor_messages
+                    prv_prv_factorToVar_messages = prv_factorToVar_messages
+
+                    prv_varToFactor_messages = varToFactor_messages
+                    prv_factorToVar_messages = factorToVar_messages
+                    prv_var_beliefs = var_beliefs
+                    prv_factor_beliefs = factor_beliefs
+                        
+                    print('iter:', iter)
+                    print("from nn_models torch.max(prv_prv_factorToVar_messages - prv_factorToVar_messages):", torch.max(prv_prv_factorToVar_messages - prv_factorToVar_messages))
+                    print("from nn_models torch.max(prv_prv_varToFactor_messages - prv_varToFactor_messages):", torch.max(prv_prv_varToFactor_messages - prv_varToFactor_messages))
                 
 
 
