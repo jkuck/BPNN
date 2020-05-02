@@ -27,10 +27,30 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_map_flag', action='store_true', default=False)
 parser.add_argument('--model_map_flag', action='store_true', default=False)
+parser.add_argument('--share_weights_flag', action='store_true', default=False)
+parser.add_argument('--bethe_flag', action='store_true', default=False)
+parser.add_argument('--lr_decay_flag', action='store_true', default=False)
+parser.add_argument('--perm_invariant_flag', action='store_true', default=False)
+parser.add_argument('--no_attractive_flag', action='store_true', default=False)
+parser.add_argument('-lr', '--learning_rate', type=float, default=1e-3)
+parser.add_argument('--alpha', type=float, default=alpha)
+parser.add_argument('--alpha2', type=float, default=alpha2)
+parser.add_argument('--layer_num', type=int, default=10)
+parser.add_argument('--no_training_flag', action='store_true', default=False)
 args = parser.parse_args()
 print(args)
 DATA_MAP_FLAG = args.data_map_flag
 MODEL_MAP_FLAG = args.model_map_flag
+SHARE_WEIGHTS = args.share_weights_flag
+BETHE_MLP = args.bethe_flag
+LR_DECAY_FLAG = args.lr_decay_flag
+PERM_INVARIANT_FLAG = args.perm_invariant_flag
+ATTRACTIVE_FIELD = not args.no_attractive_flag
+LEARNING_RATE = args.learning_rate
+ALPHA = args.alpha
+ALPHA2 = args.alpha2
+MSG_PASSING_ITERS = args.layer_num
+TRAINING_FLAG = not args.no_training_flag
 
 
 MODE = "train" #run "test" or "train" mode
@@ -80,9 +100,9 @@ USE_WANDB = True
 ##########################
 ####### Training PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 10 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
+SHARE_WEIGHTS = True if not TRAINING_FLAG  else SHARE_WEIGHTS
 
 # MODEL_NAME = "debugCUDA_spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
 MODEL_NAME = "MAP_spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
@@ -102,13 +122,13 @@ F_MAX_TRAIN = .1
 C_MAX_TRAIN = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
-ATTRACTIVE_FIELD_TRAIN = True
+ATTRACTIVE_FIELD_TRAIN = ATTRACTIVE_FIELD
 
 N_MIN_VAL = 10
 N_MAX_VAL = 10
 F_MAX_VAL = .1
 C_MAX_VAL = 5.0
-ATTRACTIVE_FIELD_VAL = True
+ATTRACTIVE_FIELD_VAL = ATTRACTIVE_FIELD
 # ATTRACTIVE_FIELD_TEST = True
 
 REGENERATE_DATA = False
@@ -122,10 +142,10 @@ TEST_DATA_SIZE = 200
 TRAIN_BATCH_SIZE=50
 VAL_BATCH_SIZE=50
 
-EPOCH_COUNT = 100000
-PRINT_FREQUENCY = 10
-VAL_FREQUENCY = 10
-SAVE_FREQUENCY = 100
+EPOCH_COUNT = 100000 if TRAINING_FLAG else 5
+PRINT_FREQUENCY = 10 if TRAINING_FLAG else 1
+VAL_FREQUENCY = 10 if TRAINING_FLAG else 1
+SAVE_FREQUENCY = 100 if TRAINING_FLAG else 1
 
 TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' datasets
 
@@ -134,20 +154,20 @@ STEP_SIZE=300
 LR_DECAY=.5
 if ATTRACTIVE_FIELD_TRAIN == True:
     #works well for training on attractive field
-        LEARNING_RATE = 0.001
+        LEARNING_RATE = LEARNING_RATE
 #         LEARNING_RATE = 0.001 #testing
 #     LEARNING_RATE = 0.00005 #10layer with Bethe_mlp
 else:
     #think this works for mixed fields
 #         LEARNING_RATE = 0.005 #10layer
 #         LEARNING_RATE = 0.001 #30layer trial
-    LEARNING_RATE = 0.0005 #10layer with Bethe_mlp
+    LEARNING_RATE = LEARNING_RATE
 #     LEARNING_RATE = 0.0000005 #c_max = .5
 
 
 ##########################
 if USE_WANDB:
-    wandb.init(project="learnBP_map_spinGlass_reproduce")
+    wandb.init(project="learnBP_map_spinGlass")
     wandb.config.epochs = EPOCH_COUNT
     wandb.config.N_MIN_TRAIN = N_MIN_TRAIN
     wandb.config.N_MAX_TRAIN = N_MAX_TRAIN
@@ -155,21 +175,22 @@ if USE_WANDB:
     wandb.config.C_MAX_TRAIN = C_MAX_TRAIN
     wandb.config.ATTRACTIVE_FIELD_TRAIN = ATTRACTIVE_FIELD_TRAIN
     wandb.config.TRAINING_DATA_SIZE = TRAINING_DATA_SIZE
-    wandb.config.alpha = alpha
-    wandb.config.alpha2 = alpha2
+    wandb.config.ALPHA = ALPHA
+    wandb.config.ALPHA2 = ALPHA2
     wandb.config.SHARE_WEIGHTS = SHARE_WEIGHTS
     wandb.config.BETHE_MLP = BETHE_MLP
     wandb.config.MSG_PASSING_ITERS = MSG_PASSING_ITERS
     wandb.config.STEP_SIZE = STEP_SIZE
     wandb.config.LR_DECAY = LR_DECAY
+    wandb.config.LR_DECAY_FLAG = LR_DECAY_FLAG
     wandb.config.LEARNING_RATE = LEARNING_RATE
     wandb.config.NUM_MLPS = NUM_MLPS
     wandb.config.TRAIN_BATCH_SIZE = TRAIN_BATCH_SIZE
     wandb.config.VAL_BATCH_SIZE = VAL_BATCH_SIZE
     wandb.config.DATA_MAP_FLAG = DATA_MAP_FLAG
     wandb.config.MODEL_MAP_FLAG = MODEL_MAP_FLAG
-
-
+    wandb.config.PERM_INVARIANT_FLAG = PERM_INVARIANT_FLAG
+    wandb.config.TRAINING_FLAG = TRAINING_FLAG
 
 
 def get_dataset(dataset_type):
@@ -216,18 +237,23 @@ def get_dataset(dataset_type):
 # device = torch.device('cpu')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS,\
-                                      msg_passing_iters=MSG_PASSING_ITERS, device=None,
-                                      map_flag=MODEL_MAP_FLAG,)
+                                      msg_passing_iters=MSG_PASSING_ITERS, device=None, bethe_MLP=BETHE_MLP,
+                                      map_flag=MODEL_MAP_FLAG, marginal_flag=False,
+                                      share_weights=SHARE_WEIGHTS,
+                                      alpha=ALPHA, alpha2=ALPHA2,
+                                      perm_invariant_flag=PERM_INVARIANT_FLAG)
 
 lbp_net = lbp_net.to(device)
 
 # lbp_net.double()
 def train():
     if USE_WANDB:
-
         wandb.watch(lbp_net)
+    if TRAINING_FLAG:
+        lbp_net.train()
+    else:
+        torch.autograd.set_grad_enabled(False)
 
-    lbp_net.train()
     # Initialize optimizer
     optimizer = torch.optim.Adam(lbp_net.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=LR_DECAY) #multiply lr by gamma every step_size epochs
@@ -319,11 +345,12 @@ def train():
             # print()
             losses.append(loss.item())
 
-        epoch_loss.backward()
-        # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
-        optimizer.step()
-        # scheduler.step()
-
+        if TRAINING_FLAG:
+            epoch_loss.backward()
+            # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
+            optimizer.step()
+            if LR_DECAY_FLAG:
+                scheduler.step()
 
         if e % PRINT_FREQUENCY == 0:
             print("epoch loss =", epoch_loss)
