@@ -270,7 +270,7 @@ def marginal_junction_tree(sg_model, verbose=False, map_flag=True, classificatio
     log_marginals = np.zeros([N*N, 2])
 
     if not map_flag:
-        opts["inference"] = "MAXPROD"
+        opts["inference"] = "SUMPROD"
         sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
         jt = dai.JTree( sg_FactorGraph, opts )
         jt.init()
@@ -291,7 +291,7 @@ def marginal_junction_tree(sg_model, verbose=False, map_flag=True, classificatio
             normalized_log_marginals = log_marginals - log_marginals[:,-1:]
             return normalized_log_marginals[:,0:-1].tolist()
     else:
-        opts["inference"] = "SUMPROD"
+        opts["inference"] = "MAXPROD"
         sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
         jt = dai.JTree( sg_FactorGraph, opts )
         jt.init()
