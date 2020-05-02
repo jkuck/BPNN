@@ -126,7 +126,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     """
 
     def __init__(self, learn_BP=True, factor_state_space=None, avoid_nans=True,
-                 logspace_mlp=False, num_mlps=NUM_MLPS, map_flag=False, alpha=alpha, alpha2=alpha2):
+                 logspace_mlp=False, num_mlps=NUM_MLPS, map_flag=False,
+                 alpha=alpha, alpha2=alpha2, perm_invariant_flag=False):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
 
         assert(num_mlps in [1,2])
@@ -137,6 +138,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         self.map_flag = map_flag
         self.alpha = alpha
         self.alpha2 = alpha2
+        self.perm_invariant_flag = perm_invariant_flag
         print("learn_BP:", learn_BP)
         if learn_BP:
             assert(factor_state_space is not None)
@@ -326,7 +328,11 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
             varToFactor_expandedMessages = torch.exp(varToFactor_expandedMessages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
             varToFactor_expandedMessages_clone = varToFactor_expandedMessages.clone()
-            varToFactor_expandedMessages_temp = (1-alpha2)*self.mlp1(varToFactor_expandedMessages_clone.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape) + alpha2*varToFactor_expandedMessages_clone
+            mlp1_out = self.mlp1(varToFactor_expandedMessages_clone.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape)
+            if self.perm_invariant_flag:
+                mlp1_out = mlp1_out + self.mlp1(varToFactor_expandedMessages_clone.transpose(-1, -2).reshape(varToFactor_expandedMessages_shape[0], -1)).reshape(varToFactor_expandedMessages_shape).transpose(-1,-2)
+                mlp1_out = mlp1_out / 2
+            varToFactor_expandedMessages_temp = (1-alpha2)*mlp1_out + alpha2*varToFactor_expandedMessages_clone
 
             valid_locations = torch.where((varToFactor_expandedMessages>LN_ZERO))
             # valid_locations = torch.where((varToFactor_expandedMessages>LN_ZERO) & (varToFactor_expandedMessages_temp>0))
@@ -355,7 +361,11 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             factor_beliefs_clone = factor_beliefs.clone()
 
             check_factor_beliefs(factor_beliefs) #debugging
-            factor_beliefs_temp = (1-alpha2)*self.mlp2(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) + alpha2*factor_beliefs_clone
+            mlp2_out = self.mlp2(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
+            if self.perm_invariant_flag:
+                mlp2_out = mlp2_out + self.mlp2(factor_beliefs_clone.transpose(-1,-2).reshape(factor_beliefs_shape[0], -1)).reshape(factor_beliefs_shape).transpose(-1,-2)
+                mlp2_out = mlp2_out / 2
+            factor_beliefs_temp = (1-alpha2)*mlp2_out + alpha2*factor_beliefs_clone
             valid_locations = torch.where((factor_graph.factor_potential_masks==0) & (factor_beliefs>LN_ZERO))
             # valid_locations = torch.where((factor_beliefs>LN_ZERO) & (factor_beliefs_temp>0))
             factor_beliefs = LN_ZERO*torch.ones_like(factor_beliefs)
@@ -397,34 +407,11 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
     def message_factorToVar(self, prv_factor_beliefs, factor_graph, prv_varToFactor_messages,
                             debug=False, fast_logsumexp=True):
-        #subtract previous messages from current factor beliefs to get factor to variable messages
-        # prv_factor_beliefs has shape [E, X.shape] (double check)
-        # factor_graph.prv_varToFactor_messages has shape [2, E], e.g. two messages (for each binary variable state) for each edge on the last iteration
-        # factor_graph.edge_var_indices has shape [2, E].
-        #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
-        #   [1, i] indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
-
 
         assert((prv_factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)] == LN_ZERO).all())
 
         mapped_factor_beliefs = map_beliefs(prv_factor_beliefs, factor_graph, 'factor')
         mapped_factor_potentials_masks = map_beliefs(factor_graph.factor_potential_masks, factor_graph, 'factor')
-
-
-        #print("123debug10 mapped_factor_beliefs =", mapped_factor_beliefs)
-        #best idea: set to say 0, then log sum exp with -# of infinities precomputed tensor to correct
-
-        # mapped_factor_beliefs[torch.where(mapped_factor_beliefs==-np.inf)] = -99
-
-        #was using 2/4/2020
-#         mapped_factor_beliefs[torch.where((mapped_factor_potentials_masks==0) & (mapped_factor_beliefs==-np.inf))] = -99 #leave invalid beliefs at -inf
-
-        #new 4/4/2020
-#         print("mapped_factor_beliefs[torch.where(mapped_factor_potentials_masks==1)]:")
-#         print(mapped_factor_beliefs[torch.where(mapped_factor_potentials_masks==1)])
-
-#         print("mapped_factor_beliefs:")
-#         print(mapped_factor_beliefs)
 
         assert((mapped_factor_beliefs[torch.where(mapped_factor_potentials_masks==1)] == LN_ZERO).all())
         mapped_factor_beliefs[torch.where(mapped_factor_beliefs<LN_ZERO)] = LN_ZERO
@@ -441,6 +428,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             #avoid double counting
             messages = marginalized_states - prv_varToFactor_messages
         else:
+            print('running MaxProduct')
             num_edges = factor_graph.facToVar_edge_idx.shape[1]
             assert(mapped_factor_beliefs.view(mapped_factor_beliefs.numel()).shape == factor_graph.facStates_to_varIdx.shape)
             assert((factor_graph.facStates_to_varIdx <= num_edges*2).all())
@@ -454,15 +442,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             messages = scatter_max(src=mapped_factorToVar_messages.view(-1), index=factor_graph.facStates_to_varIdx, dim_size=num_edges*2 + 1)[0]
             messages = messages[:-1].view(num_edges, 2)
 
-        # FIX ME
-#         TO DO:
-#             - normalize messages
-#             - check if cloning in following is necessary
-#         assert(False), "finish these todos"
-        #for numerical stability, don't let log messages get smaller than LN_ZERO (constant set in parameters.py)
         messages_clipped = messages.clone()
         messages_clipped[torch.where(messages < LN_ZERO)] = LN_ZERO
-
 
         return messages_clipped
 
