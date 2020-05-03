@@ -271,6 +271,8 @@ def train():
     sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(sg_model, map_flag=DATA_MAP_FLAG) for sg_model in spin_glass_models_list_val]
     val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
 #     val_data_loader_pytorchGeometric_batchSize50 = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
+    sg_models_fg_from_val_transpose = [build_factorgraph_from_SpinGlassModel(sg_model, map_flag=DATA_MAP_FLAG, transpose_flag=True) for sg_model in spin_glass_models_list_val]
+    val_transpose_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val_transpose, batch_size=VAL_BATCH_SIZE)
 
 #     with autograd.detect_anomaly():
     for e in range(EPOCH_COUNT):
@@ -359,22 +361,6 @@ def train():
         if e % VAL_FREQUENCY == 0:
             val_losses = []
             for spin_glass_problem in val_data_loader_pytorchGeometric: #pytorch geometric form
-#                 print("spin_glass_problem.state_dimensions:", spin_glass_problem.state_dimensions)
-#                 print("spin_glass_problem.factor_potentials:", spin_glass_problem.factor_potentials)
-#                 print("spin_glass_problem.facStates_to_varIdx:", spin_glass_problem.facStates_to_varIdx)
-#                 print("spin_glass_problem.facToVar_edge_idx:", spin_glass_problem.facToVar_edge_idx)
-#                 print("spin_glass_problem.edge_index:", spin_glass_problem.edge_index)
-#                 print("spin_glass_problem.factor_degrees:", spin_glass_problem.factor_degrees)
-#                 print("spin_glass_problem.var_degrees:", spin_glass_problem.var_degrees)
-#                 print("spin_glass_problem.numVars:", spin_glass_problem.numVars)
-#                 print("spin_glass_problem.numFactors:", spin_glass_problem.numFactors)
-#                 print("spin_glass_problem.edge_var_indices:", spin_glass_problem.edge_var_indices)
-#                 print("spin_glass_problem.varToFactorMsg_scatter_indices:", spin_glass_problem.varToFactorMsg_scatter_indices)
-#                 print("spin_glass_problem.factor_potential_masks:", spin_glass_problem.factor_potential_masks)
-
-
-
-
                 spin_glass_problem = spin_glass_problem.to(device)
                 spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
 
@@ -390,50 +376,31 @@ def train():
 #                 print("loss:", loss)
 
                 val_losses.append(loss.item())
-
-
-# #### DEBUG ####
-#             val_losses = []
-#             for spin_glass_problem in val_data_loader_pytorchGeometric_batchSize50: #pytorch geometric form
-# #                 print("spin_glass_problem.state_dimensions:", spin_glass_problem.state_dimensions)
-# #                 print("spin_glass_problem.factor_potentials:", spin_glass_problem.factor_potentials)
-# #                 print("spin_glass_problem.facStates_to_varIdx:", spin_glass_problem.facStates_to_varIdx)
-# #                 print("spin_glass_problem.facToVar_edge_idx:", spin_glass_problem.facToVar_edge_idx)
-# #                 print("spin_glass_problem.edge_index:", spin_glass_problem.edge_index)
-# #                 print("spin_glass_problem.factor_degrees:", spin_glass_problem.factor_degrees)
-# #                 print("spin_glass_problem.var_degrees:", spin_glass_problem.var_degrees)
-# #                 print("spin_glass_problem.numVars:", spin_glass_problem.numVars)
-# #                 print("spin_glass_problem.numFactors:", spin_glass_problem.numFactors)
-# #                 print("spin_glass_problem.edge_var_indices:", spin_glass_problem.edge_var_indices)
-# #                 print("spin_glass_problem.varToFactorMsg_scatter_indices:", spin_glass_problem.varToFactorMsg_scatter_indices)
-# #                 print("spin_glass_problem.factor_potential_masks:", spin_glass_problem.factor_potential_masks)
-
-#                 spin_glass_problem = spin_glass_problem.to(device)
-#                 spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
-
-
-#                 exact_ln_partition_function = spin_glass_problem.ln_Z
-#                 assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all()), (spin_glass_problem.state_dimensions, MAX_FACTOR_STATE_DIMENSIONS)
-#                 spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
-
-#                 estimated_ln_partition_function = lbp_net(spin_glass_problem)
-#                 loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
-#                 print("batchSize50 estimated_ln_partition_function:", estimated_ln_partition_function)
-#                 print("batchSize50 exact_ln_partition_function:", exact_ln_partition_function)
-#                 print("batchSize50 loss:", loss)
-
-#                 val_losses.append(loss.item())
-#                 print("root mean squared validation error =", np.sqrt(np.mean(val_losses)))
-#                 print()
-#                 print('asdfsa', '-'*80)
-
-# #### END DEBUG ####
-
-
             print("root mean squared validation error =", np.sqrt(np.mean(val_losses)))
+
+            val_transpose_losses = []
+            for spin_glass_problem in val_transpose_data_loader_pytorchGeometric: #pytorch geometric form
+                spin_glass_problem = spin_glass_problem.to(device)
+                spin_glass_problem.facToVar_edge_idx = spin_glass_problem.edge_index #hack for batching, see FactorGraphData in factor_graph.py
+
+
+                exact_ln_partition_function = spin_glass_problem.ln_Z
+                assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all()), (spin_glass_problem.state_dimensions, MAX_FACTOR_STATE_DIMENSIONS)
+                spin_glass_problem.state_dimensions = spin_glass_problem.state_dimensions[0] #hack for batching,
+
+                estimated_ln_partition_function = lbp_net(spin_glass_problem)
+                loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
+#                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
+#                 print("exact_ln_partition_function:", exact_ln_partition_function)
+#                 print("loss:", loss)
+
+                val_transpose_losses.append(loss.item())
+            print("root mean squared validation error (transpose) =", np.sqrt(np.mean(val_transpose_losses)))
             print()
             if USE_WANDB:
-                wandb.log({"RMSE_val": np.sqrt(np.mean(val_losses)), "RMSE_training": np.sqrt(np.mean(losses))})
+                wandb.log({"RMSE_val": np.sqrt(np.mean(val_losses)),
+                           "RMSE_val_transpose": np.sqrt(np.mean(val_transpose_losses)),
+                           "RMSE_training": np.sqrt(np.mean(losses))})
         else:
             if USE_WANDB:
                 wandb.log({"RMSE_training": np.sqrt(np.mean(losses))})

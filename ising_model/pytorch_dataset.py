@@ -133,7 +133,8 @@ def build_edge_var_indices(sg_model):
 
 def build_factorgraph_from_SpinGlassModel(sg_model, map_flag=False,
                                           marginal_flag=False,
-                                          classification_flag=False,):
+                                          classification_flag=False,
+                                          transpose_flag=False,):
     '''
     Convert a spin glass model to a factor graph pytorch representation
 
@@ -173,23 +174,34 @@ def build_factorgraph_from_SpinGlassModel(sg_model, map_flag=False,
         for col_idx in range(N-1):
             horizontal_factor_idx = (N**2 + row_idx*(N-1) + col_idx)
             var_idx1 = row_idx*N + col_idx
-            factorToVar_edge_index_list.append([horizontal_factor_idx, var_idx1])
             var_idx2 = row_idx*N + col_idx + 1
-            factorToVar_edge_index_list.append([horizontal_factor_idx, var_idx2])
-            assert(len(factorToVar_double_list) == horizontal_factor_idx)
-            factorToVar_double_list.append([var_idx1, var_idx2])
+            if transpose_flag:
+                factorToVar_edge_index_list.append([horizontal_factor_idx, var_idx2])
+                factorToVar_edge_index_list.append([horizontal_factor_idx, var_idx1])
+                assert(len(factorToVar_double_list) == horizontal_factor_idx)
+                factorToVar_double_list.append([var_idx2, var_idx1])
+            else:
+                factorToVar_edge_index_list.append([horizontal_factor_idx, var_idx1])
+                factorToVar_edge_index_list.append([horizontal_factor_idx, var_idx2])
+                assert(len(factorToVar_double_list) == horizontal_factor_idx)
+                factorToVar_double_list.append([var_idx1, var_idx2])
 
     # add vertical factor to variable edges
     for row_idx in range(N-1):
         for col_idx in range(N):
             vertical_factor_idx = (N**2 + N*(N-1) + row_idx*N + col_idx)
             var_idx1 = row_idx*N + col_idx
-            factorToVar_edge_index_list.append([vertical_factor_idx, var_idx1])
             var_idx2 = (row_idx+1)*N + col_idx
-            factorToVar_edge_index_list.append([vertical_factor_idx, var_idx2])
-
-            assert(len(factorToVar_double_list) == vertical_factor_idx)
-            factorToVar_double_list.append([var_idx1, var_idx2])
+            if transpose_flag:
+                factorToVar_edge_index_list.append([vertical_factor_idx, var_idx2])
+                factorToVar_edge_index_list.append([vertical_factor_idx, var_idx1])
+                assert(len(factorToVar_double_list) == vertical_factor_idx)
+                factorToVar_double_list.append([var_idx2, var_idx1])
+            else:
+                factorToVar_edge_index_list.append([vertical_factor_idx, var_idx1])
+                factorToVar_edge_index_list.append([vertical_factor_idx, var_idx2])
+                assert(len(factorToVar_double_list) == vertical_factor_idx)
+                factorToVar_double_list.append([var_idx1, var_idx2])
 
     assert(len(factorToVar_edge_index_list) == 4*(N - 1)*N + N**2)
     if sg_model.contains_higher_order_potentials:
@@ -222,8 +234,12 @@ def build_factorgraph_from_SpinGlassModel(sg_model, map_flag=False,
             var_idx1 = row_idx*N + col_idx
             var_idx2 = row_idx*N + col_idx + 1
             factor_potential, mask = build_pairwise_factor(c=sg_model.cpl_params_h[row_idx,col_idx], state_dimensions=state_dimensions)
-            factor_potentials_list.append(factor_potential)
-            masks_list.append(mask)
+            if transpose_flag:
+                factor_potentials_list.append(factor_potential.transpose(0,1))
+                masks_list.append(mask.transpose(0,1))
+            else:
+                factor_potentials_list.append(factor_potential)
+                masks_list.append(mask)
 
     # Create pytorch tensor factors for each vertical pairwise factor
     for row_idx in range(N-1):
@@ -231,8 +247,12 @@ def build_factorgraph_from_SpinGlassModel(sg_model, map_flag=False,
             var_idx1 = row_idx*N + col_idx
             var_idx2 = (row_idx+1)*N + col_idx
             factor_potential, mask = build_pairwise_factor(c=sg_model.cpl_params_v[row_idx,col_idx], state_dimensions=state_dimensions)
-            factor_potentials_list.append(factor_potential)
-            masks_list.append(mask)
+            if transpose_flag:
+                factor_potentials_list.append(factor_potential.transpose(0,1))
+                masks_list.append(mask.transpose(0,1))
+            else:
+                factor_potentials_list.append(factor_potential)
+                masks_list.append(mask)
 
     if sg_model.contains_higher_order_potentials:
         # Add higher order factors
