@@ -207,7 +207,8 @@ if USE_WANDB:
 
 
 
-def get_dataset(dataset_type):
+def get_dataset(dataset_type, map_flag=DATA_MAP_FLAG,
+                marginal_flag=True, classification_flag=CLASSIFICATION_FLAG):
     '''
     Store/load a list of SpinGlassModels
     When using, convert to BPNN or GNN form with either
@@ -233,20 +234,32 @@ def get_dataset(dataset_type):
         ATTRACTIVE_FIELD = ATTRACTIVE_FIELD_TEST
 
     dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f_attField=%s.pkl' % (datasize, N_MIN, N_MAX, F_MAX, C_MAX, ATTRACTIVE_FIELD)
-    if REGENERATE_DATA or (not os.path.exists(dataset_file)):
+    pytorch_dataset_file = DATA_DIR + 'pytorch_'+dataset_type + '%d_%d_%d_%.2f_%.2f_attField=%s_%d%d%d.pkl' % (
+        datasize, N_MIN, N_MAX, F_MAX, C_MAX, ATTRACTIVE_FIELD,
+        map_flag, marginal_flag, classification_flag,
+    )
+    if REGENERATE_DATA or (not os.path.exists(dataset_file)) or (not os.path.exists(pytorch_dataset_file)):
         print("REGENERATING DATA!!")
         spin_glass_models_list = [SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
                                                 f=np.random.uniform(low=0, high=F_MAX),\
                                                 c=np.random.uniform(low=0, high=C_MAX),\
                                                 attractive_field=ATTRACTIVE_FIELD) for i in range(datasize)]
+        sg_models_fg_list = [build_factorgraph_from_SpinGlassModel(
+            sg_model, map_flag=map_flag,
+            marginal_flag=marginal_flag, classification_flag=classification_flag,
+        ) for sg_model in spin_glass_models_list]
         if not os.path.exists(DATA_DIR):
             os.makedirs(DATA_DIR)
         with open(dataset_file, 'wb') as f:
             pickle.dump(spin_glass_models_list, f)
+        with open(pytorch_dataset_file, 'wb') as f:
+            torch.save(sg_models_fg_list, f)
     else:
         with open(dataset_file, 'rb') as f:
             spin_glass_models_list = pickle.load(f)
-    return spin_glass_models_list
+        with open(pytorch_dataset_file, 'rb') as f:
+            sg_models_fg_list = torch.load(f)
+    return spin_glass_models_list, sg_models_fg_list
 
 # device = torch.device('cpu')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -282,13 +295,13 @@ def logScore(sg_model, probability):
     return score
 def _logScore_loss(x, y, sg_model):
     one_hot_y = torch.eye(y.size(-1))[torch.argmax(y, dim=-1)]
-    logScore_x = logScore(sg_model, x[:,1])
-    logScore_y = logScore(sg_model, one_hot_y[:,1])
+    logScore_x = logScore(sg_model, x[:,1]).reshape(-1)
+    logScore_y = logScore(sg_model, one_hot_y[:,1]).reshape(-1)
     return F.mse_loss(logScore_x, logScore_y)
 def logScore_loss(x, y, sg_model):
     return ONE_HOT_RATIO*_logScore_loss(x, y, sg_model) + (1-ONE_HOT_RATIO)*cross_entropy_loss(x, y)
 def cross_entropy_loss(x, y):
-    return -torch.mean(torch.sum(y*torch.log(x+1e-30), dim=1))
+    return -torch.mean(torch.sum(y*torch.log(x.squeeze()+1e-30), dim=1))
 def one_hot_cross_entropy_loss(x, y):
     # convert continuous labels to one-hot
     one_hot_y = torch.eye(y.size(-1))[torch.argmax(y, dim=-1)]
@@ -361,19 +374,18 @@ def train():
         loss_func = globals()[LOSS_NAME+'_loss']
 
 
-    spin_glass_models_list_train = get_dataset(dataset_type='train')
+    spin_glass_models_list_train, sg_models_fg_from_train = get_dataset(
+        dataset_type='train', map_flag=DATA_MAP_FLAG,
+        marginal_flag=True, classification_flag=CLASSIFICATION_FLAG,
+    )
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_from_train = [build_factorgraph_from_SpinGlassModel(
-        sg_model, map_flag=DATA_MAP_FLAG, marginal_flag=True, classification_flag=CLASSIFICATION_FLAG,
-    ) for sg_model in spin_glass_models_list_train]
     train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=TRAIN_BATCH_SIZE, shuffle=False)
 
 
-    spin_glass_models_list_val = get_dataset(dataset_type='val')
-    #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(
-        sg_model, map_flag=DATA_MAP_FLAG, marginal_flag=True, classification_flag=CLASSIFICATION_FLAG,
-    ) for sg_model in spin_glass_models_list_val]
+    spin_glass_models_list_val, sg_models_fg_from_val = get_dataset(
+        dataset_type='val', map_flag=DATA_MAP_FLAG,
+        marginal_flag=True, classification_flag=CLASSIFICATION_FLAG,
+    )
     val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE, shuffle=False)
 #     val_data_loader_pytorchGeometric_batchSize50 = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
 
@@ -415,7 +427,7 @@ def train():
                 model_index += model_num
                 loss = loss / model_num
             else:
-                loss = loss_func(estimated_marginals_function.squeeze(), exact_marginals_function.float())
+                loss = loss_func(estimated_marginals_function, exact_marginals_function.float())
             debug = False
             if debug:
                 for idx, val in enumerate(estimated_marginals_function):

@@ -2,7 +2,7 @@
 
 import random, subprocess as sp
 
-PROCESS_NUM = 75
+PROCESS_NUM = 120
 
 jobs = [
     'python learn_bp_map_marginal_spinglass.py %s %s %s %s %s %s -lr %f --alpha %f --layer_num %d --data_size %d -n %d'%(
