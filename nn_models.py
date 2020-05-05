@@ -24,7 +24,7 @@ else:
 from parameters import alpha2
 import time
 class lbp_message_passing_network(nn.Module):
-    def __init__(self, max_factor_state_dimensions, msg_passing_iters, lne_mlp, use_MLP1, use_MLP2, use_MLP3, use_MLP4, use_MLP5,
+    def __init__(self, max_factor_state_dimensions, msg_passing_iters, lne_mlp, use_MLP1, use_MLP2, use_MLP3, use_MLP4, use_MLP5, use_MLP6, use_MLP_EQUIVARIANT,
                  subtract_prv_messages, share_weights, bethe_MLP,
                 belief_repeats=None, var_cardinality=None, learn_bethe_residual_weight=False,
                  initialize_to_exact_bethe = True, alpha_damping_FtoV=None, alpha_damping_VtoF=None, use_old_bethe=None,
@@ -41,6 +41,9 @@ class lbp_message_passing_network(nn.Module):
         - use_MLP2 (bool): one of the original MLPs that operate on factor beliefs (problematic because they're not index invariant)            
         - use_MLP3 (bool): one of the new MLPs that operate on variable beliefs
         - use_MLP4 (bool): one of the new MLPs that operate on variable beliefs        
+        - use_MLP5/use_MLP6 (bool): new  MLPs that adds to factor belief, should maintains belief consistency upon convergence
+        - use_MLP_EQUIVARIANT (bool): new MLP that adds to factor belief, should maintain belief consistency upon convergence, indexing equivariant for factors of cardinality 2
+
         - subtract_prv_messages (bool): if true, subtract previously sent messages (to avoid 'double counting')
             
         - share_weights (bool): if true, share the same weights across each message passing iteration
@@ -87,19 +90,24 @@ class lbp_message_passing_network(nn.Module):
                 self.message_passing_layers = nn.ModuleList([\
                     FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                         var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
-                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, use_MLP5=use_MLP5, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)
+                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, use_MLP5=use_MLP5, use_MLP6=use_MLP6, use_MLP_EQUIVARIANT=use_MLP_EQUIVARIANT, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)
                                                              for i in range(BPNN_layers_per_shared_weight_layer)])
                 
 
                 self.fixed_BP_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                     var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=False, use_MLP2=False, 
-                    use_MLP3=False, use_MLP4=False, use_MLP5=False, subtract_prv_messages=True, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF) 
+                    use_MLP3=False, use_MLP4=False, use_MLP5=False, use_MLP6=False, use_MLP_EQUIVARIANT=False, subtract_prv_messages=True, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF) 
             else:
                 self.message_passing_layers = nn.ModuleList([\
                     FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                         var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
-                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, use_MLP5=use_MLP5, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)\
+                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, use_MLP5=use_MLP5, use_MLP6=use_MLP6, use_MLP_EQUIVARIANT=use_MLP_EQUIVARIANT, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)\
                                                              for i in range(msg_passing_iters)])
+
+                self.convergence_BPNN_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
+                    var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=False, use_MLP2=False, 
+                    use_MLP3=False, use_MLP4=False, use_MLP5=True, use_MLP6=True, use_MLP_EQUIVARIANT=False, subtract_prv_messages=True, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF) 
+
 
         if bethe_MLP != 'none':
             var_cardinality = var_cardinality #2 for binary variables
@@ -237,9 +245,9 @@ class lbp_message_passing_network(nn.Module):
             if self.APPLY_BP_POST_BPNN:
                 #apply BP for a random number of iterations
                 #goal is to get consistency between variable and factor beleifs
-                # random_fixed_BP_iters = np.random.randint(10, 30)
-                random_msg_passing_iters = 5
-                for iter in range(random_msg_passing_iters):
+                random_fixed_BP_iters = np.random.randint(10, 30)
+                # random_msg_passing_iters = 5
+                for iter in range(random_fixed_BP_iters):
                     varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
                         self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                             prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
@@ -268,6 +276,9 @@ class lbp_message_passing_network(nn.Module):
 #                 print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape) 
 #                 prv_factor_beliefs[torch.where(prv_factor_beliefs==-np.inf)] = 0
 
+                prv_prv_varToFactor_messages = prv_varToFactor_messages
+                prv_prv_factorToVar_messages = prv_factorToVar_messages
+
                 prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
                     message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                           prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
@@ -279,7 +290,25 @@ class lbp_message_passing_network(nn.Module):
 #                     print(check_pool)
 #                     print("cur_pooled_states.shape:", cur_pooled_states.shape)
                     pooled_states.append(cur_pooled_states)
-                        
+
+
+            QUICK_TEST = False
+            if QUICK_TEST:
+                random_iters = np.random.randint(10, 30)
+                for iter in range(random_iters):
+                    varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
+                        self.convergence_BPNN_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                                            prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+        
+                    prv_prv_varToFactor_messages = prv_varToFactor_messages
+                    prv_prv_factorToVar_messages = prv_factorToVar_messages
+
+                    prv_varToFactor_messages = varToFactor_messages
+                    prv_factorToVar_messages = factorToVar_messages
+                    prv_var_beliefs = var_beliefs
+                    prv_factor_beliefs = factor_beliefs
+                                                               
+
         if self.bethe_MLP != 'none':
 #             print("torch.min(pooled_states):", torch.min(torch.cat(pooled_states, dim=1)))
 #             print("torch.max(pooled_states):", torch.max(torch.cat(pooled_states, dim=1)))
@@ -330,7 +359,11 @@ class lbp_message_passing_network(nn.Module):
                 return estimated_ln_partition_function
   
             #corrected for batch_size > 1
+            # print(prv_factor_beliefs.shape)
             final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+            # print(final_pooled_states.shape)
+            # sleep(asldkfj)
+
             estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)/self.belief_repeats
             return estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages, prv_varToFactor_messages, prv_factorToVar_messages
             # return estimated_ln_partition_function            

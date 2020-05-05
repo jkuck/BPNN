@@ -106,11 +106,13 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
     - use_MLP1/use_MLP2 (bool): Original MLPs      
     - use_MLP3/use_MLP4 (bool): MLPs that operate of messages
-    - use_MLP5 (bool): MLP that adds to factor belief, hopefully maintains belief consistency
+    - use_MLP5/use_MLP6 (bool): MLPs that adds to factor belief, should maintain belief consistency upon convergence
+    - use_MLP_EQUIVARIANT (bool): MLPs that adds to factor belief, should maintain belief consistency upon convergence, indexing equivariant for factors of cardinality 2
     """
 
     def __init__(self, learn_BP=True, factor_state_space=None, var_cardinality=None, belief_repeats=None,\
-                 lne_mlp=True, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True, use_MLP5=False, subtract_prv_messages=True,\
+                 lne_mlp=True, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True, use_MLP5=False,\
+                 use_MLP6=False, use_MLP_EQUIVARIANT=False, subtract_prv_messages=True,\
                  learn_residual_weights=False, learn_damping_coefficients=False, initialize_exact_BP=True,\
                  alpha_damping_FtoV=None, alpha_damping_VtoF=None):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
@@ -120,6 +122,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         self.use_MLP3 = use_MLP3
         self.use_MLP4 = use_MLP4
         self.use_MLP5 = use_MLP5
+        self.use_MLP6 = use_MLP6
+        self.use_MLP_EQUIVARIANT = use_MLP_EQUIVARIANT
         self.subtract_prv_messages = subtract_prv_messages
         self.learn_residual_weights = learn_residual_weights
         self.alpha_damping_FtoV = alpha_damping_FtoV
@@ -250,6 +254,14 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             self.linear10 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
             self.mlp5 = Seq(self.linear9, ReLU(), self.linear10) 
 
+            self.linear11 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+            self.linear12 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+            self.mlp6 = Seq(self.linear11, ReLU(), self.linear12) 
+
+            self.linear13 = Linear(2*factor_state_space*belief_repeats, 2*factor_state_space*belief_repeats)
+            self.linear14 = Linear(2*factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+            self.mlpEquivariant = Seq(self.linear13, ReLU(), self.linear14) 
+
     def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs):
         '''
         Inputs:
@@ -323,7 +335,24 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         if self.use_MLP3:
             factorToVar_messages = factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality) 
             
-            if self.lne_mlp:
+            quick_test = True
+            if False:
+                assert(not torch.isnan(factorToVar_messages).any()), factorToVar_messages
+                
+                factorToVar_messages_exp = torch.exp(factorToVar_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                prv_factorToVar_messages_exp = torch.exp(prv_factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality)) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                assert(not torch.isnan(factorToVar_messages_exp).any()), factorToVar_messages_exp
+#                 print("torch.min(factorToVar_messages_exp):", torch.min(factorToVar_messages_exp))
+#                 print("torch.max(factorToVar_messages_exp):", torch.max(factorToVar_messages_exp))    
+                factorToVar_messages_postMLP_mod = self.mlp3(factorToVar_messages_exp-prv_factorToVar_messages_exp)
+                assert(not torch.isnan(factorToVar_messages_postMLP_mod).any()), factorToVar_messages_postMLP_mod
+                factorToVar_messages_postMLP_mod = torch.clamp(factorToVar_messages_postMLP_mod, min=np.exp(LN_ZERO))
+                assert(not torch.isnan(factorToVar_messages_postMLP_mod).any()), factorToVar_messages_postMLP_mod                
+                factorToVar_messages_postMLP_mod = torch.log(factorToVar_messages_postMLP_mod)
+                factorToVar_messages_postMLP_mod = torch.clamp(factorToVar_messages_postMLP_mod, min=LN_ZERO)
+                factorToVar_messages_postMLP = factorToVar_messages + .1*factorToVar_messages_postMLP_mod
+
+            elif self.lne_mlp:
                 assert(not torch.isnan(factorToVar_messages).any()), factorToVar_messages
                 
                 factorToVar_messages_exp = torch.exp(factorToVar_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
@@ -343,7 +372,20 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             if self.learn_residual_weights:
                 factorToVar_messages = (1-self.alpha_mlp3)*factorToVar_messages_postMLP + self.alpha_mlp3*factorToVar_messages                
             else:
-                factorToVar_messages = (1-alpha2)*factorToVar_messages_postMLP + alpha2*factorToVar_messages
+                # print("factorToVar_messages_postMLP.shape:", factorToVar_messages_postMLP.shape)
+                # print("factorToVar_messages.shape:", factorToVar_messages.shape)
+                # print("prv_factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality).shape:", prv_factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality).shape)
+                scale = torch.abs(factorToVar_messages_postMLP - prv_factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
+                # print("torch.max(scale):", torch.max(scale))
+                # print("type(scale):", type(scale))
+                # print("type(torch.max(scale,other=torch.tensor(1.0, device='cuda'))[0]):", type(torch.max(scale,other=torch.tensor(1.0, device='cuda'))[0]))
+                # print("torch.max(scale,other=torch.tensor(1.0, device='cuda'))[0].shape:", torch.max(scale,other=torch.tensor(1.0, device='cuda'))[0].shape)
+                # print("scale.shape:", scale.shape)
+                # print("torch.max(torch.max(scale,other=torch.tensor(1.0, device='cuda'))[0]):", torch.max(torch.max(scale,other=torch.tensor(1.0, device='cuda'))[0]))
+
+                factorToVar_messages = 4*(1-alpha2)*torch.max(scale,other=torch.tensor(.25, device='cuda'))[0]*factorToVar_messages_postMLP + alpha2*factorToVar_messages
+                # factorToVar_messages = (1-alpha2)*factorToVar_messages_postMLP + alpha2*factorToVar_messages
+
             factorToVar_messages = factorToVar_messages.view(fTOv_mesg_shape)
             factorToVar_messages = torch.clamp(factorToVar_messages, min=LN_ZERO)
         
@@ -382,7 +424,17 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             assert(vTOf_mesg_shape[0] == fTOv_mesg_shape[0]), (vTOf_mesg_shape, fTOv_mesg_shape)
             varToFactor_messages = varToFactor_messages.view(vTOf_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality)
             
-            if self.lne_mlp:
+            quick_test = True
+            if False:
+                varToFactor_messages_exp = torch.exp(varToFactor_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                prv_varToFactor_messages_exp = torch.exp(prv_varToFactor_messages.view(vTOf_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality)) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                varToFactor_messages_postMLP_mod = self.mlp4(varToFactor_messages_exp-prv_varToFactor_messages_exp)
+                varToFactor_messages_postMLP_mod = torch.clamp(varToFactor_messages_postMLP_mod, min=np.exp(LN_ZERO))
+                varToFactor_messages_postMLP_mod = torch.log(varToFactor_messages_postMLP_mod)
+                varToFactor_messages_postMLP_mod = torch.clamp(varToFactor_messages_postMLP_mod, min=LN_ZERO)
+                varToFactor_messages_postMLP = varToFactor_messages + 1.*varToFactor_messages_postMLP_mod
+
+            elif self.lne_mlp:
                 varToFactor_messages_exp = torch.exp(varToFactor_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
                 varToFactor_messages_postMLP = self.mlp4(varToFactor_messages_exp)
                 varToFactor_messages_postMLP = torch.clamp(varToFactor_messages_postMLP, min=np.exp(LN_ZERO))
@@ -394,7 +446,15 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             if self.learn_residual_weights:
                 varToFactor_messages = (1-self.alpha_mlp4)*varToFactor_messages_postMLP + self.alpha_mlp4*varToFactor_messages
             else:
-                varToFactor_messages = (1-alpha2)*varToFactor_messages_postMLP + alpha2*varToFactor_messages
+                # varToFactor_messages = (1-alpha2)*varToFactor_messages_postMLP + alpha2*varToFactor_messages
+
+                scale = torch.abs(varToFactor_messages_postMLP - prv_varToFactor_messages.view(vTOf_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
+                print("torch.max(scale,other=torch.tensor(.25, device='cuda'))[0].shape:", torch.max(scale,other=torch.tensor(.25, device='cuda'))[0].shape)
+                print("varToFactor_messages_postMLP.shape:", varToFactor_messages_postMLP.shape)
+                factorToVar_messages = 4*(1-alpha2)*torch.max(scale,other=torch.tensor(.25, device='cuda'))[0]*varToFactor_messages_postMLP + alpha2*varToFactor_messages
+                print("factorToVar_messages.shape:", factorToVar_messages.shape)
+
+
             varToFactor_messages = varToFactor_messages.view(vTOf_mesg_shape)
             varToFactor_messages = torch.clamp(varToFactor_messages, min=LN_ZERO)
 
@@ -502,15 +562,149 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         DEBUG = False
         if DEBUG:
             print("factor_beliefs before adding potentials:", factor_beliefs)
-                
-                
+
+
+        if self.use_MLP_EQUIVARIANT:
+            factor_beliefs_shape = factor_beliefs.shape
+            
+            debug_use_MLP_EQUIVARIANT = False
+            if debug_use_MLP_EQUIVARIANT:
+                factor_beliefs[-2:,::] = torch.tensor([[[[1, 2],
+                                                        [3, 4]]],
+                                                    [[[5, 6],
+                                                        [7, 8]]]])
+            #get all equivariant factor belief orderings
+            factor_beliefs1 = torch.index_select(factor_beliefs, dim=2, index=torch.tensor([1,0], device='cuda'))
+            factor_beliefs2 = torch.index_select(factor_beliefs, dim=3, index=torch.tensor([1,0], device='cuda'))
+            factor_beliefs3 = torch.index_select(factor_beliefs1, dim=3, index=torch.tensor([1,0], device='cuda'))
+
+            factor_beliefs4 = factor_beliefs.permute(0,1,3,2)
+            factor_beliefs5 = torch.index_select(factor_beliefs4, dim=2, index=torch.tensor([1,0], device='cuda'))
+            factor_beliefs6 = torch.index_select(factor_beliefs4, dim=3, index=torch.tensor([1,0], device='cuda'))
+            factor_beliefs7 = torch.index_select(factor_beliefs5, dim=3, index=torch.tensor([1,0], device='cuda'))
+
+            #get all equivariant factor potential orderings
+            factor_potentials = factor_graph.factor_potentials
+            if debug_use_MLP_EQUIVARIANT:
+                factor_potentials[-2:,::] = torch.tensor([[[[11, 12],
+                                                            [13, 14]]],
+                                                            [[[15, 16],
+                                                            [17, 18]]]])                    
+            factor_potentials1 = torch.index_select(factor_potentials, dim=2, index=torch.tensor([1,0], device='cuda'))
+            factor_potentials2 = torch.index_select(factor_potentials, dim=3, index=torch.tensor([1,0], device='cuda'))
+            factor_potentials3 = torch.index_select(factor_potentials1, dim=3, index=torch.tensor([1,0], device='cuda'))
+
+            factor_potentials4 = factor_potentials.permute(0,1,3,2)
+            factor_potentials5 = torch.index_select(factor_potentials4, dim=2, index=torch.tensor([1,0], device='cuda'))
+            factor_potentials6 = torch.index_select(factor_potentials4, dim=3, index=torch.tensor([1,0], device='cuda'))
+            factor_potentials7 = torch.index_select(factor_potentials5, dim=3, index=torch.tensor([1,0], device='cuda'))
+            assert(factor_beliefs_shape == factor_potentials.shape)
+            # print("factor_beliefs4.shape:", factor_beliefs4.shape)
+            # print("factor_potentials4.shape:", factor_potentials4.shape)
+            inputs0 = torch.cat([factor_beliefs.view(factor_beliefs_shape[0], -1), factor_potentials.view(factor_beliefs_shape[0], -1)], dim=1)
+            inputs1 = torch.cat([factor_beliefs1.view(factor_beliefs_shape[0], -1), factor_potentials1.view(factor_beliefs_shape[0], -1)], dim=1)
+            inputs2 = torch.cat([factor_beliefs2.view(factor_beliefs_shape[0], -1), factor_potentials2.view(factor_beliefs_shape[0], -1)], dim=1)
+            inputs3 = torch.cat([factor_beliefs3.view(factor_beliefs_shape[0], -1), factor_potentials3.view(factor_beliefs_shape[0], -1)], dim=1)
+            inputs4 = torch.cat([factor_beliefs4.reshape(factor_beliefs_shape[0], -1), factor_potentials4.reshape(factor_beliefs_shape[0], -1)], dim=1)
+            inputs5 = torch.cat([factor_beliefs5.reshape(factor_beliefs_shape[0], -1), factor_potentials5.reshape(factor_beliefs_shape[0], -1)], dim=1)
+            inputs6 = torch.cat([factor_beliefs6.reshape(factor_beliefs_shape[0], -1), factor_potentials6.reshape(factor_beliefs_shape[0], -1)], dim=1)
+            inputs7 = torch.cat([factor_beliefs7.reshape(factor_beliefs_shape[0], -1), factor_potentials7.reshape(factor_beliefs_shape[0], -1)], dim=1)
+
+            outputs0 = self.mlpEquivariant(inputs0).view(factor_beliefs_shape)
+
+            outputs1 = self.mlpEquivariant(inputs1).view(factor_beliefs_shape)
+            outputs1 = torch.index_select(outputs1, dim=2, index=torch.tensor([1,0], device='cuda'))
+
+            outputs2 = self.mlpEquivariant(inputs2).view(factor_beliefs_shape)
+            outputs2 = torch.index_select(outputs2, dim=3, index=torch.tensor([1,0], device='cuda'))
+
+            outputs3 = self.mlpEquivariant(inputs3).view(factor_beliefs_shape)
+            outputs3 = torch.index_select(outputs3, dim=2, index=torch.tensor([1,0], device='cuda'))
+            outputs3 = torch.index_select(outputs3, dim=3, index=torch.tensor([1,0], device='cuda'))
+            
+            outputs4 = self.mlpEquivariant(inputs4).view(factor_beliefs_shape)
+            outputs4 = outputs4.permute(0,1,3,2)
+
+            outputs5 = self.mlpEquivariant(inputs5).view(factor_beliefs_shape)
+            outputs5 = torch.index_select(outputs5, dim=2, index=torch.tensor([1,0], device='cuda'))
+            outputs5 = outputs5.permute(0,1,3,2)
+
+            outputs6 = self.mlpEquivariant(inputs6).view(factor_beliefs_shape)
+            outputs6 = torch.index_select(outputs6, dim=3, index=torch.tensor([1,0], device='cuda'))
+            outputs6 = outputs6.permute(0,1,3,2)
+
+            outputs7 = self.mlpEquivariant(inputs7).view(factor_beliefs_shape)
+            outputs7 = torch.index_select(outputs7, dim=2, index=torch.tensor([1,0], device='cuda'))
+            outputs7 = torch.index_select(outputs7, dim=3, index=torch.tensor([1,0], device='cuda'))
+            outputs7 = outputs7.permute(0,1,3,2)
+
+            # learned_multiplier = outputs0 + outputs1 + outputs2 + outputs3 +\
+            #                      outputs4 + outputs5 + outputs6 + outputs7
+            # learned_multiplier = torch.max(outputs0, outputs1)
+            # learned_multiplier = torch.max(learned_multiplier, outputs2)
+            # learned_multiplier = torch.max(learned_multiplier, outputs3)
+            # learned_multiplier = torch.max(learned_multiplier, outputs4)
+            # learned_multiplier = torch.max(learned_multiplier, outputs5)
+            # learned_multiplier = torch.max(learned_multiplier, outputs6)
+            # learned_multiplier = torch.max(learned_multiplier, outputs7)
+
+            # factor_beliefs = factor_beliefs + .1*learned_multiplier
+            # factor_beliefs = factor_beliefs + .1*(outputs0 + outputs2)
+            factor_beliefs = factor_beliefs + .1*outputs0
+
+            # print("factor_beliefs[-2:,::]:", factor_beliefs[-2:,::])
+            # print("factor_beliefs1[-2:,::]:", factor_beliefs1[-2:,::])
+            # print("factor_beliefs2[-2:,::]:", factor_beliefs2[-2:,::])
+            # print("factor_beliefs3[-2:,::]:", factor_beliefs3[-2:,::])
+            # print("factor_beliefs4[-2:,::]:", factor_beliefs4[-2:,::])
+            # print("factor_beliefs5[-2:,::]:", factor_beliefs5[-2:,::])
+            # print("factor_beliefs6[-2:,::]:", factor_beliefs6[-2:,::])
+            # print("factor_beliefs7[-2:,::]:", factor_beliefs7[-2:,::])
+
+            # print("factor_beliefs.shape", factor_beliefs.shape)
+            # print("factor_graph.factor_potentials.shape", factor_graph.factor_potentials.shape)
+            # print("varToFactor_messages.shape:", varToFactor_messages.shape)
+            # print("inputs0[-2:]:", inputs0[-2:])
+            # print("inputs1[-2:,::]:", inputs1[-2:,::])
+            # print("inputs2[-2:,::]:", inputs2[-2:,::])
+            # print("inputs3[-2:,::]:", inputs3[-2:,::])
+            # print("inputs4[-2:,::]:", inputs4[-2:,::])
+            # print("inputs5[-2:,::]:", inputs5[-2:,::])
+            # print("inputs6[-2:,::]:", inputs6[-2:,::])
+            # print("inputs7[-2:,::]:", inputs7[-2:,::])
+
+            # print("outputs0[-2:,::]:", outputs0[-2:,::])
+            # print("outputs1[-2:,::]:", outputs1[-2:,::])
+            # print("outputs2[-2:,::]:", outputs2[-2:,::])
+            # print("outputs3[-2:,::]:", outputs3[-2:,::])
+            # print("outputs4[-2:,::]:", outputs4[-2:,::])
+            # print("outputs5[-2:,::]:", outputs5[-2:,::])
+            # print("outputs6[-2:,::]:", outputs6[-2:,::])
+            # print("outputs7[-2:,::]:", outputs7[-2:,::])
+
+            # exit(0)               
+
+        if self.use_MLP5:
+            factor_beliefs_shape = factor_beliefs.shape
+            # if self.lne_mlp:
+            if False:
+                learned_multiplier = self.mlp5(torch.exp(factor_beliefs).view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) 
+            else:
+                learned_multiplier = self.mlp5(factor_beliefs.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) 
+            factor_beliefs = factor_beliefs + .1*learned_multiplier
+
+
         factor_beliefs += factor_graph.factor_potentials #factor_potentials previously x_base
         factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)] = LN_ZERO
         
 
-        if self.use_MLP5:
+        if self.use_MLP6:
             factor_beliefs_shape = factor_beliefs.shape
-            learned_multiplier = self.mlp5(factor_beliefs.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) 
+            # if self.lne_mlp:
+            if False:
+                learned_multiplier = self.mlp6(torch.exp(factor_beliefs).view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) 
+            else:
+                learned_multiplier = self.mlp6(factor_beliefs.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) 
             factor_beliefs = factor_beliefs + .1*learned_multiplier
 
         if PRINT_INFO:

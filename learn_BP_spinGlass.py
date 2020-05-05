@@ -51,7 +51,7 @@ parser.add_argument('--msg_passing_iters', type=int, default=10)
 #to increasing node feature dimensions in a standard graph neural network
 parser.add_argument('--belief_repeats', type=int, default=1)
 
-parser.add_argument('--batch_size', type=int, default=50)
+parser.add_argument('--batch_size', type=int, default=10)
 
 #works well for training on attractive field
 # LEARNING_RATE = 0.0005
@@ -61,7 +61,11 @@ parser.add_argument('--batch_size', type=int, default=50)
 if QUICK_TEST:
     parser.add_argument('--learning_rate', type=float, default=0.00)
 else:
-    parser.add_argument('--learning_rate', type=float, default=0.0005)
+    # parser.add_argument('--learning_rate', type=float, default=0.0005)
+
+    parser.add_argument('--learning_rate', type=float, default=0.0002)
+
+    # parser.add_argument('--learning_rate', type=float, default=0.02)
 
 #damping parameter
 parser.add_argument('--alpha_damping_FtoV', type=float, default=1.0)
@@ -75,11 +79,13 @@ parser.add_argument('--use_MLP1', type=boolean_string, default=False)
 parser.add_argument('--use_MLP2', type=boolean_string, default=False)
 
 #new MLPs that operate on variable beliefs
-parser.add_argument('--use_MLP3', type=boolean_string, default=False)
-parser.add_argument('--use_MLP4', type=boolean_string, default=False)
+parser.add_argument('--use_MLP3', type=boolean_string, default=True)
+parser.add_argument('--use_MLP4', type=boolean_string, default=True)
 
 #new MLP that hopefully preservers consistency
-parser.add_argument('--use_MLP5', type=boolean_string, default=True)
+parser.add_argument('--use_MLP5', type=boolean_string, default=False)
+parser.add_argument('--use_MLP6', type=boolean_string, default=False)
+parser.add_argument('--use_MLP_EQUIVARIANT', type=boolean_string, default=False)
 
 
 #if true, share the weights between layers in a BPNN
@@ -175,7 +181,6 @@ MAX_FACTOR_STATE_DIMENSIONS = 2
 VAR_CARDINALITY = 2
 
 MSG_PASSING_ITERS = args.msg_passing_iters #the number of iterations of message passing, we have this many layers with their own learnable parameters
-BELIEF_REPEATS = args.belief_repeats
 
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
@@ -265,9 +270,12 @@ if USE_WANDB:
     wandb.config.use_MLP3 = args.use_MLP3
     wandb.config.use_MLP4 = args.use_MLP4
     wandb.config.use_MLP5 = args.use_MLP5
+    wandb.config.use_MLP6 = args.use_MLP6
+    wandb.config.use_MLP_EQUIVARIANT = args.use_MLP_EQUIVARIANT
+    
     wandb.config.subtract_prv_messages = args.subtract_prv_messages
     
-    wandb.config.BELIEF_REPEATS = BELIEF_REPEATS
+    wandb.config.belief_repeats = args.belief_repeats
     wandb.config.MSG_PASSING_ITERS = MSG_PASSING_ITERS
     
     wandb.config.alpha = alpha
@@ -340,7 +348,7 @@ def get_dataset(dataset_type, F_MAX=None, C_MAX=None):
  
 
 class MyOwnDataset(InMemoryDataset):
-    def __init__(self, root, dataset_type, datasize, N_MIN, N_MAX, F_MAX, C_MAX, ATTRACTIVE_FIELD, transform=None, pre_transform=None):
+    def __init__(self, root, dataset_type, datasize, N_MIN, N_MAX, F_MAX, C_MAX, ATTRACTIVE_FIELD, belief_repeats, transform=None, pre_transform=None):
         self.dataset_type = dataset_type
         self.datasize = datasize
         self.N_MIN = N_MIN
@@ -348,6 +356,7 @@ class MyOwnDataset(InMemoryDataset):
         self.F_MAX = F_MAX
         self.C_MAX = C_MAX
         self.ATTRACTIVE_FIELD = ATTRACTIVE_FIELD
+        self.belief_repeats = belief_repeats
         super(MyOwnDataset, self).__init__(root, transform, pre_transform)
 
         self.data, self.slices = torch.load(self.processed_paths[0])
@@ -362,7 +371,7 @@ class MyOwnDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        processed_dataset_file = self.dataset_type + '%d_%d_%d_%.2f_%.2f_attField=%s_pyTorchGeomProccesed.pt' % (self.datasize, self.N_MIN, self.N_MAX, self.F_MAX, self.C_MAX, self.ATTRACTIVE_FIELD)
+        processed_dataset_file = self.dataset_type + '%d_%d_%d_%.2f_%.2f_%d_attField=%s_pyTorchGeomProccesed.pt' % (self.datasize, self.N_MIN, self.N_MAX, self.F_MAX, self.C_MAX, self.belief_repeats, self.ATTRACTIVE_FIELD)
         return [processed_dataset_file]
 
     def download(self):
@@ -378,7 +387,7 @@ class MyOwnDataset(InMemoryDataset):
             spin_glass_models_list = pickle.load(f)
 
         #convert from list of SpinGlassModels to factor graphs for use with BPNN
-        sg_models_fg_list = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list]
+        sg_models_fg_list = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=args.belief_repeats) for sg_model in spin_glass_models_list]
         # data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg, batch_size=TRAIN_BATCH_SIZE)
         print("training list set built!")
 
@@ -396,9 +405,10 @@ class MyOwnDataset(InMemoryDataset):
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("device:", device)
 lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS,\
-    lne_mlp=args.lne_mlp, use_MLP1=args.use_MLP1, use_MLP2=args.use_MLP2, use_MLP3=args.use_MLP3, use_MLP4=args.use_MLP4, use_MLP5=args.use_MLP5,
+    lne_mlp=args.lne_mlp, use_MLP1=args.use_MLP1, use_MLP2=args.use_MLP2, use_MLP3=args.use_MLP3, use_MLP4=args.use_MLP4,\
+    use_MLP5=args.use_MLP5,  use_MLP6=args.use_MLP6, use_MLP_EQUIVARIANT=args.use_MLP_EQUIVARIANT,\
     subtract_prv_messages=args.subtract_prv_messages, share_weights = args.SHARE_WEIGHTS, bethe_MLP=args.bethe_mlp,\
-    belief_repeats=BELIEF_REPEATS, var_cardinality=VAR_CARDINALITY, alpha_damping_FtoV=args.alpha_damping_FtoV,\
+    belief_repeats=args.belief_repeats, var_cardinality=VAR_CARDINALITY, alpha_damping_FtoV=args.alpha_damping_FtoV,\
     alpha_damping_VtoF=args.alpha_damping_VtoF, use_old_bethe=args.use_old_bethe)
 
 lbp_net = lbp_net.to(device)
@@ -425,11 +435,11 @@ def train():
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
     print("about to call build_factorgraph_from_SpinGlassModel")
     # spin_glass_models_list_train = get_dataset(dataset_type='train')   
-    # sg_models_fg_from_train = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list_train]
+    # sg_models_fg_from_train = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=args.belief_repeats) for sg_model in spin_glass_models_list_train]
    
 
     sg_models_fg_from_train = MyOwnDataset(root=DATA_DIR, dataset_type='train', datasize=TRAINING_DATA_SIZE, N_MIN=N_MIN_TRAIN, N_MAX=N_MAX_TRAIN, F_MAX=F_MAX_TRAIN,\
-                                           C_MAX=C_MAX_TRAIN, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_TRAIN, transform=None, pre_transform=None)
+                                           C_MAX=C_MAX_TRAIN, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_TRAIN, belief_repeats=args.belief_repeats, transform=None, pre_transform=None)
    
     train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=TRAIN_BATCH_SIZE, shuffle=True)
     print("training set built!")
@@ -437,10 +447,10 @@ def train():
     
     # spin_glass_models_list_val = get_dataset(dataset_type='val')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    # sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list_val]
+    # sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=args.belief_repeats) for sg_model in spin_glass_models_list_val]
 
     sg_models_fg_from_val = MyOwnDataset(root=DATA_DIR, dataset_type='val', datasize=VAL_DATA_SIZE, N_MIN=N_MIN_VAL, N_MAX=N_MAX_VAL, F_MAX=F_MAX_VAL,\
-                                           C_MAX=C_MAX_VAL, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_VAL, transform=None, pre_transform=None)
+                                           C_MAX=C_MAX_VAL, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_VAL, belief_repeats=args.belief_repeats, transform=None, pre_transform=None)
    
     val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
 #     val_data_loader_pytorchGeometric_batchSize50 = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
@@ -450,31 +460,31 @@ def train():
     if args.val_ood:
         # spin_glass_models_list_valOOD1 = get_dataset(dataset_type='val', F_MAX=.2, C_MAX=5.0)
         #convert from list of SpinGlassModels to factor graphs for use with BPNN
-        # sg_models_fg_from_valOOD1 = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list_valOOD1]
+        # sg_models_fg_from_valOOD1 = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=args.belief_repeats) for sg_model in spin_glass_models_list_valOOD1]
         sg_models_fg_from_valOOD1 = MyOwnDataset(root=DATA_DIR, dataset_type='val', datasize=VAL_DATA_SIZE, N_MIN=N_MIN_VAL, N_MAX=N_MAX_VAL, F_MAX=.2,\
-                                           C_MAX=5.0, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_VAL, transform=None, pre_transform=None)
+                                           C_MAX=5.0, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_VAL, belief_repeats=args.belief_repeats, transform=None, pre_transform=None)
    
         valOOD1_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_valOOD1, batch_size=VAL_BATCH_SIZE)
 
         # spin_glass_models_list_valOOD2 = get_dataset(dataset_type='val', F_MAX=.1, C_MAX=10.0)
         #convert from list of SpinGlassModels to factor graphs for use with BPNN
-        # sg_models_fg_from_valOOD2 = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list_valOOD2]
+        # sg_models_fg_from_valOOD2 = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=args.belief_repeats) for sg_model in spin_glass_models_list_valOOD2]
         sg_models_fg_from_valOOD2 = MyOwnDataset(root=DATA_DIR, dataset_type='val', datasize=VAL_DATA_SIZE, N_MIN=N_MIN_VAL, N_MAX=N_MAX_VAL, F_MAX=.1,\
-                                           C_MAX=10.0, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_VAL, transform=None, pre_transform=None)       
+                                           C_MAX=10.0, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_VAL, belief_repeats=args.belief_repeats, transform=None, pre_transform=None)       
         valOOD2_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_valOOD2, batch_size=VAL_BATCH_SIZE)
         
         # spin_glass_models_list_valOOD3 = get_dataset(dataset_type='val', F_MAX=.2, C_MAX=10.0)
         #convert from list of SpinGlassModels to factor graphs for use with BPNN
-        # sg_models_fg_from_valOOD3 = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list_valOOD3]
+        # sg_models_fg_from_valOOD3 = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=args.belief_repeats) for sg_model in spin_glass_models_list_valOOD3]
         sg_models_fg_from_valOOD3 = MyOwnDataset(root=DATA_DIR, dataset_type='val', datasize=VAL_DATA_SIZE, N_MIN=N_MIN_VAL, N_MAX=N_MAX_VAL, F_MAX=.2,\
-                                           C_MAX=10.0, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_VAL, transform=None, pre_transform=None)        
+                                           C_MAX=10.0, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_VAL, belief_repeats=args.belief_repeats, transform=None, pre_transform=None)        
         valOOD3_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_valOOD3, batch_size=VAL_BATCH_SIZE)
 
         # spin_glass_models_list_valOOD4 = get_dataset(dataset_type='val', F_MAX=1.0, C_MAX=50.0)
         #convert from list of SpinGlassModels to factor graphs for use with BPNN
-        # sg_models_fg_from_valOOD4 = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list_valOOD4]
+        # sg_models_fg_from_valOOD4 = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=args.belief_repeats) for sg_model in spin_glass_models_list_valOOD4]
         sg_models_fg_from_valOOD4 = MyOwnDataset(root=DATA_DIR, dataset_type='val', datasize=VAL_DATA_SIZE, N_MIN=N_MIN_VAL, N_MAX=N_MAX_VAL, F_MAX=1.0,\
-                                           C_MAX=50.0, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_VAL, transform=None, pre_transform=None)        
+                                           C_MAX=50.0, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_VAL, belief_repeats=args.belief_repeats, transform=None, pre_transform=None)        
         
         valOOD4_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_valOOD4, batch_size=VAL_BATCH_SIZE)
         
@@ -509,6 +519,10 @@ def train():
             # print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
             vTof_convergence_loss = loss_func(prv_varToFactor_messages, prv_prv_varToFactor_messages)
             fTov_convergence_loss = loss_func(prv_factorToVar_messages, prv_prv_factorToVar_messages)
+
+            max_diff_vTof_convergence = torch.max(torch.abs(prv_varToFactor_messages - prv_prv_varToFactor_messages))
+            max_diff_fTov_convergence = torch.max(torch.abs(prv_factorToVar_messages - prv_prv_factorToVar_messages))
+
             # print("vTof_convergence_loss.shape:", vTof_convergence_loss.shape)
             # print("vTof_convergence_loss:", vTof_convergence_loss)
             # print("hi")
@@ -572,6 +586,9 @@ def train():
             print("partition function loss =", loss)
             print("vTof_convergence_loss =", vTof_convergence_loss)
             print("fTov_convergence_loss =", fTov_convergence_loss)
+
+            print("max_diff_vTof_convergence =", max_diff_vTof_convergence)
+            print("max_diff_fTov_convergence =", max_diff_fTov_convergence)            
             print("lower bound check, torch.min(exact_ln_partition_function - estimated_ln_partition_function) =", torch.min(exact_ln_partition_function - estimated_ln_partition_function))
 
         if e % VAL_FREQUENCY == 0:
@@ -754,7 +771,7 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
     #data loader for BPNN
     spin_glass_models_list = get_dataset(dataset_type=TEST_DATSET)
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_from = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list]
+    sg_models_fg_from = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=args.belief_repeats) for sg_model in spin_glass_models_list]
     data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from, batch_size=1, shuffle=False)
 
     #data loader for GNN
@@ -950,7 +967,7 @@ def test(skip_our_model=False):
 
     spin_glass_models_list = get_dataset(dataset_type=TEST_DATSET)
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_from = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list]
+    sg_models_fg_from = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=args.belief_repeats) for sg_model in spin_glass_models_list]
     data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from, batch_size=1)
     
     
@@ -1074,7 +1091,7 @@ def simple_val():
 
     spin_glass_models_list_val = get_dataset(dataset_type='val')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
-    sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=BELIEF_REPEATS) for sg_model in spin_glass_models_list_val]
+    sg_models_fg_from_val = [build_factorgraph_from_SpinGlassModel(sg_model, belief_repeats=args.belief_repeats) for sg_model in spin_glass_models_list_val]
     val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
 #     val_data_loader_pytorchGeometric_batchSize50 = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
     
