@@ -17,7 +17,7 @@ jobs = [
     for bflag in ['--bethe_flag', '']
     for _ in range(10) #slots for learing rate
     for damping in [0.999, 0.99, 0.9, 0.7, 0.5, 0.3, 0.1, 0.01, 0.001]
-    for layer_num in [5, 10, 20, 30, 50, 100, 200, 500]
+    for layer_num in [5, 10, 20, 30, 50, 200]
     for data_size in [5, 10, 20, 50, 100, 200, 500, 1000, 3000]
     for n in [5, 10, 15]
 ]

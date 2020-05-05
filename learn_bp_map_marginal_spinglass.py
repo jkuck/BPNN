@@ -20,6 +20,7 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
+from scipy.stats import pearsonr
 import parameters
 from parameters import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, BETHE_MLP, NUM_MLPS
 import cProfile
@@ -332,6 +333,9 @@ def test_loss_func(x, y, sg_model):
     prob_y = torch.cat([prob_y, 1-prob_y], dim=-1)
     corrcoef_prob = [np.corrcoef(prob_x[:,0].reshape(-1).cpu().detach().numpy(),
                                  prob_y[:,0].reshape(-1).cpu().detach().numpy(),)[0,1]]
+    pcorr_prob, pvalue_prob = pearsonr(prob_x[:,0].reshape(-1).cpu().detach().numpy(),
+                                       prob_y[:,0].reshape(-1).cpu().detach().numpy(),)
+    pcorr_prob, pvalue_prob = [pcorr_prob], [pvalue_prob]
     diff_prob = torch.abs(prob_x[:,0]-prob_y[:,0]).reshape(-1)
     mse_prob_loss = (diff_prob**2).tolist()
     l1_prob_loss = diff_prob.tolist()
@@ -353,6 +357,7 @@ def test_loss_func(x, y, sg_model):
     return(
         mse_diff_log_loss, l1_diff_log_loss,
         mse_prob_loss, l1_prob_loss, corrcoef_prob,
+        pcorr_prob, pvalue_prob,
         cross_entropy_prob_loss, kl_div_prob_loss,
         var_state_accuracy, graph_state_accuracy,
         mse_logscore_state_loss, l1_logscore_state_loss,
@@ -392,11 +397,13 @@ def train():
 #     with autograd.detect_anomaly():
     best_train_mse_diff_log_loss, best_train_l1_diff_log_loss = np.inf, np.inf
     best_train_mse_prob_loss, best_train_l1_prob_loss, best_train_corrcoef_prob = np.inf, np.inf, -np.inf
+    best_train_pcorr_prob, best_train_pvalue_prob = -np.inf, np.inf
     best_train_cross_entropy_prob_loss, best_train_kl_div_prob_loss = np.inf, np.inf
     best_train_var_state_accuracy, best_train_graph_state_accuracy = -np.inf, -np.inf
     best_train_mse_logscore_state_loss, best_train_l1_logscore_state_loss = np.inf, np.inf
     best_val_mse_diff_log_loss, best_val_l1_diff_log_loss = np.inf, np.inf
     best_val_mse_prob_loss, best_val_l1_prob_loss, best_val_corrcoef_prob = np.inf, np.inf, -np.inf
+    best_val_pcorr_prob, best_val_pvalue_prob = -np.inf, np.inf
     best_val_cross_entropy_prob_loss, best_val_kl_div_prob_loss = np.inf, np.inf
     best_val_var_state_accuracy, best_val_graph_state_accuracy = -np.inf, -np.inf
     best_val_mse_logscore_state_loss, best_val_l1_logscore_state_loss = np.inf, np.inf
@@ -466,6 +473,7 @@ def train():
             model_index = 0
             mse_diff_log_losses, l1_diff_log_losses = [], []
             mse_prob_losses, l1_prob_losses, corrcoef_probs = [], [], []
+            pcorr_probs, pvalue_probs = [], []
             cross_entropy_prob_losses, kl_div_prob_losses = [], []
             var_state_accuracies, graph_state_accuracies = [], []
             mse_logscore_state_losses, l1_logscore_state_losses = [], []
@@ -483,6 +491,7 @@ def train():
                     x, y = estimated_marginals_function[data_batch==midx], exact_marginals_function[data_batch==midx]
                     mse_diff_log_loss, l1_diff_log_loss, \
                         mse_prob_loss, l1_prob_loss, corrcoef_prob, \
+                        pcorr_prob, pvalue_prob, \
                         cross_entropy_prob_loss, kl_div_prob_loss, \
                         var_state_accuracy, graph_state_accuracy,\
                         mse_logscore_state_loss, l1_logscore_state_loss\
@@ -492,6 +501,8 @@ def train():
                     mse_prob_losses += mse_prob_loss
                     l1_prob_losses += l1_prob_loss
                     corrcoef_probs += corrcoef_prob
+                    pcorr_probs += pcorr_prob
+                    pvalue_probs += pvalue_prob
                     cross_entropy_prob_losses += cross_entropy_prob_loss
                     kl_div_prob_losses += kl_div_prob_loss
                     var_state_accuracies += var_state_accuracy
@@ -510,6 +521,8 @@ def train():
                     'RMSE_Prob_training': np.sqrt(np.mean(mse_prob_losses)),
                     'L1_Prob_training': np.mean(l1_prob_losses),
                     'CorrCoef_Prob_training': np.mean(corrcoef_probs),
+                    'PCorr_Prob_training': np.mean(pcorr_probs),
+                    'PValue_prob_training': np.mean(pvalue_probs),
                     'CrossEntropy_Prob_training': np.mean(cross_entropy_prob_losses),
                     'KLDivergence_Prob_training': np.mean(kl_div_prob_losses),
                     'ACC_VarState_training': np.mean(var_state_accuracies),
@@ -522,6 +535,8 @@ def train():
                 best_train_mse_prob_loss = min(best_train_mse_prob_loss, np.sqrt(np.mean(mse_prob_losses)))
                 best_train_l1_prob_loss = min(best_train_l1_prob_loss, np.mean(l1_prob_losses))
                 best_train_corrcoef_prob = max(best_train_corrcoef_prob, np.mean(corrcoef_probs))
+                best_train_pcorr_prob = max(best_train_pcorr_prob, np.mean(pcorr_probs))
+                best_train_pvalue_prob = min(best_train_pvalue_prob, np.mean(pvalue_probs))
                 best_train_cross_entropy_prob_loss = min(best_train_cross_entropy_prob_loss, np.mean(cross_entropy_prob_losses))
                 best_train_kl_div_prob_loss = min(best_train_kl_div_prob_loss, np.mean(kl_div_prob_losses))
                 best_train_var_state_accuracy = max(best_train_var_state_accuracy, np.mean(var_state_accuracies))
@@ -534,6 +549,8 @@ def train():
                     'Best_RMSE_Prob_training': best_train_mse_prob_loss,
                     'Best_L1_Prob_training': best_train_l1_prob_loss,
                     'Best_CorrCoef_Prob_training': best_train_corrcoef_prob,
+                    'Best_PCorr_Prob_training': best_train_pcorr_prob,
+                    'Best_PValue_Prob_training': best_train_pvalue_prob,
                     'Best_CrossEntropy_Prob_training': best_train_cross_entropy_prob_loss,
                     'Best_KLDivergence_Prob_training': best_train_kl_div_prob_loss,
                     'Best_ACC_VarState_training': best_train_var_state_accuracy,
@@ -545,6 +562,7 @@ def train():
             model_index = 0
             mse_diff_log_losses, l1_diff_log_losses = [], []
             mse_prob_losses, l1_prob_losses, corrcoef_probs = [], [], []
+            pcorr_probs, pvalue_probs = [], []
             cross_entropy_prob_losses , kl_div_prob_losses = [], []
             var_state_accuracies, graph_state_accuracies = [], []
             mse_logscore_state_losses, l1_logscore_state_losses = [], []
@@ -562,6 +580,7 @@ def train():
                     x, y = estimated_marginals_function[data_batch==midx], exact_marginals_function[data_batch==midx]
                     mse_diff_log_loss, l1_diff_log_loss, \
                         mse_prob_loss, l1_prob_loss, corrcoef_prob, \
+                        pcorr_prob, pvalue_prob, \
                         cross_entropy_prob_loss, kl_div_prob_loss,\
                         var_state_accuracy, graph_state_accuracy,\
                         mse_logscore_state_loss, l1_logscore_state_loss\
@@ -571,6 +590,8 @@ def train():
                     mse_prob_losses += mse_prob_loss
                     l1_prob_losses += l1_prob_loss
                     corrcoef_probs += corrcoef_prob
+                    pcorr_probs += pcorr_prob
+                    pvalue_probs += pvalue_prob
                     cross_entropy_prob_losses += cross_entropy_prob_loss
                     kl_div_prob_losses += kl_div_prob_loss
                     var_state_accuracies += var_state_accuracy
@@ -591,6 +612,8 @@ def train():
                     'RMSE_Prob_val': np.sqrt(np.mean(mse_prob_losses)),
                     'L1_Prob_val': np.mean(l1_prob_losses),
                     'CorrCoef_Prob_val': np.mean(corrcoef_probs),
+                    'PCorr_Prob_val': np.mean(pcorr_probs),
+                    'PValue_prob_val': np.mean(pvalue_probs),
                     'CrossEntropy_Prob_val': np.mean(cross_entropy_prob_losses),
                     'KLDivergence_Prob_val': np.mean(kl_div_prob_losses),
                     'ACC_VarState_val': np.mean(var_state_accuracies),
@@ -603,6 +626,8 @@ def train():
                 best_val_mse_prob_loss = min(best_val_mse_prob_loss, np.sqrt(np.mean(mse_prob_losses)))
                 best_val_l1_prob_loss = min(best_val_l1_prob_loss, np.mean(l1_prob_losses))
                 best_val_corrcoef_prob = max(best_val_corrcoef_prob, np.mean(corrcoef_probs))
+                best_val_pcorr_prob = max(best_val_pcorr_prob, np.mean(pcorr_probs))
+                best_val_pvalue_prob = min(best_val_pvalue_prob, np.mean(pvalue_probs))
                 best_val_cross_entropy_prob_loss = min(best_val_cross_entropy_prob_loss, np.mean(cross_entropy_prob_losses))
                 best_val_kl_div_prob_loss = min(best_val_kl_div_prob_loss, np.mean(kl_div_prob_losses))
                 best_val_var_state_accuracy = max(best_val_var_state_accuracy, np.mean(var_state_accuracies))
@@ -615,6 +640,8 @@ def train():
                     'Best_RMSE_Prob_val': best_val_mse_prob_loss,
                     'Best_L1_Prob_val': best_val_l1_prob_loss,
                     'Best_CorrCoef_Prob_val': best_val_corrcoef_prob,
+                    'Best_PCorr_Prob_val': best_train_pcorr_prob,
+                    'Best_PValue_Prob_val': best_train_pvalue_prob,
                     'Best_CrossEntropy_Prob_val': best_val_cross_entropy_prob_loss,
                     'Best_KLDivergence_Prob_val': best_val_kl_div_prob_loss,
                     'Best_ACC_VarState_val': best_val_var_state_accuracy,
