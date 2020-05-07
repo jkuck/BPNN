@@ -6,15 +6,18 @@ SHARE_WEIGHTS = False #if true, share the weights between layers in a BPNN
 BETHE_MLP = False #if true, use a final layer MLP for BPNN that is initialized to the Bethe approximation
 NUM_MLPS = 2 #the number of MLPs per layer in BPNN (1 or 2)
 
-FINAL_MLP = True
+FINAL_MLP = False
+LEARN_BP_INIT = True
+NUM_BP_LAYERS = 10
+PRE_BP_MLP = False
 N = 100
 A=5
 B=1
 C=2
-NUM_SAMPLES_TRAIN=10 
+NUM_SAMPLES_TRAIN=10
 NUM_SAMPLES_VAL=1
-SMOOTHING=False
-BELIEF_REPEATS = 16
+SMOOTHING=None
+BELIEF_REPEATS = 8
 LN_ZERO = -99
 
 MRFTOOLS_LBP_ITERS = 5 #iterations of loopy belief propagation to run in mrftools

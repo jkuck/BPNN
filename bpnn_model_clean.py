@@ -163,88 +163,90 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         self.var_cardinality = var_cardinality
         print("learn_BP:", learn_BP)
         if learn_BP:
-            assert(factor_state_space is not None)     
-            self.linear1 = Linear(factor_state_space, factor_state_space*2)
-            self.linear2 = Linear(factor_state_space*2, factor_state_space)
-            #self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-            #self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-            #self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-            #self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
-
-            self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space           
-            if lne_mlp:            
-                self.mlp1 = Seq(self.linear1, torch.nn.BatchNorm1d(factor_state_space * 2), ReLU(), self.linear2, torch.nn.BatchNorm1d(factor_state_space), torch.nn.Sigmoid())  
-            self.linear1 = Linear(factor_state_space, factor_state_space)
-            self.linear2 = Linear(factor_state_space, factor_state_space)
-            self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-            self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-            self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-            self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
-
-            self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space           
-            if lne_mlp:            
-                self.mlp1 = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)  
-            else:
-                self.mlp1 = Seq(self.linear1, self.linear2)  
-
-
-            #add factor potential as part of MLP
-#                 self.linear3 = Linear(factor_state_space*2, factor_state_space)
-#                 self.linear4 = Linear(factor_state_space, factor_state_space)
-#                 self.linear3.weight = torch.nn.Parameter(torch.cat([torch.eye(factor_state_space), torch.eye(factor_state_space)], 1))
-#                 self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-#                 self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-#                 self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
-
-#                 self.shifted_relu1 = shift_func(ReLU(), shift=-50) #allow beliefs less than 0    
-
-            #add factor potential after MLP
-            self.linear3 = Linear(factor_state_space, factor_state_space*2)
-            self.linear4 = Linear(factor_state_space*2, factor_state_space)
-            #self.linear3.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-            #self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-            #self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
-            #self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
-
-            self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
-            if lne_mlp:
-                self.mlp2 = Seq(self.linear3, torch.nn.BatchNorm1d(factor_state_space*2), torch.nn.LeakyReLU(.2), self.linear4, torch.nn.BatchNorm1d(factor_state_space), torch.nn.Sigmoid()) 
-            else:
-                self.mlp2 = Seq(self.linear3, self.linear4)  
-
-            weight = torch.eye(var_cardinality*belief_repeats)
-            weights = [(weight + torch.randn_like(weight) * .1) * weight for i in range(4)]
-            rand = [torch.abs(torch.randn_like(weight)*.3) * (torch.ones_like(weight) - weight) for i in range(4)]
-            weight5 = weights[0] + rand[0]
-            weight6 = weights[1] + rand[1]
-            weight7 = weights[2] + rand[2]
-            weight8 = weights[3] + rand[3]
-            self.linear5 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            self.linear55 = Linear(var_cardinality*belief_repeats*2, var_cardinality*belief_repeats*2)
-            self.linear6 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            if initialize_exact_BP:
-                self.linear5.weight = torch.nn.Parameter(weight5)
-                self.linear5.bias = torch.nn.Parameter(torch.zeros(self.linear5.bias.shape))
-                self.linear6.weight = torch.nn.Parameter(weight6)
-                self.linear6.bias = torch.nn.Parameter(torch.zeros(self.linear6.bias.shape))
-            #self.mlp3 = Seq(self.linear5, torch.nn.LeakyReLU(.2), self.linear6, torch.nn.Sigmoid())
-            self.mlp3 = Seq(self.linear5, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.LeakyReLU(.2), self.linear6, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())
-            #self.mlp3 = Seq(self.linear5, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear55, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear6, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())  
-            self.alpha_mlp3 = torch.nn.Parameter(alpha2*torch.ones(1))
-            
-            self.linear7 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            self.linear75 = Linear(var_cardinality*belief_repeats*2, var_cardinality*belief_repeats*2)
-            self.linear8 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            if initialize_exact_BP:
-                self.linear7.weight = torch.nn.Parameter(weight7)
-                self.linear7.bias = torch.nn.Parameter(torch.zeros(self.linear7.bias.shape))
-                self.linear8.weight = torch.nn.Parameter(weight8)
-                self.linear8.bias = torch.nn.Parameter(torch.zeros(self.linear8.bias.shape))
-            #self.mlp4 = Seq(self.linear7, torch.nn.LeakyReLU(.2), self.linear8, torch.nn.Sigmoid())
-            self.mlp4 = Seq(self.linear7, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.LeakyReLU(.2), self.linear8, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())
-            #self.mlp4 = Seq(self.linear7, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear75, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear8, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())  
-            self.alpha_mlp4 = torch.nn.Parameter(alpha2*torch.ones(1)) 
+            assert(factor_state_space is not None)
+            if use_MLP1:     
+                self.linear1 = Linear(factor_state_space, factor_state_space*2)
+                self.linear2 = Linear(factor_state_space*2, factor_state_space)
+                #self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+                #self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                #self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+                #self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
     
+                self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space           
+                if lne_mlp:            
+                    self.mlp1 = Seq(self.linear1, torch.nn.BatchNorm1d(factor_state_space * 2), ReLU(), self.linear2, torch.nn.BatchNorm1d(factor_state_space), torch.nn.Sigmoid())  
+                self.linear1 = Linear(factor_state_space, factor_state_space)
+                self.linear2 = Linear(factor_state_space, factor_state_space)
+                self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+                self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+                self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+    
+                self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space           
+                if lne_mlp:            
+                    self.mlp1 = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)  
+                else:
+                    self.mlp1 = Seq(self.linear1, self.linear2)  
+    
+    
+                #add factor potential as part of MLP
+    #                 self.linear3 = Linear(factor_state_space*2, factor_state_space)
+    #                 self.linear4 = Linear(factor_state_space, factor_state_space)
+    #                 self.linear3.weight = torch.nn.Parameter(torch.cat([torch.eye(factor_state_space), torch.eye(factor_state_space)], 1))
+    #                 self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+    #                 self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+    #                 self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+    
+    #                 self.shifted_relu1 = shift_func(ReLU(), shift=-50) #allow beliefs less than 0    
+    
+                #add factor potential after MLP
+            if use_MLP2:
+                self.linear3 = Linear(factor_state_space, factor_state_space*2)
+                self.linear4 = Linear(factor_state_space*2, factor_state_space)
+                #self.linear3.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+                #self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                #self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space))
+                #self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+    
+                self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
+                if lne_mlp:
+                    self.mlp2 = Seq(self.linear3, torch.nn.BatchNorm1d(factor_state_space*2), torch.nn.LeakyReLU(.2), self.linear4, torch.nn.BatchNorm1d(factor_state_space), torch.nn.Sigmoid()) 
+                else:
+                    self.mlp2 = Seq(self.linear3, self.linear4)  
+            if use_MLP3:
+                weight = torch.eye(var_cardinality*belief_repeats)
+                weights = [(weight + torch.randn_like(weight) * .05) * weight for i in range(4)]
+                rand = [torch.abs(torch.randn_like(weight)*.1) * (torch.ones_like(weight) - weight) for i in range(4)]
+                weight5 = weights[0] + rand[0]
+                weight6 = weights[1] + rand[1]
+                weight7 = weights[2] + rand[2]
+                weight8 = weights[3] + rand[3]
+                self.linear5 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+                self.linear55 = Linear(var_cardinality*belief_repeats*2, var_cardinality*belief_repeats*2)
+                self.linear6 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+                if initialize_exact_BP:
+                    self.linear5.weight = torch.nn.Parameter(weight5)
+                    self.linear5.bias = torch.nn.Parameter(torch.zeros(self.linear5.bias.shape))
+                    self.linear6.weight = torch.nn.Parameter(weight6)
+                    self.linear6.bias = torch.nn.Parameter(torch.zeros(self.linear6.bias.shape))
+                #self.mlp3 = Seq(self.linear5, torch.nn.LeakyReLU(.2), self.linear6, torch.nn.Sigmoid())
+                self.mlp3 = Seq(self.linear5, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.LeakyReLU(.2), self.linear6, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())
+                #self.mlp3 = Seq(self.linear5, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear55, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear6, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())  
+                self.alpha_mlp3 = torch.nn.Parameter(alpha2*torch.ones(1))
+            if use_MLP4:
+                self.linear7 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+                self.linear75 = Linear(var_cardinality*belief_repeats*2, var_cardinality*belief_repeats*2)
+                self.linear8 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+                if initialize_exact_BP:
+                    self.linear7.weight = torch.nn.Parameter(weight7)
+                    self.linear7.bias = torch.nn.Parameter(torch.zeros(self.linear7.bias.shape))
+                    self.linear8.weight = torch.nn.Parameter(weight8)
+                    self.linear8.bias = torch.nn.Parameter(torch.zeros(self.linear8.bias.shape))
+                #self.mlp4 = Seq(self.linear7, torch.nn.LeakyReLU(.2), self.linear8, torch.nn.Sigmoid())
+                self.mlp4 = Seq(self.linear7, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.LeakyReLU(.2), self.linear8, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())
+                #self.mlp4 = Seq(self.linear7, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear75, torch.nn.BatchNorm1d(var_cardinality*belief_repeats*2), torch.nn.LeakyReLU(.2), self.linear8, torch.nn.BatchNorm1d(var_cardinality*belief_repeats), torch.nn.Sigmoid())  
+                self.alpha_mlp4 = torch.nn.Parameter(alpha2*torch.ones(1)) 
+        
             
             
     def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs):

@@ -6,18 +6,18 @@ from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import reset
 from torch_geometric.utils import remove_self_loops
 import numpy as np
-from torch.nn import Sequential as Seq, Linear, ReLU
+from torch.nn import Sequential as Seq, BatchNorm1d as bn, Linear, ReLU, LeakyReLU, Sigmoid
 from utils import neg_inf_to_zero, shift_func
-
+import time
 import math
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
 from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
-from parameters_sbm import SHARE_WEIGHTS, BETHE_MLP, alpha2, FINAL_MLP
+from parameters_sbm import LN_ZERO, SHARE_WEIGHTS, BETHE_MLP, alpha2, FINAL_MLP, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP
 
 class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
                 bethe_MLP=BETHE_MLP, belief_repeats=None, var_cardinality=None, learn_bethe_residual_weight=False,
-                initialize_to_exact_bethe = True, final_mlp = FINAL_MLP):
+                initialize_to_exact_bethe = True, final_mlp = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -38,7 +38,11 @@ class lbp_message_passing_network(nn.Module):
         self.msg_passing_iters = msg_passing_iters
         self.bethe_MLP = bethe_MLP
         self.learn_bethe_residual_weight = learn_bethe_residual_weight
-        self.final_mlp = final_mlp
+        self.final_mlp = final_mlp and not learn_BP_init
+        self.learn_BP_init = learn_BP_init
+        self.num_BP_layers = NUM_BP_LAYERS
+        self.pre_BP_mlp = PRE_BP_MLP
+
         if learn_bethe_residual_weight:
             self.alpha_betheMLP = torch.nn.Parameter(alpha2*torch.ones(1))
             assert(initialize_to_exact_bethe == False), "Set initialize_to_exact_bethe=False when learn_bethe_residual_weight=True"
@@ -48,11 +52,20 @@ class lbp_message_passing_network(nn.Module):
         else:
             self.message_passing_layers = nn.ModuleList([\
                 FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
-                                                            var_cardinality=var_cardinality, belief_repeats=belief_repeats)\
+                                                            var_cardinality=var_cardinality, belief_repeats=belief_repeats, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True)\
                                                          for i in range(msg_passing_iters)])
         self.device = device
         if final_mlp:
-            self.final_fc = Seq(Linear(belief_repeats * var_cardinality, 16), torch.nn.BatchNorm1d(16), torch.nn.LeakyReLU(.2), Linear(16, var_cardinality))
+            self.final_fc = Linear(belief_repeats * var_cardinality, var_cardinality)
+            #self.final_fc = Seq(Linear(belief_repeats * var_cardinality, 16), torch.nn.BatchNorm1d(16), torch.nn.LeakyReLU(.2), Linear(16, var_cardinality))
+        if learn_BP_init:
+            self.BP_layers = nn.ModuleList([FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP = True, factor_state_space = 2 ** max_factor_state_dimensions, var_cardinality = var_cardinality, belief_repeats = 1, use_MLP1=False, use_MLP2=False, use_MLP3=False, use_MLP4=False) for i in range(num_BP_layers)])
+        if pre_BP_mlp:
+            self.varToFactor_fc = Seq(Linear(belief_repeats * var_cardinality, belief_repeats * var_cardinality), bn(var_cardinality * belief_repeats), LeakyReLU(.2), Linear(belief_repeats * var_cardinality, var_cardinality), bn(var_cardinality), Sigmoid())
+            self.factorToVar_fc = Seq(Linear(belief_repeats * var_cardinality, belief_repeats * var_cardinality), bn(var_cardinality * belief_repeats), LeakyReLU(.2), Linear(belief_repeats * var_cardinality, var_cardinality), bn(var_cardinality), Sigmoid())
+            self.factor_fc = Seq(Linear(2 ** max_factor_state_dimensions * belief_repeats, 2 ** max_factor_state_dimensions * belief_repeats * 2), bn(2 ** max_factor_state_dimensions * belief_repeats * 2), LeakyReLU(.2), Linear(2 ** max_factor_state_dimensions * 2 * belief_repeats, 2 ** max_factor_state_dimensions), bn(2 ** max_factor_state_dimensions), Sigmoid())
+ 
+
         if bethe_MLP:
             var_cardinality = var_cardinality #2 for binary variables
             belief_repeats = belief_repeats
@@ -87,7 +100,7 @@ class lbp_message_passing_network(nn.Module):
         
         
         
-    def forward(self, factor_graph):
+    def forward(self, factor_graph, device, factor_graph_BP = None):
 #         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
         prv_varToFactor_messages = factor_graph.prv_varToFactor_messages
         prv_factorToVar_messages = factor_graph.prv_factorToVar_messages
@@ -129,11 +142,31 @@ class lbp_message_passing_network(nn.Module):
 #                     print("cur_pooled_states.shape:", cur_pooled_states.shape)
                     pooled_states.append(cur_pooled_states)
         var_beliefs = torch.exp(prv_var_beliefs)
-        if self.final_mlp:
-            var_beliefs = torch.flatten(var_beliefs, start_dim = 1, end_dim = 2) 
+        if self.learn_BP_init:
+            if self.pre_BP_mlp:
+                prv_varToFactor_messages = torch.exp(prv_varToFactor_messages)
+                prv_factorToVar_messages = torch.exp(prv_factorToVar_messages)
+                prv_factor_beliefs = torch.exp(prv_factor_beliefs)
+                prv_varToFactor_messages = torch.log(self.varToFactor_fc(torch.flatten(prv_varToFactor_messages, start_dim = 1, end_dim = -1)).unsqueeze(dim = 1))
+                prv_factorToVar_messages = torch.log(self.factorToVar_fc(torch.flatten(prv_factorToVar_messages, start_dim = 1, end_dim = -1)).unsqueeze(dim = 1))
+                prv_factor_beliefs = torch.log(self.factor_fc(torch.flatten(prv_factor_beliefs, start_dim = 1, end_dim = -1)).view(-1, 2, 2).unsqueeze(dim = 1))
+                prv_factor_beliefs = torch.where(factor_graph_BP.factor_potential_masks == 1, torch.tensor(LN_ZERO, dtype = torch.float).to(device), prv_factor_beliefs)
+                #prv_factor_beliefs = factor_graph_BP.prv_factor_beliefs
+                #prv_varToFactor_messages = factor_graph_BP.prv_varToFactor_messages
+                #prv_factorToVar_messages = factor_graph_BP.prv_factorToVar_messages
+            else:
+                prv_varToFactor_messages = torch.mean(prv_varToFactor_messages, dim = 1).unsqueeze(dim = 1)
+                prv_factorToVar_messages = torch.mean(prv_factorToVar_messages, dim = 1).unsqueeze(dim = 1)
+                prv_factor_beliefs = torch.mean(prv_factor_beliefs, dim = 1).unsqueeze(dim = 1)
+            for BP_layer in self.BP_layers:
+                 prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs = BP_layer(factor_graph_BP, prv_varToFactor_messages=prv_varToFactor_messages, prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+            var_beliefs = torch.exp(torch.mean(prv_var_beliefs, dim = 1))
+        elif self.final_mlp:
+            var_beliefs = torch.flatten(var_beliefs, start_dim = 1, end_dim = -1) 
             var_beliefs = self.final_fc(var_beliefs)
         else:
             var_beliefs = torch.mean(var_beliefs, dim = 1)
+ 
         return var_beliefs
 
         if self.bethe_MLP:

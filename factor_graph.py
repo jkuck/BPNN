@@ -353,10 +353,10 @@ class FactorGraphData(DataFactorGraph_partial):
         # prv_factor_beliefs = prv_factor_beliefs/torch.logsumexp(prv_factor_beliefs, [i for i in range(1, len(prv_factor_beliefs.size()))])
         prv_var_beliefs = torch.log(torch.stack([torch.ones([self.belief_repeats, self.var_cardinality], dtype=torch.float) for j in range(self.numVars)], dim=0))
         if initialize_randomly:
-            prv_varToFactor_messages = torch.log(torch.rand_like(prv_varToFactor_messages))
-            prv_factorToVar_messages = torch.log(torch.rand_like(prv_factorToVar_messages))
-            prv_factor_beliefs = torch.log(torch.rand_like(prv_factor_beliefs))
-            prv_var_beliefs = torch.log(torch.rand_like(prv_var_beliefs))
+            prv_varToFactor_messages = torch.rand_like(prv_varToFactor_messages)
+            prv_factorToVar_messages = torch.rand_like(prv_factorToVar_messages)
+            prv_factor_beliefs = torch.rand_like(prv_factor_beliefs)
+            prv_var_beliefs = torch.rand_like(prv_var_beliefs)
         if device is not None:
             prv_varToFactor_messages = prv_varToFactor_messages.to(device)
             prv_factorToVar_messages = prv_factorToVar_messages.to(device)
