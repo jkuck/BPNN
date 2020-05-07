@@ -364,8 +364,8 @@ def test_loss_func(x, y, sg_model):
     )
 
 def train():
-    if USE_WANDB:
-        wandb.watch(lbp_net)
+    # if USE_WANDB:
+        # wandb.watch(lbp_net)
     if TRAINING_FLAG:
         lbp_net.train()
     else:
@@ -658,9 +658,9 @@ def train():
             if not os.path.exists(TRAINED_MODELS_DIR):
                 os.makedirs(TRAINED_MODELS_DIR)
             torch.save(lbp_net.state_dict(), TRAINED_MODELS_DIR + MODEL_NAME)
-            if USE_WANDB:
-                # Save model to wandb
-                torch.save(lbp_net.state_dict(), os.path.join(wandb.run.dir, 'model.pt'))
+            # if USE_WANDB:
+                # # Save model to wandb
+                # torch.save(lbp_net.state_dict(), os.path.join(wandb.run.dir, 'model.pt'))
 
     if not os.path.exists(TRAINED_MODELS_DIR):
         os.makedirs(TRAINED_MODELS_DIR)
