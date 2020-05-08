@@ -1,7 +1,6 @@
 import torch
 from torch import autograd
 import pickle
-import wandb
 import random
 
 from torch_geometric.data import InMemoryDataset
@@ -35,7 +34,13 @@ import cProfile
 import argparse
 
 QUICK_TEST = False
-BPNN_quick_test_model_path = './wandb/run-20200501_045947-7pobako9/model.pt'
+USE_WANDB = True
+# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
+if USE_WANDB:
+    import wandb
+
+print("finished imports :)")
+BPNN_quick_test_model_path = './wandb/run-20200506_213933-reuvume7/model.pt'
 
 
 def boolean_string(s):    
@@ -51,7 +56,7 @@ parser.add_argument('--msg_passing_iters', type=int, default=10)
 #to increasing node feature dimensions in a standard graph neural network
 parser.add_argument('--belief_repeats', type=int, default=1)
 
-parser.add_argument('--batch_size', type=int, default=10)
+parser.add_argument('--batch_size', type=int, default=50)
 
 #works well for training on attractive field
 # LEARNING_RATE = 0.0005
@@ -63,7 +68,9 @@ if QUICK_TEST:
 else:
     # parser.add_argument('--learning_rate', type=float, default=0.0005)
 
-    parser.add_argument('--learning_rate', type=float, default=0.0002)
+    parser.add_argument('--learning_rate', type=float, default=0.005)
+
+    # parser.add_argument('--learning_rate', type=float, default=0.000000)
 
     # parser.add_argument('--learning_rate', type=float, default=0.02)
 
@@ -173,8 +180,6 @@ GNN_trained_model_path = './wandb/run-20200219_051810-bp7hke44/model.pt' #locati
 
 # BPNN_trained_model_path = './wandb/run-20200219_020545-j2ef9bvp/model.pt'
 
-USE_WANDB = False
-# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 ##########################
 ####### Training PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
@@ -232,8 +237,10 @@ SAVE_FREQUENCY = 100
 TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' datasets
 
 ##### Optimizer parameters #####
-STEP_SIZE=300
-LR_DECAY=.5
+STEP_SIZE=10
+# STEP_SIZE=300
+LR_DECAY=.01
+# LR_DECAY=.5
 LEARNING_RATE = args.learning_rate
 
 # if ATTRACTIVE_FIELD_TRAIN == True:
@@ -417,8 +424,8 @@ print('entering traing')
 # lbp_net.double()
 def train():
     if QUICK_TEST:
-        pass
-        # lbp_net.load_state_dict(torch.load(BPNN_quick_test_model_path))
+        # pass
+        lbp_net.load_state_dict(torch.load(BPNN_quick_test_model_path))
     
     if USE_WANDB:
         
@@ -491,6 +498,7 @@ def train():
             
 #     with autograd.detect_anomaly():
     for e in range(EPOCH_COUNT):
+        print("epoch:", e, "scheduler.get_lr():", scheduler.get_lr())
         epoch_loss = 0
         optimizer.zero_grad()
         losses = []
@@ -577,7 +585,9 @@ def train():
         epoch_loss.backward()
         # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
         optimizer.step()
+        print("epoch:", e, " about to take step scheduler.get_lr():", scheduler.get_lr())
         scheduler.step()
+        print("epoch:", e, " just took step scheduler.get_lr():", scheduler.get_lr())
 
 
         if e % PRINT_FREQUENCY == 0:
