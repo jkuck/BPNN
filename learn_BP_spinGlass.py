@@ -163,7 +163,7 @@ GNN_trained_model_path = './wandb/run-20200219_051810-bp7hke44/model.pt' #locati
 
 # BPNN_trained_model_path = './wandb/run-20200219_020545-j2ef9bvp/model.pt'
 
-USE_WANDB = False
+USE_WANDB = True
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 ##########################
 ####### Training PARAMETERS #######
@@ -504,6 +504,8 @@ def train():
             # print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
             vTof_convergence_loss = loss_func(prv_varToFactor_messages, prv_prv_varToFactor_messages)
             fTov_convergence_loss = loss_func(prv_factorToVar_messages, prv_prv_factorToVar_messages)
+            print("torch.max(torch.abs(prv_varToFactor_messages - prv_prv_varToFactor_messages)) =", torch.max(torch.abs(prv_varToFactor_messages - prv_prv_varToFactor_messages)))
+            print("torch.max(torch.abs(prv_factorToVar_messages - prv_prv_factorToVar_messages)) =", torch.max(torch.abs(prv_factorToVar_messages - prv_prv_factorToVar_messages)))            
             # print("vTof_convergence_loss.shape:", vTof_convergence_loss.shape)
             # print("vTof_convergence_loss:", vTof_convergence_loss)
             # print("hi")
