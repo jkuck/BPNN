@@ -239,7 +239,7 @@ TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' dat
 ##### Optimizer parameters #####
 STEP_SIZE=10
 # STEP_SIZE=300
-LR_DECAY=.01
+LR_DECAY=.5
 # LR_DECAY=.5
 LEARNING_RATE = args.learning_rate
 
@@ -498,7 +498,7 @@ def train():
             
 #     with autograd.detect_anomaly():
     for e in range(EPOCH_COUNT):
-        print("epoch:", e, "scheduler.get_lr():", scheduler.get_lr())
+        print("scheduler.get_lr():", scheduler.get_lr())
         epoch_loss = 0
         optimizer.zero_grad()
         losses = []
@@ -585,9 +585,7 @@ def train():
         epoch_loss.backward()
         # nn.utils.clip_grad_norm_(net.parameters(), args.clip)
         optimizer.step()
-        print("epoch:", e, " about to take step scheduler.get_lr():", scheduler.get_lr())
         scheduler.step()
-        print("epoch:", e, " just took step scheduler.get_lr():", scheduler.get_lr())
 
 
         if e % PRINT_FREQUENCY == 0:
