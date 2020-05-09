@@ -156,7 +156,7 @@ class lbp_message_passing_network(nn.Module):
         
         if self.share_weights:
             # for iter in range(self.msg_passing_iters):
-            random_msg_passing_iters = np.random.randint(3, 30)
+            random_msg_passing_iters = np.random.randint(5, 30)
             print()
             print("random_msg_passing_iters =", random_msg_passing_iters)
             # random_msg_passing_iters = 40

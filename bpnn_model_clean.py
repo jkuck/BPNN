@@ -334,9 +334,52 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             if self.learn_residual_weights:
                 factorToVar_messages = (1-self.alpha_mlp3)*factorToVar_messages_postMLP + self.alpha_mlp3*factorToVar_messages                
             else:
-                factorToVar_messages = (1-alpha2)*factorToVar_messages_postMLP + alpha2*factorToVar_messages
+                mode = 'orig' #'orig', 'rescale', 'diff'
+                if mode == 'orig':
+                    factorToVar_messages = (1-alpha2)*factorToVar_messages_postMLP + alpha2*factorToVar_messages
+                    factorToVar_messages = torch.clamp(factorToVar_messages, min=LN_ZERO)
+                elif mode == 'diff':
+                    old_factorToVar_messages = (1-alpha2)*factorToVar_messages_postMLP + alpha2*factorToVar_messages
+                    old_factorToVar_messages = torch.clamp(old_factorToVar_messages, min=LN_ZERO)
+
+                else:
+                    assert(mode == 'rescale')
+                    old_factorToVar_messages = (1-alpha2)*factorToVar_messages_postMLP + alpha2*factorToVar_messages
+                    old_factorToVar_messages = torch.clamp(old_factorToVar_messages, min=LN_ZERO)
+                    scale = torch.max(torch.abs(old_factorToVar_messages - prv_factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality)))
+                    
+                    print("FtoV mean:", torch.mean(torch.abs(old_factorToVar_messages - prv_factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))))
+                    print("FtoV scale:", scale)
+                    # factorToVar_messages = (1-alpha2)*factorToVar_messages_postMLP + alpha2*factorToVar_messages
+                    alpha_prime = alpha2*torch.min(scale, other=torch.tensor(1.0, device='cuda'))
+                    print("FtoV alpha_prime:", alpha_prime)
+                    # alpha_prime = .5
+                    factorToVar_messages = alpha_prime*factorToVar_messages_postMLP + (1-alpha_prime)*factorToVar_messages
+                    factorToVar_messages = torch.clamp(factorToVar_messages, min=LN_ZERO)
+
+                    # # scale = alpha2*.9**iter
+                    # # factorToVar_messages = scale*factorToVar_messages_postMLP + (1-scale)*factorToVar_messages
+
+                    # # scale = torch.abs(factorToVar_messages_postMLP - prv_factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
+                    # # factorToVar_messages = 4.0*(1-alpha2)*torch.max(scale,other=torch.tensor(.25, device='cuda'))[0]*factorToVar_messages_postMLP + alpha2*factorToVar_messages
+                    # old_factorToVar_messages = (1-alpha2)*factorToVar_messages_postMLP + alpha2*factorToVar_messages
+
+                    # scale1 = torch.abs(torch.clamp(old_factorToVar_messages, min=LN_ZERO) - prv_factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
+                    # # scale1 = torch.min(torch.max(scale1),other=torch.tensor(1.0, device='cuda'))
+                    # # print("scale1.shape:", scale1.shape)
+                    # # print("factorToVar_messages.shape:", factorToVar_messages.shape)
+                    # scale1 = torch.min(scale1,other=torch.tensor(1.0, device='cuda'))[0]
+                    # print("torch.max(scale1):", torch.max(scale1))
+                    # # print("scale1:", scale1)
+                    # # print()
+
+                    # #UNCOMMENT ME!
+                    # # factorToVar_messages = scale1*old_factorToVar_messages + (1.0-scale1)*factorToVar_messages
+
+
+
             factorToVar_messages = factorToVar_messages.view(fTOv_mesg_shape)
-            factorToVar_messages = torch.clamp(factorToVar_messages, min=LN_ZERO)
+            
         
         
         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1], dim_size=factor_graph.num_vars)
@@ -385,7 +428,46 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             if self.learn_residual_weights:
                 varToFactor_messages = (1-self.alpha_mlp4)*varToFactor_messages_postMLP + self.alpha_mlp4*varToFactor_messages
             else:
-                varToFactor_messages = (1-alpha2)*varToFactor_messages_postMLP + alpha2*varToFactor_messages
+                orig = True
+                if orig:
+                    varToFactor_messages = (1-alpha2)*varToFactor_messages_postMLP + alpha2*varToFactor_messages
+                else:
+                    old_varToFactor_messages = (1-alpha2)*varToFactor_messages_postMLP + alpha2*varToFactor_messages
+                    old_varToFactor_messages = torch.clamp(old_varToFactor_messages, min=LN_ZERO)
+                    scale = torch.max(torch.abs(old_varToFactor_messages - prv_varToFactor_messages.view(vTOf_mesg_shape[0], factor_graph.belief_repeats*factor_graph.
+var_cardinality)))
+                    print("VtoF mean:", torch.mean(torch.abs(old_varToFactor_messages - prv_varToFactor_messages.view(vTOf_mesg_shape[0], factor_graph.belief_repeats*factor_graph.
+var_cardinality))))
+                    print("VtoF scale:", scale)
+                    # varToFactor_messages = (1-alpha2)*varToFactor_messages_postMLP + alpha2*varToFactor_messages
+                    alpha_prime = alpha2*torch.min(scale, other=torch.tensor(1.0, device='cuda'))
+                    print("VtoF alpha_prime:", alpha_prime)
+                    print()
+                    # alpha_prime = .5
+                    varToFactor_messages = (alpha_prime)*varToFactor_messages_postMLP + (1-alpha_prime)*varToFactor_messages
+
+#                     # scale = alpha2*.9**iter
+#                     # varToFactor_messages = scale*varToFactor_messages_postMLP + (1-scale)*varToFactor_messages
+
+#                     # scale = torch.abs(varToFactor_messages_postMLP - prv_varToFactor_messages.view(vTOf_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality))
+#                     # varToFactor_messages = 4.0*(1-alpha2)*torch.max(scale,other=torch.tensor(.25, device='cuda'))[0]*varToFactor_messages_postMLP + alpha2*varToFactor_messages
+#                     old_varToFactor_messages = (1-alpha2)*varToFactor_messages_postMLP + alpha2*varToFactor_messages                
+#                     scale1 = torch.abs(torch.clamp(old_varToFactor_messages, min=LN_ZERO) - prv_varToFactor_messages.view(vTOf_mesg_shape[0], factor_graph.belief_repeats*factor_graph.
+# var_cardinality))
+#                     # scale1 = torch.min(torch.max(scale1),other=torch.tensor(1.0, device='cuda'))
+#                     scale1 = torch.min(scale1,other=torch.tensor(1.0, device='cuda'))[0]
+                
+#                     # print("scale1:", scale1)
+#                     # print()  
+#                     print("torch.max(scale1):", torch.max(scale1))
+
+#                     #UNCOMMENT ME
+#                     # varToFactor_messages = scale1*old_varToFactor_messages + (1.0-scale1)*varToFactor_messages
+
+#                     # print("torch.max(scale1):", torch.max(scale1))
+#                     # print("torch.max(torch.max(scale1),other=torch.tensor(1.0, device='cuda')):", torch.max(torch.max(scale1),other=torch.tensor(1.0, device='cuda')))
+
+
             varToFactor_messages = varToFactor_messages.view(vTOf_mesg_shape)
             varToFactor_messages = torch.clamp(varToFactor_messages, min=LN_ZERO)
 
