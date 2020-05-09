@@ -46,7 +46,7 @@ def build_single_node_factor(variables, fixed_variables, var_idx, f):
         factor[1] = np.exp(f) #corresponding to the node taking value 1
     return factor
 
-def build_pairwise_factor(variables, fixed_variables, var_idx1, var_idx2, c):
+def build_pairwise_factor(variables, fixed_variables, var_idx1, var_idx2, c, c_upper_scale=1., c_lower_scale=1.):
     '''
     copied from https://github.com/jkuck/mrf_nesting_ub/blob/master/Factor_Graphs/libdai_ising_model.py
 
@@ -63,25 +63,31 @@ def build_pairwise_factor(variables, fixed_variables, var_idx1, var_idx2, c):
     - factor: (dai.Factor)
     '''
 
+    factor_value = np.zeros([2,2])
+    factor_value[0][0] = np.exp(c)  # V1 = -1, V2 = -1
+    factor_value[0][1] = np.exp(-c*c_upper_scale) # V1 = -1, V2 =  1
+    factor_value[1][0] = np.exp(-c*c_lower_scale) # V1 =  1, V2 = -1
+    factor_value[1][1] = np.exp(c)  # V1 =  1, V2 =  1
+
     clause_variables = dai.VarSet(variables[var_idx1], variables[var_idx2])
     factor = dai.Factor(clause_variables)
     #this 'pairwise' factor is over two fixed variables and has only 1 state
     if (var_idx1 in fixed_variables) and (var_idx2 in fixed_variables):
-        factor[0] = np.exp(fixed_variables[var_idx1]*fixed_variables[var_idx2]*c)
+        factor[0] = factor_value[int(fixed_variables[var_idx1])][int(fixed_variables[var_idx2])]
     #this 'pairwise' factor is over one fixed variable and one binary variable and has 2 states
     elif (var_idx1 in fixed_variables) and (var_idx2 not in fixed_variables):
-        factor[0] = np.exp(-fixed_variables[var_idx1]*c) # V2 = -1
-        factor[1] = np.exp(fixed_variables[var_idx1]*c) # V2 = -1
+        factor[0] = factor_value[int(fixed_variables[var_idx1])][0]
+        factor[1] = factor_value[int(fixed_variables[var_idx1])][1]
     #this 'pairwise' factor is over one fixed variable and one binary variable and has 2 states
     elif (var_idx1 not in fixed_variables) and (var_idx2 in fixed_variables):
-        factor[0] = np.exp(-fixed_variables[var_idx2]*c) # V1 = -1
-        factor[1] = np.exp(fixed_variables[var_idx2]*c) # V1 = -1
+        factor[0] = factor_value[0][int(fixed_variables[var_idx2])]
+        factor[1] = factor_value[1][int(fixed_variables[var_idx2])]
     #this pairwise factor is over two binary variables and has 4 states
     elif (var_idx1 not in fixed_variables) and (var_idx2 not in fixed_variables):
-        factor[0] = np.exp(c)  # V1 = -1, V2 = -1
-        factor[1] = np.exp(-c) # V1 = -1, V2 =  1
-        factor[2] = np.exp(-c) # V1 =  1, V2 = -1
-        factor[3] = np.exp(c)  # V1 =  1, V2 =  1
+        factor[0] = factor_value[0][0]
+        factor[1] = factor_value[0][1]
+        factor[2] = factor_value[1][0]
+        factor[3] = factor_value[1][1]
     else:
         assert(False), "This shouldn't happen!!?"
     return factor
@@ -152,9 +158,9 @@ def build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={}):
         r = var_idx//N
         c = var_idx%N
         if r < N-1:
-            factors.append(build_pairwise_factor(variables, fixed_variables, var_idx1=var_idx, var_idx2=var_idx+N, c=sg_model.cpl_params_v[r,c]))
+            factors.append(build_pairwise_factor(variables, fixed_variables, var_idx1=var_idx, var_idx2=var_idx+N, c=sg_model.cpl_params_v[r,c], c_upper_scale=sg_model.c_upper_scale))
         if c < N-1:
-            factors.append(build_pairwise_factor(variables, fixed_variables, var_idx1=var_idx, var_idx2=var_idx+1, c=sg_model.cpl_params_h[r,c]))
+            factors.append(build_pairwise_factor(variables, fixed_variables, var_idx1=var_idx, var_idx2=var_idx+1, c=sg_model.cpl_params_h[r,c], c_upper_scale=sg_model.c_upper_scale))
 
     #Define higher order factors
     if sg_model.contains_higher_order_potentials:

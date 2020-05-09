@@ -50,7 +50,7 @@ def build_unary_factor(f, state_dimensions):
             assert(False)
     return factor_potential, mask
 
-def build_pairwise_factor(c, state_dimensions):
+def build_pairwise_factor(c, state_dimensions, c_upper_scale=1., c_lower_scale=1.):
     '''
     create factor over two variables for pytorch
 
@@ -86,8 +86,10 @@ def build_pairwise_factor(c, state_dimensions):
             assert(indices[idx] == 0)
         if indices[0] == indices[1]:
             factor_potential[indices] = c
+        elif indices[0] < indices[1]:
+            factor_potential[indices] = -c*c_upper_scale
         else:
-            factor_potential[indices] = -c
+            factor_potential[indices] = -c*c_lower_scale
 
     return factor_potential, mask
 
@@ -233,7 +235,11 @@ def build_factorgraph_from_SpinGlassModel(sg_model, map_flag=False,
         for col_idx in range(N-1):
             var_idx1 = row_idx*N + col_idx
             var_idx2 = row_idx*N + col_idx + 1
-            factor_potential, mask = build_pairwise_factor(c=sg_model.cpl_params_h[row_idx,col_idx], state_dimensions=state_dimensions)
+            factor_potential, mask = build_pairwise_factor(
+                c=sg_model.cpl_params_h[row_idx,col_idx],
+                state_dimensions=state_dimensions,
+                c_upper_scale=sg_model.c_upper_scale,
+            )
             if transpose_flag:
                 factor_potentials_list.append(factor_potential.transpose(0,1))
                 masks_list.append(mask.transpose(0,1))
@@ -246,7 +252,11 @@ def build_factorgraph_from_SpinGlassModel(sg_model, map_flag=False,
         for col_idx in range(N):
             var_idx1 = row_idx*N + col_idx
             var_idx2 = (row_idx+1)*N + col_idx
-            factor_potential, mask = build_pairwise_factor(c=sg_model.cpl_params_v[row_idx,col_idx], state_dimensions=state_dimensions)
+            factor_potential, mask = build_pairwise_factor(
+                c=sg_model.cpl_params_v[row_idx,col_idx],
+                state_dimensions=state_dimensions,
+                c_upper_scale=sg_model.c_upper_scale,
+            )
             if transpose_flag:
                 factor_potentials_list.append(factor_potential.transpose(0,1))
                 masks_list.append(mask.transpose(0,1))
