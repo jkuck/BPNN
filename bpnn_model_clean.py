@@ -240,7 +240,35 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             self.alpha_mlp4 = torch.nn.Parameter(alpha2*torch.ones(1))
     
             
-            
+
+            self.linear9 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            self.linear10 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            if initialize_exact_BP:
+                self.linear9.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear9.bias = torch.nn.Parameter(torch.zeros(self.linear9.bias.shape))
+                self.linear10.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear10.bias = torch.nn.Parameter(torch.zeros(self.linear10.bias.shape))
+                
+            if lne_mlp:
+                # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, self.shifted_relu)
+                self.mlp_dampingFtoV = Seq(self.linear9)
+            else:     
+                self.mlp_dampingFtoV = Seq(self.linear9, self.linear10)             
+
+            self.linear11 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            self.linear12 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            if initialize_exact_BP:
+                self.linear11.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear11.bias = torch.nn.Parameter(torch.zeros(self.linear11.bias.shape))
+                self.linear12.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear12.bias = torch.nn.Parameter(torch.zeros(self.linear12.bias.shape))
+                
+            if lne_mlp:
+                # self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, self.shifted_relu)
+                self.mlp_dampingVtoF = Seq(self.linear11)
+            else:     
+                self.mlp_dampingVtoF = Seq(self.linear11, self.linear12)             
+                        
     def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs):
         '''
         Inputs:
@@ -320,7 +348,19 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 factorToVar_messages_exp = torch.exp(factorToVar_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
                 assert(not torch.isnan(factorToVar_messages_exp).any()), factorToVar_messages_exp
 #                 print("torch.min(factorToVar_messages_exp):", torch.min(factorToVar_messages_exp))
-#                 print("torch.max(factorToVar_messages_exp):", torch.max(factorToVar_messages_exp))                
+#                 print("torch.max(factorToVar_messages_exp):", torch.max(factorToVar_messages_exp))    
+                assert((factorToVar_messages_exp >= 0.0).all())
+                assert((factorToVar_messages_exp <= 1.0).all())
+                # print("HI from check 1")
+                # print("factorToVar_messages_exp.shape:", factorToVar_messages_exp.shape)
+                # factorToVar_messages_postMLP = factorToVar_messages_exp
+                # factorToVar_messages_postMLP[:, 0] = torch.clamp(factorToVar_messages_postMLP[:, 0], min=.004)
+                # factorToVar_messages_postMLP[:, 1] = torch.clamp(factorToVar_messages_postMLP[:, 0], max=.996)
+                # factorToVar_messages_postMLP[:, 0] = factorToVar_messages_postMLP[:, 0] + .004
+                # factorToVar_messages_postMLP[:, 1] = factorToVar_messages_postMLP[:, 1] - .002
+                # factorToVar_messages_postMLP = torch.clamp(factorToVar_messages_postMLP, min=.002)
+                # time.sleep(1)            
+
                 factorToVar_messages_postMLP = self.mlp3(factorToVar_messages_exp)
                 assert(not torch.isnan(factorToVar_messages_postMLP).any()), factorToVar_messages_postMLP
                 factorToVar_messages_postMLP = torch.clamp(factorToVar_messages_postMLP, min=np.exp(LN_ZERO))
@@ -383,6 +423,22 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         
         
         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1], dim_size=factor_graph.num_vars)
+
+#####TEMP TESTING
+        # print("HI from check 1")
+        # print("var_beliefs.shape:", var_beliefs.shape)
+        # factorToVar_messages_postMLP = factorToVar_messages_exp
+        # factorToVar_messages_postMLP[:, 0] = factorToVar_messages_postMLP[:, 0] + .002
+        # factorToVar_messages_postMLP[:, 1] = factorToVar_messages_postMLP[:, 1] - .002
+        # factorToVar_messages_postMLP = torch.clamp(factorToVar_messages_postMLP, min=.002)
+        # time.sleep(1)  
+        # var_beliefs[:,0,0] = torch.clamp(var_beliefs[:,0,0], min=-12)
+        # var_beliefs[:,0,1] = torch.clamp(var_beliefs[:,0,1], min=-12)
+        # factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)] = LN_ZERO
+
+#####END TEMP TESTING
+
+
 #         var_beliefs = scatter_('add', factorToVar_messages, factor_graph.facToVar_edge_idx[1])
         if PRINT_INFO:
             print("123 factorToVar_messages:", factorToVar_messages)                       
@@ -418,6 +474,13 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             
             if self.lne_mlp:
                 varToFactor_messages_exp = torch.exp(varToFactor_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
+                assert((varToFactor_messages_exp >= 0.0).all())
+                assert((varToFactor_messages_exp <= 1.0).all())  
+                assert((torch.abs(torch.sum(varToFactor_messages_exp, dim=1)) - 1.0 < .0001).all())
+                # print("varToFactor_messages_exp:", varToFactor_messages_exp)
+                # print("varToFactor_messages_exp.shape:", varToFactor_messages_exp.shape)
+                # print("HI from check 2")
+                # time.sleep(1)            
                 varToFactor_messages_postMLP = self.mlp4(varToFactor_messages_exp)
                 varToFactor_messages_postMLP = torch.clamp(varToFactor_messages_postMLP, min=np.exp(LN_ZERO))
                 varToFactor_messages_postMLP = torch.log(varToFactor_messages_postMLP)
@@ -808,8 +871,18 @@ var_cardinality))))
 #             print("self.alpha_FtoV_msg:", self.alpha_FtoV_msg)
             factorToVar_messages = self.alpha_FtoV_msg*factorToVar_messages + (1 - self.alpha_FtoV_msg)*prv_factorToVar_messages            
         else:
-            #print("890 factorToVar_messages pre damping:", factorToVar_messages)            
-            factorToVar_messages = self.alpha_damping_FtoV*factorToVar_messages + (1 - self.alpha_damping_FtoV)*prv_factorToVar_messages
+            #print("890 factorToVar_messages pre damping:", factorToVar_messages)     
+            USE_MLP_DAMPING=True      
+            if USE_MLP_DAMPING:
+                factorToVar_messages = factorToVar_messages + (1 - self.alpha_damping_FtoV)*self.mlp_dampingFtoV(prv_factorToVar_messages-factorToVar_messages)
+                # factorToVar_messages = factorToVar_messages + (1 - self.alpha_damping_FtoV)*(prv_factorToVar_messages-factorToVar_messages)
+
+            else:
+                factorToVar_messages = self.alpha_damping_FtoV*factorToVar_messages + (1 - self.alpha_damping_FtoV)*prv_factorToVar_messages
+
+
+            
+
             #print("890 factorToVar_messages post damping:", factorToVar_messages)            
 
         if normalize_messages:
@@ -860,9 +933,16 @@ var_cardinality))))
         if self.learn_damping_coefficients:
             varToFactor_messages = self.alpha_VtoF_msg*varToFactor_messages + (1 - self.alpha_VtoF_msg)*prv_varToFactor_messages
         else:
-            pass
+            # pass
             #print("890 varToFactor_messages pre damping:", varToFactor_messages)
-            varToFactor_messages = self.alpha_damping_VtoF*varToFactor_messages + (1 - self.alpha_damping_VtoF)*prv_varToFactor_messages
+
+            USE_MLP_DAMPING=True      
+            if USE_MLP_DAMPING:
+                varToFactor_messages = varToFactor_messages + (1 - self.alpha_damping_VtoF)*self.mlp_dampingVtoF(prv_varToFactor_messages-varToFactor_messages)
+                # varToFactor_messages = varToFactor_messages + (1 - self.alpha_damping_VtoF)*(prv_varToFactor_messages-varToFactor_messages)
+            else:
+                varToFactor_messages = self.alpha_damping_VtoF*varToFactor_messages + (1 - self.alpha_damping_VtoF)*prv_varToFactor_messages
+
             #print("890 varToFactor_messages post damping:", varToFactor_messages)
         
         if normalize_messages:

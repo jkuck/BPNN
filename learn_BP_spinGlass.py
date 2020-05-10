@@ -1,7 +1,6 @@
 import torch
 from torch import autograd
 import pickle
-import wandb
 import random
 
 from torch_geometric.data import InMemoryDataset
@@ -35,7 +34,14 @@ import cProfile
 import argparse
 
 QUICK_TEST = False
-BPNN_quick_test_model_path = './wandb/run-20200501_045947-7pobako9/model.pt'
+# BPNN_quick_test_model_path = './wandb/run-20200509_035821-2gigz6uj/model.pt' #trained with 1 BP per iteration
+BPNN_quick_test_model_path = './wandb/run-20200509_045716-pf1k3j53/model.pt' #trained with [0,20) BP per iteration
+torch.set_printoptions(precision=5, threshold=None, edgeitems=None, linewidth=None, profile=None, sci_mode=False)
+if QUICK_TEST:
+    from mpl_toolkits.mplot3d import Axes3D
+    import matplotlib.pyplot as plt
+    from matplotlib import cm
+    from matplotlib.ticker import LinearLocator, FormatStrFormatter
 
 
 def boolean_string(s):    
@@ -45,7 +51,7 @@ def boolean_string(s):
 
 parser = argparse.ArgumentParser()
 #the number of iterations of message passing, we have this many layers with their own learnable parameters
-parser.add_argument('--msg_passing_iters', type=int, default=10)
+parser.add_argument('--msg_passing_iters', type=int, default=500)
 #messages have var_cardinality states in standard belief propagation.  belief_repeats artificially
 #increases this number so that messages have belief_repeats*var_cardinality states, analogous
 #to increasing node feature dimensions in a standard graph neural network
@@ -61,11 +67,12 @@ parser.add_argument('--batch_size', type=int, default=50)
 if QUICK_TEST:
     parser.add_argument('--learning_rate', type=float, default=0.00)
 else:
-    parser.add_argument('--learning_rate', type=float, default=0.0005)
+    # parser.add_argument('--learning_rate', type=float, default=0.0005)
+    parser.add_argument('--learning_rate', type=float, default=0.005)
 
 #damping parameter
-parser.add_argument('--alpha_damping_FtoV', type=float, default=1.0)
-parser.add_argument('--alpha_damping_VtoF', type=float, default=1.0) #this damping wasn't used in the old code
+parser.add_argument('--alpha_damping_FtoV', type=float, default=.95)
+parser.add_argument('--alpha_damping_VtoF', type=float, default=.95) #this damping wasn't used in the old code
 
 #if true, mlps operate in standard space rather than log space
 parser.add_argument('--lne_mlp', type=boolean_string, default=True)
@@ -75,8 +82,8 @@ parser.add_argument('--use_MLP1', type=boolean_string, default=False)
 parser.add_argument('--use_MLP2', type=boolean_string, default=False)
 
 #new MLPs that operate on variable beliefs
-parser.add_argument('--use_MLP3', type=boolean_string, default=True)
-parser.add_argument('--use_MLP4', type=boolean_string, default=True)
+parser.add_argument('--use_MLP3', type=boolean_string, default=False)
+parser.add_argument('--use_MLP4', type=boolean_string, default=False)
 
 #if true, share the weights between layers in a BPNN
 parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=True)
@@ -100,7 +107,7 @@ parser.add_argument('--val_ood', type=boolean_string, default=True)
 parser.add_argument('--use_old_bethe', type=boolean_string, default=False)
 
 args, _ = parser.parse_known_args()
-
+print("args.use_MLP4:", args.use_MLP4)
 
 ##########################
 ##### Run me on Atlas
@@ -164,6 +171,9 @@ GNN_trained_model_path = './wandb/run-20200219_051810-bp7hke44/model.pt' #locati
 # BPNN_trained_model_path = './wandb/run-20200219_020545-j2ef9bvp/model.pt'
 
 USE_WANDB = True
+if USE_WANDB:
+    import wandb
+
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 ##########################
 ####### Training PARAMETERS #######
@@ -223,7 +233,8 @@ SAVE_FREQUENCY = 100
 TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' datasets
 
 ##### Optimizer parameters #####
-STEP_SIZE=300
+# STEP_SIZE=300
+STEP_SIZE=20
 LR_DECAY=.5
 LEARNING_RATE = args.learning_rate
 
@@ -398,13 +409,127 @@ lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STA
 
 lbp_net = lbp_net.to(device)
 
+def plot_mlp_effect_2d(lbp_net):
+    x_in_vals = []
+    y_in_vals = []
+    x_out_vals = []
+    y_out_vals = []
+    
+    for x_int in range(0, 101):
+        cur_x_in_vals = []
+        cur_y_in_vals = []
+        cur_x_out_vals = []
+        cur_y_out_vals = []
+
+        x_in = x_int/100
+        for y_int in range(0, 101):
+            y_in = y_int/100
+            belief_in = torch.tensor([x_in,y_in], device='cuda')
+            belief_out = lbp_net.message_passing_layers[0].mlp4(belief_in)
+
+            x_out = belief_out[0].item()
+            y_out = belief_out[1].item()
+            cur_x_in_vals.append(x_in)
+            cur_y_in_vals.append(y_in)
+            cur_x_out_vals.append(x_out)
+            cur_y_out_vals.append(y_out)
+
+        x_in_vals.append(cur_x_in_vals)
+        y_in_vals.append(cur_y_in_vals)
+        x_out_vals.append(cur_x_out_vals)
+        y_out_vals.append(cur_y_out_vals)
+
+        # print(lbp_net.message_passing_layers[0].mlp3(test_tensor))
+        # sleep(test_lkjslf)
+    x_in_vals = np.array(x_in_vals)
+    y_in_vals = np.array(y_in_vals)
+    x_out_vals = np.array(x_out_vals)
+    y_out_vals = np.array(y_out_vals)    
+    fig = plt.figure()
+    ax = fig.gca(projection='3d')
+
+    print("x_in_vals:", x_in_vals)
+    print("y_in_vals:", y_in_vals)
+    print("y_out_vals:", y_out_vals)
+    # Plot the surface.
+    surf = ax.plot_surface(x_in_vals, y_in_vals, x_out_vals, cmap=cm.coolwarm,
+                        linewidth=0, antialiased=False)
+
+    # Customize the z axis.
+    ax.set_zlim(-1.01, 1.01)
+    ax.zaxis.set_major_locator(LinearLocator(10))
+    ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+
+    # Add a color bar which maps values to colors.
+    fig.colorbar(surf, shrink=0.5, aspect=5)
+
+    # plt.show()
+    plt.savefig('mlp4_Xbehavior.png')
+
+def plot_mlp_effect_1d(lbp_net):
+    x_in_vals = []
+    y_in_vals = []
+    x_out_vals = []
+    y_out_vals = []
+    
+    x_delta = []
+    y_delta = []
+
+    for x_int in range(9900, 10001):
+        x_in = x_int/10000
+        y_in = 1.0 - x_in
+        belief_in = torch.tensor([x_in,y_in], device='cuda')
+        belief_out = lbp_net.message_passing_layers[0].mlp3(belief_in)
+
+        x_out = belief_out[0].item()
+        x_out = max(x_out, 0)
+        y_out = belief_out[1].item()
+        y_out = max(y_out, 0)
+        normalized_x_out = x_out/(x_out + y_out)
+        normalized_y_out = y_out/(x_out + y_out)
+        x_out = normalized_x_out
+        y_out = normalized_y_out
+        x_in_vals.append(x_in)
+        y_in_vals.append(y_in)
+        x_out_vals.append(x_out)
+        y_out_vals.append(y_out)
+        x_delta.append(x_out-x_in)
+        y_delta.append(y_out-y_in)
+
+        # print(lbp_net.message_passing_layers[0].mlp3(test_tensor))
+        # sleep(test_lkjslf)
+    x_in_vals = np.array(x_in_vals)
+    y_in_vals = np.array(y_in_vals)
+    x_out_vals = np.array(x_out_vals)
+    y_out_vals = np.array(y_out_vals)    
+
+    plt.plot(x_in_vals, x_delta, 'x-', label='change in x')
+    plt.plot(x_in_vals, y_delta, 'x-', label='change in y')
+    plt.xlabel('x in value', fontsize=14)
+
+    plt.ylabel('change in x,y', fontsize=15)
+    # plt.yscale('symlog')
+    plt.title('MLP3 effect', fontsize=20)
+    # plt.legend(fontsize=12)    
+    lgd = plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.13),
+            fancybox=True, ncol=3, fontsize=12, prop={'size': 12})
+    #make the font bigger
+    matplotlib.rcParams.update({'font.size': 10})        
+
+    plt.grid(True)
+
+    plt.savefig('./mlp3_effect_normalized.eps', bbox_extra_artists=(lgd,), bbox_inches='tight', format='eps')  
+
+
 print('entering traing')
 # lbp_net.double()
 def train():
     if QUICK_TEST:
         pass
         # lbp_net.load_state_dict(torch.load(BPNN_quick_test_model_path))
-    
+        # plot_mlp_effect_1d(lbp_net)
+        # sleep(quick_plot)
+
     if USE_WANDB:
         
         wandb.watch(lbp_net)
@@ -426,7 +551,10 @@ def train():
     sg_models_fg_from_train = MyOwnDataset(root=DATA_DIR, dataset_type='train', datasize=TRAINING_DATA_SIZE, N_MIN=N_MIN_TRAIN, N_MAX=N_MAX_TRAIN, F_MAX=F_MAX_TRAIN,\
                                            C_MAX=C_MAX_TRAIN, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_TRAIN, transform=None, pre_transform=None)
    
-    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=TRAIN_BATCH_SIZE, shuffle=True)
+    if QUICK_TEST:
+        train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=TRAIN_BATCH_SIZE, shuffle=False)
+    else:
+        train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=TRAIN_BATCH_SIZE, shuffle=False)
     print("training set built!")
 
     
@@ -481,6 +609,7 @@ def train():
         losses = []
         count = 0
         for spin_glass_problem in train_data_loader_pytorchGeometric: #pytorch geometric form
+        # for spin_glass_problem in val_data_loader_pytorchGeometric: #pytorch geometric form
             assert(spin_glass_problem.num_vars == torch.sum(spin_glass_problem.numVars))
             spin_glass_problem = spin_glass_problem.to(device)
     
@@ -538,8 +667,13 @@ def train():
                 norm_per_isingmodel_fTOv = torch.norm((prv_prv_factorToVar_messages - prv_factorToVar_messages).view([batch_size, message_count*args.belief_repeats*2]), dim=1)
                 print("norm_per_isingmodel_vTOf:", norm_per_isingmodel_vTOf)
                 print("norm_per_isingmodel_fTOv:", norm_per_isingmodel_fTOv)
-                print("torch.max(prv_prv_factorToVar_messages - prv_factorToVar_messages):", torch.max(prv_prv_factorToVar_messages - prv_factorToVar_messages))
-                print("torch.max(prv_prv_varToFactor_messages - prv_varToFactor_messages):", torch.max(prv_prv_varToFactor_messages - prv_varToFactor_messages))
+                max_per_isingmodel_vTOf = torch.max(torch.abs(prv_prv_varToFactor_messages - prv_varToFactor_messages).view([batch_size, message_count*args.belief_repeats*2]), dim=1)[0]
+                max_per_isingmodel_fTOv = torch.max(torch.abs(prv_prv_factorToVar_messages - prv_factorToVar_messages).view([batch_size, message_count*args.belief_repeats*2]), dim=1)[0]
+                print("max_per_isingmodel_vTOf:", max_per_isingmodel_vTOf)
+                print("max_per_isingmodel_fTOv:", max_per_isingmodel_fTOv)
+
+                print("max(abs(prv_prv_factorToVar_messages - prv_factorToVar_messages)):", torch.max(torch.abs(prv_prv_factorToVar_messages - prv_factorToVar_messages)))
+                print("max(abs(prv_prv_varToFactor_messages - prv_varToFactor_messages)):", torch.max(torch.abs(prv_prv_varToFactor_messages - prv_varToFactor_messages)))
                 print("loss =", loss)
                 print()
                 sleep(temp)

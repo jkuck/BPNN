@@ -157,9 +157,9 @@ class lbp_message_passing_network(nn.Module):
         if self.share_weights:
             # for iter in range(self.msg_passing_iters):
             random_msg_passing_iters = np.random.randint(5, 30)
+            # random_msg_passing_iters = 100
             print()
             print("random_msg_passing_iters =", random_msg_passing_iters)
-            # random_msg_passing_iters = 40
             for iter in range(random_msg_passing_iters):
                 single_layer = False
                 if single_layer:
@@ -216,14 +216,18 @@ class lbp_message_passing_network(nn.Module):
                 prv_factor_beliefs = factor_beliefs
                 
                 if self.APPLY_BP_EVERY_ITER:
-                    random_BP_iters = np.random.randint(0, 4)
+                    # random_BP_iters = np.random.randint(0, 20)
                     # print("applying BP :)!!!!!!!")
-                    # random_BP_iters = 300
+                    random_BP_iters = 1
                     for BP_iter in range(random_BP_iters):
                         varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
                             self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                                 prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
             
+                        
+                        prv_prv_varToFactor_messages = prv_varToFactor_messages
+                        prv_prv_factorToVar_messages = prv_factorToVar_messages
+                        
                         prv_varToFactor_messages = varToFactor_messages
                         prv_factorToVar_messages = factorToVar_messages
                         prv_var_beliefs = var_beliefs
@@ -239,8 +243,8 @@ class lbp_message_passing_network(nn.Module):
             if self.APPLY_BP_POST_BPNN:
                 #apply BP for a random number of iterations
                 #goal is to get consistency between variable and factor beleifs
-                # random_fixed_BP_iters = np.random.randint(10, 30)
-                random_msg_passing_iters = 5
+                # random_fixed_BP_iters = np.random.randint(0, 200)
+                random_msg_passing_iters = 10
                 for iter in range(random_msg_passing_iters):
                     varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
                         self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
@@ -255,8 +259,8 @@ class lbp_message_passing_network(nn.Module):
                     prv_factor_beliefs = factor_beliefs
                         
                     print('iter:', iter)
-                    print("from nn_models torch.max(prv_prv_factorToVar_messages - prv_factorToVar_messages):", torch.max(prv_prv_factorToVar_messages - prv_factorToVar_messages))
-                    print("from nn_models torch.max(prv_prv_varToFactor_messages - prv_varToFactor_messages):", torch.max(prv_prv_varToFactor_messages - prv_varToFactor_messages))
+                    print("from nn_models torch.max(torch.abs(prv_prv_factorToVar_messages - prv_factorToVar_messages)):", torch.max(torch.abs(prv_prv_factorToVar_messages - prv_factorToVar_messages)))
+                    print("from nn_models torch.max(torch.abs(prv_prv_varToFactor_messages - prv_varToFactor_messages)):", torch.max(torch.abs(prv_prv_varToFactor_messages - prv_varToFactor_messages)))
                 
 
 
