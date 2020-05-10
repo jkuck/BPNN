@@ -35,6 +35,7 @@ class lbp_message_passing_network(nn.Module):
         self.map_flag = map_flag
         self.marginal_flag = marginal_flag
         self.classification_flag = classification_flag
+        self.perm_invariant_flag = perm_invariant_flag
         if share_weights:
             self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(
                 learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
@@ -160,7 +161,11 @@ class lbp_message_passing_network(nn.Module):
                     diff = beliefs[:, :-1]-beliefs[:,-1:]
                     return diff
             else:
-                estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
+                pooled_states = torch.stack(pooled_states, dim=1)
+                estimated_ln_partition_function = self.final_mlp(pooled_states.reshape([pooled_states.size(0),-1]))
+                if self.perm_invariant_flag:
+                    estimated_ln_partition_function = estimated_ln_partition_function + self.final_mlp(pooled_states[:,:,[0,2,1,3,4,6,5,7,8,9]].reshape([pooled_states.size(0),-1]))
+                    estimated_ln_partition_function = estimated_ln_partition_function / 2.
                 return estimated_ln_partition_function
 
         else:
