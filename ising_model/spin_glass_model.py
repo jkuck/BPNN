@@ -52,6 +52,8 @@ class SpinGlassModel:
             # randomarray = np.random.uniform(low=0, high=1, size=(N,N))
             # self.lcl_fld_params[np.where(randomarray>.5)] = lcl_fld_params_pos[np.where(randomarray>.5)]
 
+            self.cpl_params_h_upper_scale = np.random.uniform(low=0, high=c_upper_scale, size=(N,N-1))
+            self.cpl_params_v_upper_scale = np.random.uniform(low=0, high=c_upper_scale, size=(N-1,N))
             if attractive_field:
                 #sample horizontal coupling parameters (theta_ij) for each horizontal edge
                 self.cpl_params_h = np.random.uniform(low=0, high=c, size=(N,N-1))
@@ -65,7 +67,6 @@ class SpinGlassModel:
 
                 #sample vertical coupling parameters (theta_ij) for each vertical edge
                 self.cpl_params_v = np.random.uniform(low=-c, high=c, size=(N-1,N))
-            self.c_upper_scale = c_upper_scale
 
             if create_higher_order_potentials:
                 self.contains_higher_order_potentials = True

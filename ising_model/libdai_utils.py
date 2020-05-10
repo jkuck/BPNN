@@ -158,9 +158,9 @@ def build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={}):
         r = var_idx//N
         c = var_idx%N
         if r < N-1:
-            factors.append(build_pairwise_factor(variables, fixed_variables, var_idx1=var_idx, var_idx2=var_idx+N, c=sg_model.cpl_params_v[r,c], c_upper_scale=sg_model.c_upper_scale))
+            factors.append(build_pairwise_factor(variables, fixed_variables, var_idx1=var_idx, var_idx2=var_idx+N, c=sg_model.cpl_params_v[r,c], c_upper_scale=sg_model.cpl_params_v_upper_scale[r,c]))
         if c < N-1:
-            factors.append(build_pairwise_factor(variables, fixed_variables, var_idx1=var_idx, var_idx2=var_idx+1, c=sg_model.cpl_params_h[r,c], c_upper_scale=sg_model.c_upper_scale))
+            factors.append(build_pairwise_factor(variables, fixed_variables, var_idx1=var_idx, var_idx2=var_idx+1, c=sg_model.cpl_params_h[r,c], c_upper_scale=sg_model.cpl_params_h_upper_scale[r,c]))
 
     #Define higher order factors
     if sg_model.contains_higher_order_potentials:

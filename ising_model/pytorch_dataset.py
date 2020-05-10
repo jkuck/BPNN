@@ -238,7 +238,7 @@ def build_factorgraph_from_SpinGlassModel(sg_model, map_flag=False,
             factor_potential, mask = build_pairwise_factor(
                 c=sg_model.cpl_params_h[row_idx,col_idx],
                 state_dimensions=state_dimensions,
-                c_upper_scale=sg_model.c_upper_scale,
+                c_upper_scale=sg_model.cpl_params_h_upper_scale[row_idx,col_idx],
             )
             if transpose_flag:
                 factor_potentials_list.append(factor_potential.transpose(0,1))
@@ -255,7 +255,7 @@ def build_factorgraph_from_SpinGlassModel(sg_model, map_flag=False,
             factor_potential, mask = build_pairwise_factor(
                 c=sg_model.cpl_params_v[row_idx,col_idx],
                 state_dimensions=state_dimensions,
-                c_upper_scale=sg_model.c_upper_scale,
+                c_upper_scale=sg_model.cpl_params_v_upper_scale[row_idx,col_idx],
             )
             if transpose_flag:
                 factor_potentials_list.append(factor_potential.transpose(0,1))
