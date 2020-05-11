@@ -37,9 +37,15 @@ QUICK_TEST = False
 # BPNN_quick_test_model_path = './wandb/run-20200509_035821-2gigz6uj/model.pt' #trained with 1 BP per iteration
 # BPNN_quick_test_model_path = './wandb/run-20200509_045716-pf1k3j53/model.pt' #trained with [0,20) BP per iteration
 
-BPNN_quick_test_model_path = './wandb/run-20200511_034750-k25ked26/model.pt' #using damping MLPs only
+# BPNN_quick_test_model_path = './wandb/run-20200511_034750-k25ked26/model.pt' #using damping MLPs only, depth 2
+# BPNN_quick_test_model_path = './wandb/run-20200511_055013-qwzgok2k/model.pt' #using damping MLPs only, depth 3
 
+#corrected with shift
+BPNN_quick_test_model_path = './wandb/run-20200511_061907-srxj23fw/model.pt' #using damping MLPs only, depth 2
 
+BPNN_quick_test_model_path = './wandb/run-20200511_165145-xnzl9osh/model.pt' #using damping MLPs only, only linear, normalization after operator
+BPNN_quick_test_model_path = './wandb/run-20200511_190243-hkq9ps84/model.pt' #using damping MLPs only, only linear, no normalization after operator
+print("BPNN_quick_test_model_path:", BPNN_quick_test_model_path)
 torch.set_printoptions(precision=5, threshold=None, edgeitems=None, linewidth=None, profile=None, sci_mode=False)
 if QUICK_TEST:
     from mpl_toolkits.mplot3d import Axes3D
@@ -88,6 +94,12 @@ parser.add_argument('--use_MLP2', type=boolean_string, default=False)
 #new MLPs that operate on variable beliefs
 parser.add_argument('--use_MLP3', type=boolean_string, default=False)
 parser.add_argument('--use_MLP4', type=boolean_string, default=False)
+
+#new MLPs that operate on message differences, e.g. in place of damping
+parser.add_argument('--USE_MLP_DAMPING_FtoV', type=boolean_string, default=True)
+parser.add_argument('--USE_MLP_DAMPING_VtoF', type=boolean_string, default=True)
+
+
 
 #if true, share the weights between layers in a BPNN
 parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=True)
@@ -409,7 +421,8 @@ lbp_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STA
     lne_mlp=args.lne_mlp, use_MLP1=args.use_MLP1, use_MLP2=args.use_MLP2, use_MLP3=args.use_MLP3, use_MLP4=args.use_MLP4, 
     subtract_prv_messages=args.subtract_prv_messages, share_weights = args.SHARE_WEIGHTS, bethe_MLP=args.bethe_mlp,\
     belief_repeats=BELIEF_REPEATS, var_cardinality=VAR_CARDINALITY, alpha_damping_FtoV=args.alpha_damping_FtoV,\
-    alpha_damping_VtoF=args.alpha_damping_VtoF, use_old_bethe=args.use_old_bethe)
+    alpha_damping_VtoF=args.alpha_damping_VtoF, use_old_bethe=args.use_old_bethe, USE_MLP_DAMPING_FtoV=args.USE_MLP_DAMPING_FtoV,\
+    USE_MLP_DAMPING_VtoF=args.USE_MLP_DAMPING_VtoF)
 
 lbp_net = lbp_net.to(device)
 
@@ -429,7 +442,7 @@ def plot_mlp_effect_2d(lbp_net):
         for y_int in range(0, 101):
             y_in = y_int/100
             belief_in = torch.tensor([x_in,y_in], device='cuda')
-            belief_out = lbp_net.message_passing_layers[0].mlp4(belief_in)
+            belief_out = lbp_net.message_passing_layers[0].mlp_dampingFtoV(belief_in)
 
             x_out = belief_out[0].item()
             y_out = belief_out[1].item()
@@ -468,7 +481,7 @@ def plot_mlp_effect_2d(lbp_net):
     fig.colorbar(surf, shrink=0.5, aspect=5)
 
     # plt.show()
-    plt.savefig('mlp4_Xbehavior.png')
+    plt.savefig('mlp_dampingFtoV_Xbehavior.png')
 
 def plot_mlp_effect_1d(lbp_net):
     x_in_vals = []
@@ -531,6 +544,8 @@ def train():
     if QUICK_TEST:
         # pass
         lbp_net.load_state_dict(torch.load(BPNN_quick_test_model_path))
+        # plot_mlp_effect_2d(lbp_net)
+        # sleep(check)
         # plot_mlp_effect_1d(lbp_net)
         # sleep(quick_plot)
 

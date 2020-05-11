@@ -28,7 +28,8 @@ class lbp_message_passing_network(nn.Module):
                  subtract_prv_messages, share_weights, bethe_MLP,
                 belief_repeats=None, var_cardinality=None, learn_bethe_residual_weight=False,
                  initialize_to_exact_bethe = True, alpha_damping_FtoV=None, alpha_damping_VtoF=None, use_old_bethe=None,
-                 APPLY_BP_POST_BPNN=False, APPLY_BP_EVERY_ITER=False, BPNN_layers_per_shared_weight_layer=1):
+                 APPLY_BP_POST_BPNN=False, APPLY_BP_EVERY_ITER=False, BPNN_layers_per_shared_weight_layer=1,
+                 USE_MLP_DAMPING_FtoV=False, USE_MLP_DAMPING_VtoF=False):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -87,7 +88,8 @@ class lbp_message_passing_network(nn.Module):
                 self.message_passing_layers = nn.ModuleList([\
                     FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
                         var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
-                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF)
+                        use_MLP3=use_MLP3, use_MLP4=use_MLP4, subtract_prv_messages=subtract_prv_messages, alpha_damping_FtoV=alpha_damping_FtoV,
+                        alpha_damping_VtoF=alpha_damping_VtoF, USE_MLP_DAMPING_FtoV=USE_MLP_DAMPING_FtoV, USE_MLP_DAMPING_VtoF=USE_MLP_DAMPING_VtoF)
                                                              for i in range(BPNN_layers_per_shared_weight_layer)])
                 
 
@@ -157,7 +159,8 @@ class lbp_message_passing_network(nn.Module):
         if self.share_weights:
             # for iter in range(self.msg_passing_iters):
             random_msg_passing_iters = np.random.randint(5, 30)
-            # random_msg_passing_iters = 600
+            # random_msg_passing_iters = np.random.randint(20, 50)
+            # random_msg_passing_iters = 300
             print()
             print("random_msg_passing_iters =", random_msg_passing_iters)
             for iter in range(random_msg_passing_iters):
@@ -244,7 +247,8 @@ class lbp_message_passing_network(nn.Module):
                 #apply BP for a random number of iterations
                 #goal is to get consistency between variable and factor beleifs
                 # random_fixed_BP_iters = np.random.randint(0, 200)
-                random_msg_passing_iters = 10
+                random_msg_passing_iters = 2
+                print("APPLY_BP_POST_BPNN, random_msg_passing_iters =", random_msg_passing_iters)
                 for iter in range(random_msg_passing_iters):
                     varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
                         self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
