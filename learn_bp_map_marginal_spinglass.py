@@ -301,6 +301,14 @@ def _logScore_loss(x, y, sg_model):
     return F.mse_loss(logScore_x, logScore_y)
 def logScore_loss(x, y, sg_model):
     return ONE_HOT_RATIO*_logScore_loss(x, y, sg_model) + (1-ONE_HOT_RATIO)*cross_entropy_loss(x, y)
+def MSEProb_loss(x, y,):
+    prob_x = torch.exp(x)/(torch.exp(x)+1)
+    prob_y = torch.exp(y)/(torch.exp(y)+1)
+    return F.mse_loss(prob_x, prob_y)
+def L1Prob_loss(x, y,):
+    prob_x = torch.exp(x)/(torch.exp(x)+1)
+    prob_y = torch.exp(y)/(torch.exp(y)+1)
+    return F.l1_loss(prob_x, prob_y)
 def cross_entropy_loss(x, y):
     return -torch.mean(torch.sum(y*torch.log(x.squeeze()+1e-30), dim=1))
 def one_hot_cross_entropy_loss(x, y):
