@@ -219,7 +219,7 @@ def get_dataset(dataset_type):
         datasize = TEST_DATA_SIZE
         ATTRACTIVE_FIELD = ATTRACTIVE_FIELD_TEST
 
-    dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f__%.2f_attField=%s.pkl' % (datasize, N_MIN, N_MAX, F_MAX, C_UPPER_SCALE, C_MAX, ATTRACTIVE_FIELD)
+    dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f_%.2f_attField=%s.pkl' % (datasize, N_MIN, N_MAX, F_MAX, C_UPPER_SCALE, C_MAX, ATTRACTIVE_FIELD)
     if REGENERATE_DATA or (not os.path.exists(dataset_file)):
         print("REGENERATING DATA!!")
         spin_glass_models_list = [SpinGlassModel(N=random.randint(N_MIN, N_MAX),\
