@@ -45,4 +45,4 @@ echo "Done"'''%(name, name, command)
 filename = 'tmp.sh'
 with open(filename, 'w') as f:
     f.write(context)
-subprocess.call(['sbatch', 'tmp.sh'])
+subprocess.call(['sbatch', '--exclude=atlas19,atlas20,atlas21,atlas22', 'tmp.sh'])
