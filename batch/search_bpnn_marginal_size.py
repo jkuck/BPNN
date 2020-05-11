@@ -14,7 +14,7 @@ jobs = [
     for mflag in ['--model_map_flag', '']
     # for cflag in ['--classification_flag']
     for cflag in ['']
-    for lname in ['--loss_name MSEProb', '--loss_name L1Prob']
+    for lname in ['--loss_name MSEProb', '--loss_name L1Prob', '--loss_name CorrProb']
     for sflag in ['--share_weights_flag', '']
     for bflag in ['--bethe_flag', '']
     for _ in range(10) #slots for learing rate

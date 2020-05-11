@@ -309,6 +309,17 @@ def L1Prob_loss(x, y,):
     prob_x = torch.exp(x)/(torch.exp(x)+1)
     prob_y = torch.exp(y)/(torch.exp(y)+1)
     return F.l1_loss(prob_x, prob_y)
+def CorrProb_loss(x, y,):
+    prob_x = torch.exp(x)/(torch.exp(x)+1)
+    prob_y = torch.exp(y)/(torch.exp(y)+1)
+    prob_x = prob_x - torch.mean(prob_x)
+    prob_y = prob_y - torch.mean(prob_y)
+    cov_xy = torch.mean(prob_x*prob_y)
+    std_x = torch.std(prob_x)
+    std_y = torch.std(prob_y)
+    std_x = 1e-30 if std_x == 0 else std_x
+    std_y = 1e-30 if std_y == 0 else std_y
+    return -cov_xy/(std_x*std_y)
 def cross_entropy_loss(x, y):
     return -torch.mean(torch.sum(y*torch.log(x.squeeze()+1e-30), dim=1))
 def one_hot_cross_entropy_loss(x, y):
