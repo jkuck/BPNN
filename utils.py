@@ -135,3 +135,15 @@ class shift_func(torch.nn.Module):
     def forward(self, x):
         return self.shift + self.func(x - self.shift)
 
+
+
+class reflect_xy(torch.nn.Module):
+    '''
+    reflect a function over the x-axis and y-axis
+    '''    
+    def __init__(self, func):
+        super().__init__()        
+        self.func = func
+
+    def forward(self, x):
+        return  -self.func(-x)

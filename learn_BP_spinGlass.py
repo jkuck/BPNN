@@ -35,7 +35,11 @@ import argparse
 
 QUICK_TEST = False
 # BPNN_quick_test_model_path = './wandb/run-20200509_035821-2gigz6uj/model.pt' #trained with 1 BP per iteration
-BPNN_quick_test_model_path = './wandb/run-20200509_045716-pf1k3j53/model.pt' #trained with [0,20) BP per iteration
+# BPNN_quick_test_model_path = './wandb/run-20200509_045716-pf1k3j53/model.pt' #trained with [0,20) BP per iteration
+
+BPNN_quick_test_model_path = './wandb/run-20200511_034750-k25ked26/model.pt' #using damping MLPs only
+
+
 torch.set_printoptions(precision=5, threshold=None, edgeitems=None, linewidth=None, profile=None, sci_mode=False)
 if QUICK_TEST:
     from mpl_toolkits.mplot3d import Axes3D
@@ -525,8 +529,8 @@ print('entering traing')
 # lbp_net.double()
 def train():
     if QUICK_TEST:
-        pass
-        # lbp_net.load_state_dict(torch.load(BPNN_quick_test_model_path))
+        # pass
+        lbp_net.load_state_dict(torch.load(BPNN_quick_test_model_path))
         # plot_mlp_effect_1d(lbp_net)
         # sleep(quick_plot)
 
@@ -610,6 +614,7 @@ def train():
         count = 0
         for spin_glass_problem in train_data_loader_pytorchGeometric: #pytorch geometric form
         # for spin_glass_problem in val_data_loader_pytorchGeometric: #pytorch geometric form
+        # for spin_glass_problem in valOOD4_data_loader_pytorchGeometric: #pytorch geometric form
             assert(spin_glass_problem.num_vars == torch.sum(spin_glass_problem.numVars))
             spin_glass_problem = spin_glass_problem.to(device)
     

@@ -1,11 +1,11 @@
 import torch
-from torch.nn import Sequential as Seq, Linear, ReLU
+from torch.nn import Sequential as Seq, Linear, ReLU, Tanh
 import numpy as np
 from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
 from torch_scatter import scatter_logsumexp
 from sat_helpers.sat_data import parse_dimacs, SatProblems, build_factorgraph_from_SATproblem
-from utils import dotdict, logminusexp, shift_func, logsumexp_multipleDim #wrote a helper function that is not used in this file: log_normalize
+from utils import dotdict, logminusexp, shift_func, logsumexp_multipleDim, reflect_xy #wrote a helper function that is not used in this file: log_normalize
 import time
 import matplotlib.pyplot as plt
 import matplotlib
@@ -164,6 +164,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
             self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
+
 #             self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
             if lne_mlp:
                 self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu) 
@@ -241,6 +242,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     
             
 
+            self.reflected_relu = reflect_xy(ReLU()) 
+
             self.linear9 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
             self.linear10 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
             if initialize_exact_BP:
@@ -251,7 +254,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 
             if lne_mlp:
                 # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, self.shifted_relu)
-                self.mlp_dampingFtoV = Seq(self.linear9)
+                self.mlp_dampingFtoV = Seq(self.linear9, self.reflected_relu, self.linear10, self.reflected_relu)
             else:     
                 self.mlp_dampingFtoV = Seq(self.linear9, self.linear10)             
 
@@ -265,7 +268,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 
             if lne_mlp:
                 # self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, self.shifted_relu)
-                self.mlp_dampingVtoF = Seq(self.linear11)
+                self.mlp_dampingVtoF = Seq(self.linear11, self.reflected_relu, self.linear10, self.reflected_relu)
             else:     
                 self.mlp_dampingVtoF = Seq(self.linear11, self.linear12)             
                         
