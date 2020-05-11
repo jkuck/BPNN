@@ -40,11 +40,19 @@ QUICK_TEST = False
 # BPNN_quick_test_model_path = './wandb/run-20200511_034750-k25ked26/model.pt' #using damping MLPs only, depth 2
 # BPNN_quick_test_model_path = './wandb/run-20200511_055013-qwzgok2k/model.pt' #using damping MLPs only, depth 3
 
-#corrected with shift
+#corrected with shift, normalization after operator
 BPNN_quick_test_model_path = './wandb/run-20200511_061907-srxj23fw/model.pt' #using damping MLPs only, depth 2
+# BPNN_quick_test_model_path = './wandb/run-20200511_165145-xnzl9osh/model.pt' #using damping MLPs only, only linear
 
-BPNN_quick_test_model_path = './wandb/run-20200511_165145-xnzl9osh/model.pt' #using damping MLPs only, only linear, normalization after operator
-BPNN_quick_test_model_path = './wandb/run-20200511_190243-hkq9ps84/model.pt' #using damping MLPs only, only linear, no normalization after operator
+#corrected with shift, no normalization after operator
+BPNN_quick_test_model_path = './wandb/run-20200511_191922-ub6rsc1z/model.pt' #using damping MLPs only, depth 2 (reflected relu, i think but not sure)
+# BPNN_quick_test_model_path = './wandb/run-20200511_190243-hkq9ps84/model.pt' #using damping MLPs only, only linear
+
+BPNN_quick_test_model_path = './wandb/run-20200511_193230-op0q6w5g/model.pt' #using damping MLPs only, depth 2, tanh
+BPNN_quick_test_model_path = './wandb/run-20200511_193814-p3uw9q8p/model.pt' #using damping MLPs only, depth 2, standard relu
+
+
+
 print("BPNN_quick_test_model_path:", BPNN_quick_test_model_path)
 torch.set_printoptions(precision=5, threshold=None, edgeitems=None, linewidth=None, profile=None, sci_mode=False)
 if QUICK_TEST:
@@ -696,7 +704,6 @@ def train():
                 print("max(abs(prv_prv_varToFactor_messages - prv_varToFactor_messages)):", torch.max(torch.abs(prv_prv_varToFactor_messages - prv_varToFactor_messages)))
                 print("loss =", loss)
                 print()
-                sleep(temp)
             debug = False
             if debug:
                 for idx, val in enumerate(estimated_ln_partition_function):
@@ -872,7 +879,9 @@ def train():
 
                     print("root mean squared validation OOD4 error =", np.sqrt(np.mean(val_losses4)))
             print("----------123456----------")
-            print()            
+            print()     
+            if QUICK_TEST:
+                sleep(end_quick_test)       
                 
         else:
             if USE_WANDB:

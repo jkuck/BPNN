@@ -257,10 +257,12 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 self.linear10.bias = torch.nn.Parameter(torch.zeros(self.linear10.bias.shape))
                 
             if lne_mlp:
-                print("NEW CODE, LINEAR!!!!!!!!!!!!!!! :):):)")
+                print("NEW CODE, ReLU non-LINEAR!!!!!!!!!!!!!!! :):):)")
+                # self.mlp_dampingFtoV = Seq(self.linear9, Tanh(), self.linear10, Tanh())
+                self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, ReLU())
                 # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, self.shifted_relu)
                 # self.mlp_dampingFtoV = Seq(self.linear9, self.reflected_relu, self.linear10, self.reflected_relu)#, Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats), self.reflected_relu)
-                self.mlp_dampingFtoV = Seq(self.linear9)
+                # self.mlp_dampingFtoV = Seq(self.linear9)
             else:     
                 self.mlp_dampingFtoV = Seq(self.linear9, self.linear10)             
 
@@ -273,9 +275,11 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 self.linear12.bias = torch.nn.Parameter(torch.zeros(self.linear12.bias.shape))
                 
             if lne_mlp:
+                # self.mlp_dampingVtoF = Seq(self.linear11, Tanh(), self.linear12, Tanh())
+                self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, ReLU())
                 # self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, self.shifted_relu)
                 # self.mlp_dampingVtoF = Seq(self.linear11, self.reflected_relu, self.linear10, self.reflected_relu)#, Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats), self.reflected_relu)
-                self.mlp_dampingVtoF = Seq(self.linear11)
+                # self.mlp_dampingVtoF = Seq(self.linear11)
             else:     
                 self.mlp_dampingVtoF = Seq(self.linear11, self.linear12)             
                         
