@@ -33,7 +33,8 @@ import cProfile
 
 import argparse
 
-QUICK_TEST = False
+QUICK_TEST = True
+print("QUICK_TEST =", QUICK_TEST)
 # BPNN_quick_test_model_path = './wandb/run-20200509_035821-2gigz6uj/model.pt' #trained with 1 BP per iteration
 # BPNN_quick_test_model_path = './wandb/run-20200509_045716-pf1k3j53/model.pt' #trained with [0,20) BP per iteration
 
@@ -50,10 +51,19 @@ BPNN_quick_test_model_path = './wandb/run-20200511_191922-ub6rsc1z/model.pt' #us
 
 BPNN_quick_test_model_path = './wandb/run-20200511_193230-op0q6w5g/model.pt' #using damping MLPs only, depth 2, tanh
 BPNN_quick_test_model_path = './wandb/run-20200511_193814-p3uw9q8p/model.pt' #using damping MLPs only, depth 2, standard relu
+# BPNN_quick_test_model_path = './wandb/run-20200511_195138-iz45qv2p/model.pt' #using damping MLPs only, depth 3, standard relu
+# BPNN_quick_test_model_path = './wandb/run-20200511_195439-lc8qjlao/model.pt' #using damping MLPs only, depth 4, standard relu
+
+# BPNN_quick_test_model_path = './wandb/run-20200512_044309-pwxp15gj/model.pt' #using damping MLPs only, depth 2, standard relu REPRODUCE
+
+# BPNN_quick_test_model_path = './wandb/run-20200512_064134-9mdhqw0a/model.pt' #using damping MLPs only, depth 2, trained on problem_idx=40 only to low error
+
+
+# BPNN_quick_test_model_path = './wandb/run-20200512_161823-ji30hh5p/model.pt' #using damping MLPs only, depth 2, random message initialization every iteration
 
 
 
-print("BPNN_quick_test_model_path:", BPNN_quick_test_model_path)
+
 torch.set_printoptions(precision=5, threshold=None, edgeitems=None, linewidth=None, profile=None, sci_mode=False)
 if QUICK_TEST:
     from mpl_toolkits.mplot3d import Axes3D
@@ -86,8 +96,9 @@ if QUICK_TEST:
     parser.add_argument('--learning_rate', type=float, default=0.00)
 else:
     # parser.add_argument('--learning_rate', type=float, default=0.0005)
-    parser.add_argument('--learning_rate', type=float, default=0.005)
-
+    # parser.add_argument('--learning_rate', type=float, default=0.005)
+    parser.add_argument('--learning_rate', type=float, default=0.5)
+print("CHANGED LR")
 #damping parameter
 parser.add_argument('--alpha_damping_FtoV', type=float, default=.95)
 parser.add_argument('--alpha_damping_VtoF', type=float, default=.95) #this damping wasn't used in the old code
@@ -124,11 +135,16 @@ parser.add_argument('--bethe_mlp', type=str, default='none',\
 # if QUICK_TEST:
 #     parser.add_argument('--val_ood', type=boolean_string, default=False)
 # else:
-parser.add_argument('--val_ood', type=boolean_string, default=True)
+parser.add_argument('--val_ood', type=boolean_string, default=False)
 
 #if True, use the old Bethe approximation that doesn't work with batches
 #only valid for bethe_mlp='none'
 parser.add_argument('--use_old_bethe', type=boolean_string, default=False)
+
+#If True, initialize messages randomly at every iteration
+#If False, use a constant initialization
+parser.add_argument('--random_message_init_every_iter', type=boolean_string, default=False)
+
 
 args, _ = parser.parse_known_args()
 print("args.use_MLP4:", args.use_MLP4)
@@ -551,7 +567,9 @@ print('entering traing')
 def train():
     if QUICK_TEST:
         # pass
+        print("BPNN_quick_test_model_path:", BPNN_quick_test_model_path)
         lbp_net.load_state_dict(torch.load(BPNN_quick_test_model_path))
+        # print("RUNING STANDARD BP, not loading model!!!!!!!")
         # plot_mlp_effect_2d(lbp_net)
         # sleep(check)
         # plot_mlp_effect_1d(lbp_net)
@@ -580,8 +598,12 @@ def train():
    
     if QUICK_TEST:
         train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=TRAIN_BATCH_SIZE, shuffle=False)
+        # problem_idx = 40
+        # train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train[problem_idx:problem_idx+1], batch_size=TRAIN_BATCH_SIZE, shuffle=False)
     else:
         train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train, batch_size=TRAIN_BATCH_SIZE, shuffle=False)
+        # problem_idx = 40
+        # train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_train[problem_idx:problem_idx+1], batch_size=TRAIN_BATCH_SIZE, shuffle=False)
     print("training set built!")
 
     
@@ -593,6 +615,7 @@ def train():
                                            C_MAX=C_MAX_VAL, ATTRACTIVE_FIELD=ATTRACTIVE_FIELD_VAL, transform=None, pre_transform=None)
    
     val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
+    # val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sg_models_fg_from_val[:1], batch_size=VAL_BATCH_SIZE)
 #     val_data_loader_pytorchGeometric_batchSize50 = DataLoader_pytorchGeometric(sg_models_fg_from_val, batch_size=VAL_BATCH_SIZE)
     print("val set built!")
     
@@ -650,9 +673,9 @@ def train():
             exact_ln_partition_function = spin_glass_problem.ln_Z
             assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
 
-            # estimated_ln_partition_function = lbp_net(spin_glass_problem)
+            # estimated_ln_partition_function = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
             estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
-                prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem)
+                prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
 
             # print("estimated_ln_partition_function.shape:", estimated_ln_partition_function.shape)
             # print("prv_prv_varToFactor_messages.shape:", prv_prv_varToFactor_messages.shape)
@@ -663,6 +686,7 @@ def train():
             fTov_convergence_loss = loss_func(prv_factorToVar_messages, prv_prv_factorToVar_messages)
             print("torch.max(torch.abs(prv_varToFactor_messages - prv_prv_varToFactor_messages)) =", torch.max(torch.abs(prv_varToFactor_messages - prv_prv_varToFactor_messages)))
             print("torch.max(torch.abs(prv_factorToVar_messages - prv_prv_factorToVar_messages)) =", torch.max(torch.abs(prv_factorToVar_messages - prv_prv_factorToVar_messages)))            
+            # print("lbp_net.prv_varToFactor_messages[0]:", torch.exp(lbp_net.prv_varToFactor_messages[0]))
             # print("vTof_convergence_loss.shape:", vTof_convergence_loss.shape)
             # print("vTof_convergence_loss:", vTof_convergence_loss)
             # print("hi")
@@ -764,9 +788,9 @@ def train():
                 spin_glass_problem.var_cardinality = spin_glass_problem.var_cardinality[0] #hack for batching,
                 spin_glass_problem.belief_repeats = spin_glass_problem.belief_repeats[0] #hack for batching,
                 
-                # estimated_ln_partition_function = lbp_net(spin_glass_problem)   
+                # estimated_ln_partition_function = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)   
                 estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
-                    prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem)
+                    prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
 
                 loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
 #                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
@@ -797,9 +821,9 @@ def train():
                     exact_ln_partition_function = spin_glass_problem.ln_Z
                     assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
 
-                    # estimated_ln_partition_function = lbp_net(spin_glass_problem)
+                    # estimated_ln_partition_function = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
                     estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
-                        prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem)
+                        prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
 
                     loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
                     val_losses1.append(loss.item())
@@ -821,9 +845,9 @@ def train():
                     exact_ln_partition_function = spin_glass_problem.ln_Z
                     assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
 
-                    # estimated_ln_partition_function = lbp_net(spin_glass_problem)
+                    # estimated_ln_partition_function = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
                     estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
-                        prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem)
+                        prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
 
                     loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
                     val_losses2.append(loss.item())
@@ -844,9 +868,9 @@ def train():
                     exact_ln_partition_function = spin_glass_problem.ln_Z
                     assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
 
-                    # estimated_ln_partition_function = lbp_net(spin_glass_problem)
+                    # estimated_ln_partition_function = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
                     estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
-                        prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem)
+                        prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
 
                     loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
                     val_losses3.append(loss.item())
@@ -867,9 +891,9 @@ def train():
                     exact_ln_partition_function = spin_glass_problem.ln_Z
                     assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
 
-                    # estimated_ln_partition_function = lbp_net(spin_glass_problem)
+                    # estimated_ln_partition_function = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
                     estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
-                        prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem)
+                        prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
 
                     loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
                     val_losses4.append(loss.item())
@@ -965,7 +989,7 @@ def create_ising_model_figure(results_directory=ROOT_DIR, skip_our_model=False):
             #run BPNN
 #             spin_glass_problem = spin_glass_problem.to(device)
 #             exact_ln_partition_function = exact_ln_partition_function.to(device)
-            estimated_ln_partition_function = lbp_net(spin_glass_problem)
+            estimated_ln_partition_function = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
             BPNN_estimated_counts.append(estimated_ln_partition_function.item()-exact_ln_partition_function)
             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
             losses.append(loss.item())
@@ -1130,7 +1154,7 @@ def test(skip_our_model=False):
         if not skip_our_model:
 #             spin_glass_problem = spin_glass_problem.to(device)
 #             exact_ln_partition_function = exact_ln_partition_function.to(device)
-            estimated_ln_partition_function = lbp_net(spin_glass_problem)
+            estimated_ln_partition_function = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
             BPNN_estimated_counts.append(estimated_ln_partition_function.item()-exact_ln_partition_function)
             loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
             losses.append(loss.item())
@@ -1251,7 +1275,7 @@ def simple_val():
         exact_ln_partition_function = spin_glass_problem.ln_Z
         assert((spin_glass_problem.state_dimensions == MAX_FACTOR_STATE_DIMENSIONS).all())
 
-        estimated_ln_partition_function = lbp_net(spin_glass_problem)
+        estimated_ln_partition_function = lbp_net(spin_glass_problem, random_message_init_every_iter=args.random_message_init_every_iter)
 
         loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float())
         epoch_loss += loss

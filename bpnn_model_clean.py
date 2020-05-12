@@ -247,38 +247,59 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
             self.reflected_relu = reflect_xy(ReLU()) 
 
-            self.linear9 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            self.linear10 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            self.FC_damping_layer = False
+            if self.FC_damping_layer:
+                damping_scale = 460
+            else:
+                damping_scale = 1
+            self.linear9 = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+            self.linear10 = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+            # self.linear10b = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+            # self.linear10c = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
             # initialize_exact_BP=False
             if initialize_exact_BP:
-                self.linear9.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear9.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
                 self.linear9.bias = torch.nn.Parameter(torch.zeros(self.linear9.bias.shape))
-                self.linear10.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear10.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
                 self.linear10.bias = torch.nn.Parameter(torch.zeros(self.linear10.bias.shape))
+                # self.linear10b.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
+                # self.linear10b.bias = torch.nn.Parameter(torch.zeros(self.linear10b.bias.shape))
+                # self.linear10c.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
+                # self.linear10c.bias = torch.nn.Parameter(torch.zeros(self.linear10c.bias.shape))
                 
             if lne_mlp:
-                print("NEW CODE, ReLU non-LINEAR!!!!!!!!!!!!!!! :):):)")
+                print("NEW CODE, no FC 2 layer ReLU non-LINEAR!!!!!!!!!!!!!!! :):):)")
                 # self.mlp_dampingFtoV = Seq(self.linear9, Tanh(), self.linear10, Tanh())
                 self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, ReLU())
+                # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, ReLU(), self.linear10b, ReLU())
+                # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, ReLU(), self.linear10b, ReLU(), self.linear10c, ReLU())
                 # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, self.shifted_relu)
-                # self.mlp_dampingFtoV = Seq(self.linear9, self.reflected_relu, self.linear10, self.reflected_relu)#, Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats), self.reflected_relu)
+                # self.mlp_dampingFtoV = Seq(self.linear9, self.reflected_relu, self.linear10, self.reflected_relu)#, Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats), self.reflected_relu)
                 # self.mlp_dampingFtoV = Seq(self.linear9)
             else:     
                 self.mlp_dampingFtoV = Seq(self.linear9, self.linear10)             
 
-            self.linear11 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            self.linear12 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            self.linear11 = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+            self.linear12 = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+            # self.linear12b = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+            # self.linear12c = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
             if initialize_exact_BP:
-                self.linear11.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear11.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
                 self.linear11.bias = torch.nn.Parameter(torch.zeros(self.linear11.bias.shape))
-                self.linear12.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear12.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
                 self.linear12.bias = torch.nn.Parameter(torch.zeros(self.linear12.bias.shape))
+                # self.linear12b.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
+                # self.linear12b.bias = torch.nn.Parameter(torch.zeros(self.linear12b.bias.shape))
+                # self.linear12c.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
+                # self.linear12c.bias = torch.nn.Parameter(torch.zeros(self.linear12c.bias.shape))
                 
             if lne_mlp:
                 # self.mlp_dampingVtoF = Seq(self.linear11, Tanh(), self.linear12, Tanh())
                 self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, ReLU())
+                # self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, ReLU(), self.linear12b, ReLU())
+                # self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, ReLU(), self.linear12b, ReLU(), self.linear12c, ReLU())
                 # self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, self.shifted_relu)
-                # self.mlp_dampingVtoF = Seq(self.linear11, self.reflected_relu, self.linear10, self.reflected_relu)#, Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats), self.reflected_relu)
+                # self.mlp_dampingVtoF = Seq(self.linear11, self.reflected_relu, self.linear10, self.reflected_relu)#, Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats), self.reflected_relu)
                 # self.mlp_dampingVtoF = Seq(self.linear11)
             else:     
                 self.mlp_dampingVtoF = Seq(self.linear11, self.linear12)             
@@ -894,8 +915,17 @@ var_cardinality))))
         else:
             #print("890 factorToVar_messages pre damping:", factorToVar_messages)     
             if self.USE_MLP_DAMPING_FtoV:
-                factorToVar_messages = factorToVar_messages + (1 - self.alpha_damping_FtoV)*(self.mlp_dampingFtoV(prv_factorToVar_messages-factorToVar_messages)
-                                                                                           - self.mlp_dampingFtoV(torch.zeros_like(prv_factorToVar_messages)))
+                # print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
+                # sleep(lsakdjflksd)
+                if self.FC_damping_layer:
+                    prv_factorToVar_messages_shape = prv_factorToVar_messages.shape
+                    damping_mlp_out = self.mlp_dampingFtoV((prv_factorToVar_messages-factorToVar_messages).reshape(920)) - self.mlp_dampingFtoV(torch.zeros_like(prv_factorToVar_messages).reshape(920))
+                    damping_mlp_out = damping_mlp_out.reshape(prv_factorToVar_messages_shape)
+                    factorToVar_messages = factorToVar_messages + (1 - self.alpha_damping_FtoV)*damping_mlp_out
+
+                else:
+                    factorToVar_messages = factorToVar_messages + (1 - self.alpha_damping_FtoV)*(self.mlp_dampingFtoV(prv_factorToVar_messages-factorToVar_messages)
+                                                                                               - self.mlp_dampingFtoV(torch.zeros_like(prv_factorToVar_messages)))
                 # factorToVar_messages = factorToVar_messages + (1 - self.alpha_damping_FtoV)*(prv_factorToVar_messages-factorToVar_messages)
 
             else:
@@ -959,8 +989,14 @@ var_cardinality))))
                 # print("post mlp max:", torch.max(self.mlp_dampingVtoF(prv_varToFactor_messages-varToFactor_messages)
                                                                                         #    - self.mlp_dampingVtoF(torch.zeros_like(prv_varToFactor_messages))))
                 
-                varToFactor_messages = varToFactor_messages + (1 - self.alpha_damping_VtoF)*(self.mlp_dampingVtoF(prv_varToFactor_messages-varToFactor_messages)
-                                                                                           - self.mlp_dampingVtoF(torch.zeros_like(prv_varToFactor_messages)))
+                if self.FC_damping_layer:
+                    prv_factorToVar_messages_shape = prv_varToFactor_messages.shape
+                    damping_mlp_out = self.mlp_dampingVtoF((prv_varToFactor_messages-varToFactor_messages).reshape(920)) - self.mlp_dampingVtoF(torch.zeros_like(prv_varToFactor_messages).reshape(920))
+                    damping_mlp_out = damping_mlp_out.reshape(prv_factorToVar_messages_shape)
+                    varToFactor_messages = varToFactor_messages + (1 - self.alpha_damping_VtoF)*damping_mlp_out
+                else:
+                    varToFactor_messages = varToFactor_messages + (1 - self.alpha_damping_VtoF)*(self.mlp_dampingVtoF(prv_varToFactor_messages-varToFactor_messages)
+                                                                                               - self.mlp_dampingVtoF(torch.zeros_like(prv_varToFactor_messages)))
                 # varToFactor_messages = varToFactor_messages + (1 - self.alpha_damping_VtoF)*(prv_varToFactor_messages-varToFactor_messages)
             else:
                 varToFactor_messages = self.alpha_damping_VtoF*varToFactor_messages + (1 - self.alpha_damping_VtoF)*prv_varToFactor_messages
