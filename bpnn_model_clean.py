@@ -207,7 +207,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 #                ReLU(),
                 #                Linear(factor_state_space, factor_state_space))
 
-    def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs):
+    def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs,
+                use_MLP1=True, use_MLP2=True,):
         '''
         Inputs:
         - factor_graph: (FactorGraphData, defined in factor_graph.py) the factor graph we will perform one
@@ -215,7 +216,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         '''
         # Step 3-5: Start propagating messages.
         return self.propagate(factor_graph=factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
-                              prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+                              prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs,
+                              use_MLP1=use_MLP1, use_MLP2=use_MLP2,)
 
 
 

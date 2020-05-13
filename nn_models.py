@@ -17,7 +17,7 @@ from parameters import SHARE_WEIGHTS, BETHE_MLP
 class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
                 bethe_MLP=BETHE_MLP, map_flag=False, marginal_flag=False, classification_flag=False,
-                alpha=None, alpha2=None, perm_invariant_flag=False):
+                alpha=None, alpha2=None, perm_invariant_flag=False, append_bp_flag=False,):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -29,9 +29,10 @@ class lbp_message_passing_network(nn.Module):
                             to the exact Bethe approximation)
         '''
         super().__init__()
+        self.append_bp_flag = append_bp_flag
         self.share_weights = share_weights
         self.msg_passing_iters = msg_passing_iters
-        self.bethe_MLP = bethe_MLP
+        self.bethe_MLP = bethe_MLP if not self.append_bp_flag else False
         self.map_flag = map_flag
         self.marginal_flag = marginal_flag
         self.classification_flag = classification_flag
@@ -50,6 +51,11 @@ class lbp_message_passing_network(nn.Module):
                     perm_invariant_flag=perm_invariant_flag,
                 ) for i in range(msg_passing_iters)
             ])
+        self.bp_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(
+            learn_BP=False, factor_state_space=2**max_factor_state_dimensions,
+            map_flag=map_flag, alpha=alpha, alpha2=alpha2,
+            perm_invariant_flag=perm_invariant_flag,
+        )
         self.device = device
 
         if bethe_MLP:
@@ -97,7 +103,7 @@ class lbp_message_passing_network(nn.Module):
 
 
 
-    def forward(self, factor_graph):
+    def forward(self, factor_graph, return_converged=False):
 #         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
         prv_varToFactor_messages = factor_graph.prv_varToFactor_messages
         prv_factorToVar_messages = factor_graph.prv_factorToVar_messages
@@ -143,6 +149,25 @@ class lbp_message_passing_network(nn.Module):
                         cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
                         pooled_states.append(cur_pooled_states)
 
+        if self.append_bp_flag:
+            max_diff, iter_num = 1., 0
+            # Run classical BP
+            while (max_diff > 1e-5 and iter_num < 500):
+                prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs, max_diff = \
+                    self.one_bp_step(
+                        prv_varToFactor_messages, prv_factorToVar_messages,
+                        prv_var_beliefs, prv_factor_beliefs, factor_graph,
+                    )
+                iter_num += 1
+            print(max_diff, iter_num)
+
+        if return_converged:
+            _, _, _, _, max_diff = \
+                self.one_bp_step(
+                    prv_varToFactor_messages, prv_factorToVar_messages,
+                    prv_var_beliefs, prv_factor_beliefs, factor_graph,
+                )
+            converged_flag = max_diff
 
 
         if self.bethe_MLP:
@@ -173,16 +198,40 @@ class lbp_message_passing_network(nn.Module):
                 if self.classification_flag:
                     beliefs = torch.exp(prv_var_beliefs)
                     probabilities = beliefs / torch.sum(beliefs, dim=-1, keepdims=True)
-                    return probabilities
+                    if return_converged:
+                        return probabilities, converged_flag
+                    else:
+                        return probabilities
                 else:
                     diff = prv_var_beliefs[:, :-1]-prv_var_beliefs[:,-1:]
-                    return diff
+                    if return_converged:
+                        return probabilities, converged_flag
+                    else:
+                        return diff
             else:
                 cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
                 estimated_ln_partition_function = torch.sum(cur_pooled_states, dim=1)
-                return estimated_ln_partition_function
+                if return_converged:
+                    return estimated_ln_partition_function, converged_flag
+                else:
+                    return estimated_ln_partition_function
 
 
+    def one_bp_step(self, prv_varToFactor_messages, prv_factorToVar_messages,
+                    prv_var_beliefs, prv_factor_beliefs, factor_graph):
+        cur_varToFactor_messages, cur_factorToVar_messages, cur_var_beliefs, cur_factor_beliefs =\
+            self.bp_layer(
+                factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs,
+                use_MLP1=False, use_MLP2=False, #No MLP, therefore original BP
+            )
+        max_diff = max([
+            torch.max(torch.abs(cur_varToFactor_messages-prv_varToFactor_messages)).item(),
+            torch.max(torch.abs(cur_factorToVar_messages-prv_factorToVar_messages)).item(),
+            torch.max(torch.abs(cur_var_beliefs-prv_var_beliefs)).item(),
+            torch.max(torch.abs(cur_factor_beliefs-prv_factor_beliefs)).item(),
+        ])
+        return cur_varToFactor_messages, cur_factorToVar_messages, cur_var_beliefs, cur_factor_beliefs, max_diff
 
     def compute_bethe_average_energy_MLP(self, factor_beliefs, factor_potentials, batch_factors, debug=False):
         '''
