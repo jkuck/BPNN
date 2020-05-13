@@ -302,16 +302,14 @@ def _logScore_loss(x, y, sg_model):
 def logScore_loss(x, y, sg_model):
     return ONE_HOT_RATIO*_logScore_loss(x, y, sg_model) + (1-ONE_HOT_RATIO)*cross_entropy_loss(x, y)
 def MSEProb_loss(x, y,):
-    prob_x = torch.exp(x)/(torch.exp(x)+1)
-    prob_y = torch.exp(y)/(torch.exp(y)+1)
-    return F.mse_loss(prob_x, prob_y)
+    assert(not torch.isnan(x).any()), x
+    assert(not torch.isnan(y).any()), y
+    return F.mse_loss(x[:,-1], y[:,-1])
 def L1Prob_loss(x, y,):
-    prob_x = torch.exp(x)/(torch.exp(x)+1)
-    prob_y = torch.exp(y)/(torch.exp(y)+1)
-    return F.l1_loss(prob_x, prob_y)
-def CorrProb_loss(x, y,):
-    prob_x = torch.exp(x)/(torch.exp(x)+1)
-    prob_y = torch.exp(y)/(torch.exp(y)+1)
+    return F.l1_loss(x[:,-1], y[:,-1])
+def CorrProb_loss(prob_x, prob_y,):
+    # prob_x = torch.exp(x)/(torch.exp(x)+1)
+    # prob_y = torch.exp(y)/(torch.exp(y)+1)
     prob_x = prob_x - torch.mean(prob_x)
     prob_y = prob_y - torch.mean(prob_y)
     cov_xy = torch.mean(prob_x*prob_y)
@@ -327,6 +325,8 @@ def one_hot_cross_entropy_loss(x, y):
     one_hot_y = torch.eye(y.size(-1))[torch.argmax(y, dim=-1)]
     return ONE_HOT_RATIO*cross_entropy_loss(x, one_hot_y) + (1-ONE_HOT_RATIO)*cross_entropy_loss(x, y)
 def test_loss_func(x, y, sg_model):
+    assert(not torch.isnan(x).any()), x
+    assert(not torch.isnan(y).any()), y
     if CLASSIFICATION_FLAG:
         x = torch.log(x[:,0:-1]/x[:,-1:])
         y = torch.log(y[:,0:-1]/y[:,-1:])
@@ -352,6 +352,8 @@ def test_loss_func(x, y, sg_model):
     prob_y = torch.cat([prob_y, 1-prob_y], dim=-1)
     corrcoef_prob = [np.corrcoef(prob_x[:,0].reshape(-1).cpu().detach().numpy(),
                                  prob_y[:,0].reshape(-1).cpu().detach().numpy(),)[0,1]]
+    assert(not torch.isnan(prob_x).any()), prob_x
+    assert(not torch.isnan(prob_y).any()), prob_y
     pcorr_prob, pvalue_prob = pearsonr(prob_x[:,0].reshape(-1).cpu().detach().numpy(),
                                        prob_y[:,0].reshape(-1).cpu().detach().numpy(),)
     pcorr_prob, pvalue_prob = [pcorr_prob], [pvalue_prob]
