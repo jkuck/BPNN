@@ -226,6 +226,7 @@ def get_dataset(dataset_type):
                                                 f=np.random.uniform(low=0, high=F_MAX),\
                                                 c=np.random.uniform(low=0, high=C_MAX),\
                                                 c_upper_scale=np.random.uniform(low=0.1, high=C_UPPER_SCALE),\
+                                                non_symmetric_flag=True,\
                                                 attractive_field=ATTRACTIVE_FIELD) for i in range(datasize)]
         if not os.path.exists(DATA_DIR):
             os.makedirs(DATA_DIR)

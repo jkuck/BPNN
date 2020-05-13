@@ -5,7 +5,7 @@ import random, subprocess as sp
 PROCESS_NUM = 75
 
 jobs = [
-    'python learn_bp_map_spinglass_nosym.py %s %s %s %s %s %s -lr %f --alpha %f --layer_num %d -C %f -C_upper_scale %f'%(
+    'python learn_bp_map_spinglass_nosym.py %s %s %s %s %s %s -lr %f --alpha %f --layer_num %d -C %f --C_upper_scale %f'%(
         dflag, aflag, mflag, sflag, bflag, pflag,
         10**(random.random()*4-6), damping, layer_num, C, c_upper_scale,
     )

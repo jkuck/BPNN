@@ -5,7 +5,7 @@ import torch
 
 class SpinGlassModel:
     def __init__(self, N, f, c, all_weights_1=False, create_higher_order_potentials=False,\
-                attractive_field=False, c_upper_scale=1.):
+                attractive_field=False, c_upper_scale=1., non_symmetric_flag=False):
         '''
         Sample local field parameters and coupling parameters to define a spin glass model
 
@@ -52,8 +52,9 @@ class SpinGlassModel:
             # randomarray = np.random.uniform(low=0, high=1, size=(N,N))
             # self.lcl_fld_params[np.where(randomarray>.5)] = lcl_fld_params_pos[np.where(randomarray>.5)]
 
-            self.cpl_params_h_upper_scale = np.random.uniform(low=0, high=c_upper_scale, size=(N,N-1))
-            self.cpl_params_v_upper_scale = np.random.uniform(low=0, high=c_upper_scale, size=(N-1,N))
+            if non_symmetric_flag:
+                self.cpl_params_h_upper_scale = np.random.uniform(low=0, high=c_upper_scale, size=(N,N-1))
+                self.cpl_params_v_upper_scale = np.random.uniform(low=0, high=c_upper_scale, size=(N-1,N))
             if attractive_field:
                 #sample horizontal coupling parameters (theta_ij) for each horizontal edge
                 self.cpl_params_h = np.random.uniform(low=0, high=c, size=(N,N-1))
