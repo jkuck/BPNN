@@ -157,7 +157,7 @@ class lbp_message_passing_network(nn.Module):
 
         
         
-    def forward(self, factor_graph, random_message_init_every_iter=False, PLOT_CONVERGENCE=True):
+    def forward(self, factor_graph, random_message_init_every_iter=False, PLOT_CONVERGENCE=False):
 #         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
         
         if self.learn_initial_messages:
