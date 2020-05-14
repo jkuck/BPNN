@@ -56,7 +56,7 @@ matplotlib.rcParams.update({'font.size': 10})
 
 plt.grid(True)
 
-plt.xticks(np.arange(9), ['(.1, 5)', '(.1, 10)', '(.1, 50)', '(.2, 5)', '(.2, 10)', '(.2, 50)', '(1, 5)', '(1, 1)', '(1, 50)'])
+plt.xticks(np.arange(9), ['(.1, 5)', '(.1, 10)', '(.1, 50)', '(.2, 5)', '(.2, 10)', '(.2, 50)', '(1, 5)', '(1, 10)', '(1, 50)'])
 # plot_name = 'quick_plot.png'
 # plt.savefig(ROOT_DIR + 'sat_plots/' + plot_name) 
 plt.savefig('./testplot.eps', bbox_extra_artists=(lgd,), bbox_inches='tight', format='eps')   
