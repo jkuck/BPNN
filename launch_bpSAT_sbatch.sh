@@ -6,8 +6,8 @@
 #SBATCH --mem=8G
 
 # only use the following on partition with GPUs
-####SBATCH --gres=gpu:1
-####SBATCH --exclude=atlas19,atlas20,atlas21,atlas22,atlas3,atlas8,atlas5
+#SBATCH --gres=gpu:1
+#SBATCH --exclude=atlas19,atlas20,atlas21,atlas22,atlas3,atlas8,atlas6,atlas7,atlas5,atlas12,atlas13,atlas1 
 
 #SBATCH --job-name="learnBP_SAT"
 #SBATCH --output=slurm-%j.out
