@@ -203,12 +203,12 @@ class lbp_message_passing_network(nn.Module):
         
         if self.share_weights:
             # for iter in range(self.msg_passing_iters):
-            # random_msg_passing_iters = np.random.randint(5, 30)
+            random_msg_passing_iters = np.random.randint(5, 30)
             # random_msg_passing_iters = np.random.randint(20, 50)
-            random_msg_passing_iters = 200
+            # random_msg_passing_iters = 200
             
-            print()
-            print("random_msg_passing_iters =", random_msg_passing_iters)
+            # print()
+            # print("random_msg_passing_iters =", random_msg_passing_iters)
             if PLOT_CONVERGENCE:
                 norm_per_isingmodel_vTOf_perIterList = []
                 norm_per_isingmodel_fTOv_perIterList = []
@@ -266,7 +266,7 @@ class lbp_message_passing_network(nn.Module):
                     for BP_iter in range(random_BP_iters):
                         varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
                             self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
-                                                prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+                                                prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs, iter=-1)
             
                         
                         prv_prv_varToFactor_messages = prv_varToFactor_messages
@@ -307,7 +307,7 @@ class lbp_message_passing_network(nn.Module):
                 for iter in range(random_fixed_BP_iters):
                     varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
                         self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
-                                            prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+                                            prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs, iter=-1)
         
                     prv_prv_varToFactor_messages = prv_varToFactor_messages
                     prv_prv_factorToVar_messages = prv_factorToVar_messages
@@ -338,7 +338,7 @@ class lbp_message_passing_network(nn.Module):
 
                 prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
                     message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
-                                          prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+                                          prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs, iter=-1)
     #                 message_passing_layer(factor_graph, prv_varToFactor_messages=factor_graph.prv_varToFactor_messages,
     #                                       prv_factorToVar_messages=factor_graph.prv_factorToVar_messages, prv_factor_beliefs=factor_graph.prv_factor_beliefs) 
                 if self.bethe_MLP != 'none':
@@ -355,7 +355,7 @@ class lbp_message_passing_network(nn.Module):
                 for iter in range(random_iters):
                     varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
                         self.convergence_BPNN_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
-                                            prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+                                            prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs, iter=-1)
         
                     prv_prv_varToFactor_messages = prv_varToFactor_messages
                     prv_prv_factorToVar_messages = prv_factorToVar_messages

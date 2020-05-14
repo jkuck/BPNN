@@ -10,8 +10,10 @@ import torch
 import multiprocessing as mp
 import psutil
 from joblib import Parallel, delayed
+from torch_geometric.data import InMemoryDataset
 
 from parameters import LN_ZERO
+from data.SAT_train_test_split import ALL_TRAIN_PROBLEMS, ALL_TEST_PROBLEMS
 
 
 def parse_dimacs(filename, verbose=False):
@@ -119,7 +121,7 @@ def parse_dimacs(filename, verbose=False):
         print()
     return n_vars, clauses, load_successful
 
-def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0, verbose=True, epsilon=0, 
+def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, dataset_size=None, begin_idx=0, verbose=True, epsilon=0, 
                      max_factor_dimensions=5, return_logZ_list=False, belief_repeats=None):
     '''
     Inputs:
@@ -132,7 +134,11 @@ def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, d
     - begin_idx: (int) discard the first begin_idx problems, e.g. for validation
     - epsilon (float): set factor states with potential 0 to epsilon for numerical stability
     - max_factor_dimensions (int): do not construct a factor graph if the largest factor (clause) contains
-        more than this many variables        
+        more than this many variables      
+    - dataset_size (int): return a maximum dataset_size SAT problems.  If none, return all problems  
+
+    Outputs:
+    - sat_problems (list of FactorGraphData): list of sat problems represented as factor graphs
     '''
     sat_problems = []
     ln_solution_counts = []
@@ -151,7 +157,7 @@ def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, d
 
 
     for problem_name in problems_to_load:
-        if len(sat_problems) == dataset_size:
+        if (dataset_size is not None) and (len(sat_problems) == dataset_size):
             break
         # problem_file = problem_name[:-19] + '.cnf'
         problem_file = problem_name + '.cnf.gz.no_w.cnf'
@@ -232,6 +238,73 @@ def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, d
         return sat_problems    
     
 
+class SATDataset(InMemoryDataset):    
+    def __init__(self, root, dataset_type, problem_category, belief_repeats, epsilon=0, max_factor_dimensions=5,\
+                 transform=None, pre_transform=None, SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/exact_SAT_counts_noIndSets/",\
+                 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"):
+        '''
+        Inputs:
+        - dataset_type (string): 'train', 'val', or 'test'
+        - problem_category (string): 'or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems', 'blasted_problems', 's_problems', 'problems_75', or 'problems_90'
+        - epsilon (float): set factor states with potential 0 to epsilon for numerical stability
+        - max_factor_dimensions (int): do not construct a factor graph if the largest factor (clause) contains
+            more than this many variables        
+        '''      
+        self.dataset_type = dataset_type
+        self.problem_category = problem_category
+        self.belief_repeats = belief_repeats
+        self.epsilon = epsilon
+        self.max_factor_dimensions = max_factor_dimensions
+        self.SOLUTION_COUNTS_DIR = SOLUTION_COUNTS_DIR
+        self.SAT_PROBLEMS_DIR = SAT_PROBLEMS_DIR
+
+        assert(self.dataset_type in ['train', 'test'])
+        if self.dataset_type == 'test':
+            self.problem_names = [benchmark['problem'] for benchmark in ALL_TEST_PROBLEMS[problem_category]]
+        else:
+            self.problem_names = [benchmark['problem'] for benchmark in ALL_TRAIN_PROBLEMS[problem_category]]
+
+
+        super(SATDataset, self).__init__(root, transform, pre_transform)
+
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self):
+        return ['unused']
+        pass
+        # print("HI, looking for raw files :)")
+        # # return ['some_file_1', 'some_file_2', ...]
+        # dataset_file = './' + self.root + '/' + self.dataset_type + '%d_%d_%d_%.2f_%.2f_attField=%s.pkl' % (self.datasize, self.N_MIN, self.N_MAX, self.F_MAX, self.C_MAX, self.ATTRACTIVE_FIELD)
+        # print("dataset_file:", dataset_file)
+        # return [dataset_file]
+
+    @property
+    def processed_file_names(self):
+        processed_dataset_file = self.dataset_type + '_%s_%d_%f_%d_pyTorchGeomProccesed.pt' %\
+                                 (self.problem_category, self.belief_repeats, self.epsilon, self.max_factor_dimensions)
+        
+        return [processed_dataset_file]
+
+    def download(self):
+        pass
+        # assert(False), "Error, need to generate new data!!"
+        # Download to `self.raw_dir`.
+
+    def process(self):
+        # get a list of sat problems as factor graphs (FactorGraphData objects)    
+        SAT_problem_list = get_SATproblems_list(problems_to_load=self.problem_names, counts_dir_name=self.SOLUTION_COUNTS_DIR,\
+                           problems_dir_name=self.SAT_PROBLEMS_DIR, verbose=True, epsilon=self.epsilon, max_factor_dimensions=self.max_factor_dimensions,\
+                           return_logZ_list=False, belief_repeats=self.belief_repeats)
+
+
+        data, slices = self.collate(SAT_problem_list)
+        torch.save((data, slices), self.processed_paths[0])
+
+
+
+
+#loading in parallel seems to actually hurt performance.  Instead use the pytorch geometric dataset to preprocess/load fast
 # def get_SATproblems_list_parallel_helper(problem_name, problems_in_cnf_dir, problems_in_counts_dir, counts_dir_name, problems_dir_name,\
 def get_SATproblems_list_parallel_helper(problem_name, counts_dir_name, problems_dir_name,\
                                          epsilon, max_factor_dimensions, belief_repeats, verbose):
