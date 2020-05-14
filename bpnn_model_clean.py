@@ -143,6 +143,8 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         self.var_cardinality = var_cardinality
         print("learn_BP:", learn_BP)
         if learn_BP:
+            self.reflected_relu = reflect_xy(ReLU()) 
+
             assert(factor_state_space is not None)     
             self.linear1 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
             self.linear2 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
@@ -155,7 +157,9 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             if lne_mlp:            
                 self.mlp1 = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)  
             else:
-                self.mlp1 = Seq(self.linear1, self.linear2)  
+                print("ADDED 2 mlp1/2 reflected RELU!!!!!!!!!!!!!!!!")
+
+                self.mlp1 = Seq(self.linear1, self.reflected_relu, self.linear2, self.reflected_relu)  
 
 
             #add factor potential as part of MLP
@@ -181,16 +185,19 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             if lne_mlp:
                 self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu) 
             else:
-                self.mlp2 = Seq(self.linear3, self.linear4)  
+                self.mlp2 = Seq(self.linear3, self.reflected_relu, self.linear4, self.reflected_relu)  
 
                 
             self.linear5 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
             self.linear6 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            self.linear6b = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
             if initialize_exact_BP:
                 self.linear5.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
                 self.linear5.bias = torch.nn.Parameter(torch.zeros(self.linear5.bias.shape))
                 self.linear6.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
                 self.linear6.bias = torch.nn.Parameter(torch.zeros(self.linear6.bias.shape))
+                self.linear6b.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear6b.bias = torch.nn.Parameter(torch.zeros(self.linear6b.bias.shape))
             else:    
                 pass
 #                 w5 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
@@ -215,16 +222,19 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             if lne_mlp:
                 self.mlp3 = Seq(self.linear5, ReLU(), self.linear6, self.shifted_relu)  
             else:            
-                self.mlp3 = Seq(self.linear5, self.linear6)  
+                self.mlp3 = Seq(self.linear5, self.reflected_relu, self.linear6, self.reflected_relu, self.linear6b, self.reflected_relu)
             self.alpha_mlp3 = torch.nn.Parameter(alpha2*torch.ones(1))
             
             self.linear7 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
             self.linear8 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+            self.linear8b = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
             if initialize_exact_BP:
                 self.linear7.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
                 self.linear7.bias = torch.nn.Parameter(torch.zeros(self.linear7.bias.shape))
                 self.linear8.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
                 self.linear8.bias = torch.nn.Parameter(torch.zeros(self.linear8.bias.shape))
+                self.linear8b.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                self.linear8b.bias = torch.nn.Parameter(torch.zeros(self.linear8b.bias.shape))
                 
             else:    
                 pass
@@ -249,7 +259,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             if lne_mlp:
                 self.mlp4 = Seq(self.linear7, ReLU(), self.linear8, self.shifted_relu)
             else:     
-                self.mlp4 = Seq(self.linear7, self.linear8)  
+                self.mlp4 = Seq(self.linear7, self.reflected_relu, self.linear8, self.reflected_relu, self.linear8, self.reflected_relu)
             self.alpha_mlp4 = torch.nn.Parameter(alpha2*torch.ones(1))
     
             
@@ -266,7 +276,6 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             self.mlpEquivariant = Seq(self.linear13, ReLU(), self.linear14) 
 
 
-            self.reflected_relu = reflect_xy(ReLU()) 
 
             self.FC_damping_layer = False
             if self.FC_damping_layer:
@@ -339,7 +348,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
     
     #testing a simplified version, modelling GIN, that preserves no double counting computation graph
     def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs,\
-                  alpha2=alpha2, debug=False, normalize_messages=False, normalize_beliefs=True, iter=-1):
+                  alpha2=alpha2, debug=False, normalize_messages=True, normalize_beliefs=True, iter=-1):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
 
@@ -399,7 +408,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         if self.use_MLP3:
             factorToVar_messages = factorToVar_messages.view(fTOv_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality) 
             
-            quick_test = True
+            quick_test = False
             if False:
                 assert(not torch.isnan(factorToVar_messages).any()), factorToVar_messages
                 
@@ -547,7 +556,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             assert(vTOf_mesg_shape[0] == fTOv_mesg_shape[0]), (vTOf_mesg_shape, fTOv_mesg_shape)
             varToFactor_messages = varToFactor_messages.view(vTOf_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality)
             
-            quick_test = True
+            quick_test = False
             if False:
                 varToFactor_messages_exp = torch.exp(varToFactor_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
                 prv_varToFactor_messages_exp = torch.exp(prv_varToFactor_messages.view(vTOf_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality)) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
@@ -1126,7 +1135,7 @@ var_cardinality))))
             
 
             #print("890 factorToVar_messages post damping:", factorToVar_messages)            
-        POST_MLP_NORM_AND_CLAMP = False
+        POST_MLP_NORM_AND_CLAMP = True
         if POST_MLP_NORM_AND_CLAMP:
             if normalize_messages:
                 factorToVar_messages = factorToVar_messages - logsumexp_multipleDim(factorToVar_messages, dim_to_keep=[0,1])#normalize variable beliefs
@@ -1194,7 +1203,7 @@ var_cardinality))))
 
             #print("890 varToFactor_messages post damping:", varToFactor_messages)
         
-        POST_MLP_NORM_AND_CLAMP = False
+        POST_MLP_NORM_AND_CLAMP = True
         if POST_MLP_NORM_AND_CLAMP:
             if normalize_messages:
                 varToFactor_messages = varToFactor_messages - logsumexp_multipleDim(varToFactor_messages, dim_to_keep=[0, 1])#normalize variable beliefs

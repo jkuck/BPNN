@@ -42,7 +42,7 @@ parser = argparse.ArgumentParser()
 #number of variables in the largest factor -> factor has 2^args.max_factor_state_dimensions states
 parser.add_argument('--max_factor_state_dimensions', type=int, default=5)
 #the number of iterations of message passing, we have this many layers with their own learnable parameters
-parser.add_argument('--msg_passing_iters', type=int, default=2)
+parser.add_argument('--msg_passing_iters', type=int, default=5)
 #messages have var_cardinality states in standard belief propagation.  belief_repeats artificially
 #increases this number so that messages have belief_repeats*var_cardinality states, analogous
 #to increasing node feature dimensions in a standard graph neural network
@@ -52,17 +52,17 @@ parser.add_argument('--batch_size', type=int, default=10)
 
 # 0.0001
 # 0.0005
-# parser.add_argument('--learning_rate', type=float, default=0.0001)
-# parser.add_argument('--learning_rate', type=float, default=0.0001)
-parser.add_argument('--learning_rate', type=float, default=0.001)
+parser.add_argument('--learning_rate', type=float, default=0.0001)
+# parser.add_argument('--learning_rate', type=float, default=0.0005)
+# parser.add_argument('--learning_rate', type=float, default=0.001)
 
 #damping parameter
-parser.add_argument('--alpha_damping_FtoV', type=float, default=.5)
+parser.add_argument('--alpha_damping_FtoV', type=float, default=1.0)
 parser.add_argument('--alpha_damping_VtoF', type=float, default=1.0) #this damping wasn't used in the old code
 
 
 #if true, mlps operate in standard space rather than log space
-parser.add_argument('--lne_mlp', type=boolean_string, default=True)
+parser.add_argument('--lne_mlp', type=boolean_string, default=False)
 
 #original MLPs that operate on factor beliefs (problematic because they're not index invariant)
 parser.add_argument('--use_MLP1', type=boolean_string, default=True)
@@ -89,7 +89,7 @@ parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='shifted',\
+parser.add_argument('--bethe_mlp', type=str, default='linear',\
     choices=['shifted','standard','linear','none'])
 
 #if True, use the old Bethe approximation that doesn't work with batches
@@ -113,7 +113,7 @@ parser.add_argument('--train_val_split', type=str, default='random_shuffle',\
 # parser.add_argument('--save_freq', type=int, default=1000)
 args, _ = parser.parse_known_args()
 
-
+print("args.problem_category_train:", args.problem_category_train)
 
 
 ##########################
@@ -408,6 +408,8 @@ def train():
             wandb.config.TRAINING_DATA_SIZE = len(training_SAT_list)
             wandb.config.VAL_DATA_SIZE = len(val_SAT_list)
 
+        # training_SAT_list = training_SAT_list[:3]
+        # val_SAT_list = val_SAT_list[:3]
         print("len(training_SAT_list) =", len(training_SAT_list))
         print("len(val_SAT_list) =", len(val_SAT_list))
         train_data_loader = DataLoader(training_SAT_list, batch_size=args.batch_size, shuffle=True)
