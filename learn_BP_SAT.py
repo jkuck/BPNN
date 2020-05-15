@@ -48,19 +48,20 @@ parser.add_argument('--msg_passing_iters', type=int, default=5)
 #to increasing node feature dimensions in a standard graph neural network
 parser.add_argument('--belief_repeats', type=int, default=1)
 
-parser.add_argument('--batch_size', type=int, default=50)
+parser.add_argument('--batch_size', type=int, default=5)
 
 # 0.0001
 # 0.0005
-parser.add_argument('--learning_rate', type=float, default=0.0001)
+# parser.add_argument('--learning_rate', type=float, default=0.0001)
+parser.add_argument('--learning_rate', type=float, default=0.001)
 # parser.add_argument('--learning_rate', type=float, default=0.0)
 
 # parser.add_argument('--learning_rate', type=float, default=0.0005)
 # parser.add_argument('--learning_rate', type=float, default=0.001)
 
 #damping parameter
-parser.add_argument('--alpha_damping_FtoV', type=float, default=.5)
-parser.add_argument('--alpha_damping_VtoF', type=float, default=1.0) #this damping wasn't used in the old code
+parser.add_argument('--alpha_damping_FtoV', type=float, default=.05)
+parser.add_argument('--alpha_damping_VtoF', type=float, default=.05) #this damping wasn't used in the old code
 
 
 #if true, mlps operate in standard space rather than log space
@@ -71,8 +72,8 @@ parser.add_argument('--use_MLP1', type=boolean_string, default=False)
 parser.add_argument('--use_MLP2', type=boolean_string, default=False)
 
 #new MLPs that operate on variable beliefs
-parser.add_argument('--use_MLP3', type=boolean_string, default=True)
-parser.add_argument('--use_MLP4', type=boolean_string, default=True)
+parser.add_argument('--use_MLP3', type=boolean_string, default=False)
+parser.add_argument('--use_MLP4', type=boolean_string, default=False)
 
 #new MLP that hopefully preservers consistency
 parser.add_argument('--use_MLP5', type=boolean_string, default=False)
@@ -80,18 +81,18 @@ parser.add_argument('--use_MLP6', type=boolean_string, default=False)
 parser.add_argument('--use_MLP_EQUIVARIANT', type=boolean_string, default=False)
 
 #new MLPs that operate on message differences, e.g. in place of damping
-parser.add_argument('--USE_MLP_DAMPING_FtoV', type=boolean_string, default=False)
-parser.add_argument('--USE_MLP_DAMPING_VtoF', type=boolean_string, default=False)
+parser.add_argument('--USE_MLP_DAMPING_FtoV', type=boolean_string, default=True)
+parser.add_argument('--USE_MLP_DAMPING_VtoF', type=boolean_string, default=True)
 
 #if true, share the weights between layers in a BPNN
-parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=False)
+parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=True)
 
 #if true, subtract previously sent messages (to avoid 'double counting')
 parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True)
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='linear',\
+parser.add_argument('--bethe_mlp', type=str, default='none',\
     choices=['shifted','standard','linear','none'])
 
 #if True, use the old Bethe approximation that doesn't work with batches
@@ -102,7 +103,7 @@ parser.add_argument('--use_old_bethe', type=boolean_string, default=False)
 #args.random_seed = 0 and 1 seem to produce very different results for s_problems
 parser.add_argument('--random_seed', type=int, default=1)
 
-parser.add_argument('--problem_category_train', type=str, default='group2',\
+parser.add_argument('--problem_category_train', type=str, default='problems_75',\
     choices=['problems_75','problems_90','or_50_problems','or_60_problems','or_70_problems',\
     'or_100_problems', 'blasted_problems','s_problems','group1','group2','group3','group4'])
 
@@ -133,7 +134,7 @@ VAR_CARDINALITY = 2
 
 EPSILON = 0 #set factor states with potential 0 to EPSILON for numerical stability
 
-MODEL_NAME = "diverseData_2layer.pth"
+MODEL_NAME = "debug.pth"
 ROOT_DIR = "/atlas/u/jkuck/learn_BP/" #file path to the directory cloned from github
 TRAINED_MODELS_DIR = ROOT_DIR + "trained_models/" #trained models are stored here
 
@@ -227,7 +228,7 @@ SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/exact_SAT_counts_noIndSets/"
 
 EPOCH_COUNT = 1000
 PRINT_FREQUENCY = 10
-SAVE_FREQUENCY = 100
+SAVE_FREQUENCY = 1
 VAL_FREQUENCY = 10
 ##########################
 ##### Optimizer parameters #####
@@ -255,8 +256,11 @@ LEARNING_RATE = args.learning_rate
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 # wandb.init(project="learn_BP_sat_reproduce6")
 # wandb.init(project="learn_BP_sat_reproduceFromOldCode")
-wandb.init(project="learn_BP_sat_compareParams_mlp4Debug_normalizeBeliefs")
 # wandb.init(project="learn_BP_sat_debug")
+
+# wandb.init(project="learn_BP_sat_compareParams_mlp4Debug_normalizeBeliefs")
+wandb.init(project="learn_BP_sat_dampingMLP")
+
 
 # wandb.init(project="test")
 wandb.config.epochs = EPOCH_COUNT
@@ -360,7 +364,8 @@ if NEW_FAST_DATA_LOADING == False:
 
 
 def train():
-    print("HISLKDJFLSJFLK")
+    # lbp_net.load_state_dict(torch.load('wandb/run-20200515_052334-erpuze4k/model.pt')) #RMSE train=3.69 val=3.984
+    print("NO LOAD")
     wandb.watch(lbp_net)
     
     lbp_net.train()
@@ -470,9 +475,18 @@ def train():
             exact_ln_partition_function = sat_problem.ln_Z
 
             assert(sat_problem.state_dimensions == args.max_factor_state_dimensions)
-            estimated_ln_partition_function = lbp_net(sat_problem)
-            # estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
-            #     prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)
+            if args.SHARE_WEIGHTS:
+                estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
+                    prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)
+
+                max_vTOf = torch.max(torch.abs(prv_prv_varToFactor_messages - prv_varToFactor_messages))
+                max_fTOv = torch.max(torch.abs(prv_prv_factorToVar_messages - prv_factorToVar_messages))
+                print("max_vTOf:", max_vTOf)
+                print("max_fTOv:", max_fTOv)
+                                    
+            else:
+                estimated_ln_partition_function = lbp_net(sat_problem)
+
             # vTof_convergence_loss = loss_func(prv_varToFactor_messages, prv_prv_varToFactor_messages)
             # fTov_convergence_loss = loss_func(prv_factorToVar_messages, prv_prv_factorToVar_messages)
 
@@ -539,9 +553,12 @@ def train():
                 sat_problem = sat_problem.to(device)
                 exact_ln_partition_function = sat_problem.ln_Z
                 assert(sat_problem.state_dimensions == args.max_factor_state_dimensions)
-                estimated_ln_partition_function = lbp_net(sat_problem)   
-                # estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
-                #     prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)                
+
+                if args.SHARE_WEIGHTS:
+                    estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
+                        prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)
+                else:                
+                    estimated_ln_partition_function = lbp_net(sat_problem)   
 
                 loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float().squeeze())
 #                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
@@ -582,6 +599,7 @@ def train():
     torch.save(lbp_net.state_dict(), TRAINED_MODELS_DIR + MODEL_NAME)
 
 def test():
+
 #     lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + MODEL_NAME))
     # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "simple_4layer_firstWorking.pth"))
     # lbp_net.load_state_dict(torch.load(TRAINED_MODELS_DIR + "trained39non90_2layer.pth"))

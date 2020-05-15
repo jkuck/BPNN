@@ -203,12 +203,13 @@ class lbp_message_passing_network(nn.Module):
         
         if self.share_weights:
             # for iter in range(self.msg_passing_iters):
-            random_msg_passing_iters = np.random.randint(5, 30)
+            # random_msg_passing_iters = np.random.randint(5, 30)
+            random_msg_passing_iters = 30
             # random_msg_passing_iters = np.random.randint(20, 50)
             # random_msg_passing_iters = 200
             
             # print()
-            # print("random_msg_passing_iters =", random_msg_passing_iters)
+            print("random_msg_passing_iters =", random_msg_passing_iters)
             if PLOT_CONVERGENCE:
                 norm_per_isingmodel_vTOf_perIterList = []
                 norm_per_isingmodel_fTOv_perIterList = []
