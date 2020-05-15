@@ -193,6 +193,7 @@ if USE_WANDB:
     wandb.config.MODEL_MAP_FLAG = MODEL_MAP_FLAG
     wandb.config.PERM_INVARIANT_FLAG = PERM_INVARIANT_FLAG
     wandb.config.TRAINING_FLAG = TRAINING_FLAG
+    wandb.config.APPEND_BP_FLAG = APPEND_BP_FLAG
 
 
 def get_dataset(dataset_type):
