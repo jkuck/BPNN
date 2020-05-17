@@ -1,8 +1,6 @@
 **__pycache__**
 sg_temp.fg
-data/spin_glass/
-data/spin_glass_map/
-data/sat_problems_noIndSets
+data
 trained_models*
 wandb
 batch/*.out
