@@ -1,0 +1,10 @@
+**__pycache__**
+sg_temp.fg
+data/spin_glass/
+data/spin_glass_map/
+data/sat_problems_noIndSets
+trained_models*
+wandb
+batch/*.out
+batch/bp*.sh
+batch/tmp.sh
