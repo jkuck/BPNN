@@ -4,5 +4,4 @@ data
 trained_models*
 wandb
 batch/*.out
-batch/bp*.sh
-batch/tmp.sh
+batch/*.sh
