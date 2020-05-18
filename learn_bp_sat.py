@@ -231,7 +231,7 @@ SOLUTION_COUNTS_DIR = osp.join(osp.join(ROOT_DIR, 'data'), 'exact_SAT_counts_noI
 # SOLUTION_COUNTS_DIR = TRAINING_DATA_DIR + "SAT_problems_solved"
 
 
-EPOCH_COUNT = 1000
+EPOCH_COUNT = 3000
 PRINT_FREQUENCY = 10
 SAVE_FREQUENCY = 100
 VAL_FREQUENCY = 10
@@ -299,6 +299,8 @@ wandb.config.SHARE_WEIGHTS = args.SHARE_WEIGHTS
 wandb.config.subtract_prv_messages = args.subtract_prv_messages
 
 wandb.config.use_old_bethe = args.use_old_bethe
+wandb.config.perm_invariant_flag = args.perm_invariant_flag
+wandb.config.sample_perm_number = args.sample_perm_number
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # device = 'cpu'
