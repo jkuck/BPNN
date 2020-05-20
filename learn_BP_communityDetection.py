@@ -19,7 +19,8 @@ import numpy as np
 import parameters_sbm
 from parameters_sbm import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, FINAL_MLP, BETHE_MLP, NUM_MLPS, N, A, B, C, NUM_SAMPLES_TRAIN, NUM_SAMPLES_VAL, SMOOTHING, BELIEF_REPEATS, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP 
 
-USE_WANDB = False
+INITIAL_BP = True
+USE_WANDB = True
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 MODE = "test" #run "test" or "train" mode
 
@@ -39,7 +40,7 @@ BPNN_trained_model_path = '/atlas/u/shuvamc/community_detection/SBM/wandb/run-20
 ###################################
 ####### Training PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 20 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 35 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 # MODEL_NAME = "debugCUDA_spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
 MODEL_NAME = "sbm_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, alpha)
@@ -79,13 +80,13 @@ TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' dat
 ##### Optimizer parameters #####
 STEP_SIZE=50
 LR_DECAY=.8
-LEARNING_RATE = 5e-4
+LEARNING_RATE = 1e-3
 
 
 
 ##########################
 if USE_WANDB:
-    wandb.init(project="learnBP_sbm", name="New_code_random_init")
+    wandb.init(project="learnBP_init_sbm", name="Experiments_BP_init")
     wandb.config.epochs = EPOCH_COUNT
     wandb.config.N_TRAIN = N_TRAIN
     wandb.config.P_TRAIN = P_TRAIN
@@ -98,6 +99,8 @@ if USE_WANDB:
     wandb.config.SHARE_WEIGHTS = SHARE_WEIGHTS
     wandb.config.BETHE_MLP = BETHE_MLP
     wandb.config.MSG_PASSING_ITERS = MSG_PASSING_ITERS
+    wandb.config.BP_ITERS = NUM_BP_LAYERS
+    wandb.config.PRE_BP_MLP = PRE_BP_MLP
     wandb.config.STEP_SIZE = STEP_SIZE
     wandb.config.LR_DECAY = LR_DECAY
     wandb.config.LEARNING_RATE = LEARNING_RATE
@@ -245,7 +248,7 @@ def test(model, data, orig_data, device, bp_data = None, run_fc = True, initial 
                 var_beliefs = model(sbm_model, device) if bp_data is None else model(sbm_model, device, sbm_model_bp)
         else:
             sbm_model_orig = orig_data[i]
-            var_beliefs = runLBPLibdai(sbm_model_orig)
+            var_beliefs, _ = runLBPLibdai(sbm_model_orig)
         labels = sbm_model.gt_variable_labels
         out_labs = var_beliefs.max(dim=1)[1]
         #print(var_beliefs_2-var_beliefs)
@@ -275,7 +278,7 @@ if __name__ == "__main__":
     sbm_models_list_train = get_dataset(dataset_type='train')
     #convert from list of SpinGlassModels to factor graphs for use with BPNN
     sbm_models_fg_train = [build_factorgraph_from_sbm(sbm_model, C_TRAIN, BELIEF_REPEATS) for sbm_model in sbm_models_list_train]
-    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_train, batch_size=1, shuffle = False)
+    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_train, batch_size=1, shuffle = not LEARN_BP_INIT)
     train_data_loader_pytorchGeometric_bp = None
     #sbm_models_fg_train_bp = None
     if LEARN_BP_INIT:
@@ -293,12 +296,13 @@ if __name__ == "__main__":
         sbm_models_fg_val_bp = [build_factorgraph_from_sbm(sbm_model, C_TRAIN, 1) for sbm_model in sbm_models_list_val]
         #sbm_models_fg_val = [[a, b] for a, b in zip(sbm_models_fg_val, sbm_models_fg_val_bp)]
         val_data_loader_pytorchGeometric_bp = DataLoader_pytorchGeometric(sbm_models_fg_val_bp, batch_size=1, shuffle = False)
- 
-    #init_test_acc, init_test_overlap, init_test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, sbm_models_list_val, device=torch.device('cpu'), run_fc = False, initial = True)
-    #print("Initial BP Overlap: " + str(init_test_overlap))
-    #time.sleep(100000)
-    if USE_WANDB:
-        wandb.log({"Initial BP Overlap": init_test_overlap, "Initial Loss": init_test_loss})        
+
+    if INITIAL_BP: 
+        init_test_acc, init_test_overlap, init_test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, sbm_models_list_val, device=torch.device('cpu'), run_fc = False, initial = True)
+        print("Initial BP Overlap: " + str(init_test_overlap))
+        #time.sleep(100000)
+        if USE_WANDB:
+            wandb.log({"Initial BP Overlap": init_test_overlap, "Initial Loss": init_test_loss})        
     for i in range(1, EPOCH_COUNT+1):
         train_loss, train_overlap = train(bpnn_net, train_data_loader_pytorchGeometric, optimizer, loss_func, scheduler, device, train_data_loader_pytorchGeometric_bp)
         test_acc, test_overlap, test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, sbm_models_list_val, device, val_data_loader_pytorchGeometric_bp)
@@ -306,10 +310,10 @@ if __name__ == "__main__":
         if USE_WANDB:
             wandb.log({"Train Loss": train_loss, "Train Overlap": train_overlap, "Test Overlap": test_overlap, "Test Loss": test_loss})
         #scheduler.step()
-        perm = np.random.permutation(NUM_SAMPLES_TRAIN)
-        sbm_models_fg_train = [sbm_models_fg_train[i] for i in perm]
-        train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_train, batch_size = 1, shuffle = False)
         if LEARN_BP_INIT:
+            perm = np.random.permutation(NUM_SAMPLES_TRAIN)
+            sbm_models_fg_train = [sbm_models_fg_train[i] for i in perm]
+            train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_train, batch_size = 1, shuffle = False)
             sbm_models_fg_train_bp = [sbm_models_fg_train_bp[i] for i in perm]
             train_data_loader_pytorchGeometric_bp = DataLoader_pytorchGeometric(sbm_models_fg_train_bp, batch_size = 1, shuffle = False)
 

@@ -8,7 +8,8 @@ import sys
 sys.path.append('/sailhome/shuvamc/learn_BP')
 from factor_graph import FactorGraphData
 from parameters_sbm import LN_ZERO
-
+from sbm_libdai import runLBPLibdai, runJT
+ 
 class StochasticBlockModel:
     def __init__(self, N, P, Q, C, community_probs=None):
         '''
@@ -176,6 +177,12 @@ def build_factorgraph_from_sbm(sbm_model, var_cardinality, belief_repeats, fixed
                  ln_Z=None, factorToVar_double_list = factorToVar, gt_variable_labels = torch.tensor(sbm_model.gt_variable_labels, dtype = torch.long), var_cardinality = var_cardinality, belief_repeats = belief_repeats)
     
     return factor_graph
-sbm = StochasticBlockModel(100, .1, .01, 2)
-fg = build_factorgraph_from_sbm(sbm, 2, 16, 97, 0)
+
+sbm = StochasticBlockModel(25, .5, .1, 2)
+ln_Z = runJT(sbm)
+print(ln_Z)
+for i in range(1):
+    beliefs, ln_Z = runLBPLibdai(sbm)
+    print(beliefs, ln_Z)
+#fg = build_factorgraph_from_sbm(sbm, 2, 16, 97, 0)
 #print(fg)
