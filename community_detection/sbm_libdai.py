@@ -41,7 +41,7 @@ def build_binary_libdai_factor(sbm_model, variables, var_1, var_2, edge, fixed_v
             factor[i] = diff_prob
     return factor
 
-def build_libdaiFactorGraph_from_SBM(sbm_model, fixed_var, fixed_val):
+def build_libdaiFactorGraph_from_SBM(sbm_model, fixed_var=-1, fixed_val=-1):
     variables = []
     for i in range(sbm_model.N):
         variables.append(dai.Var(i, sbm_model.C))
@@ -76,7 +76,7 @@ def getBeliefs(sbm_model, fg, bp_object):
         beliefs.append(b)
     return beliefs
 
-def runLBPLibdai(sbm_model, fixed_var = -1, fixed_val = -1, maxiter = 5000, tol = 1e-9, verbose = 1, updates = 'PARALL', logdomain = 1, damping = .8):
+def runLBPLibdai(sbm_fg, maxiter = 5000, tol = 1e-9, verbose = 1, updates = 'PARALL', logdomain = 1, damping = .8):
     opts = dai.PropertySet()
     opts["maxiter"] = str(maxiter)
     opts["tol"] = str(tol)
@@ -84,7 +84,7 @@ def runLBPLibdai(sbm_model, fixed_var = -1, fixed_val = -1, maxiter = 5000, tol 
     opts["updates"] = updates
     opts["logdomain"] = str(logdomain)
     opts["damping"] = str(damping)
-    sbm_fg = build_libdaiFactorGraph_from_SBM(sbm_model, fixed_var, fixed_val)
+    #sbm_fg = build_libdaiFactorGraph_from_SBM(sbm_model, fixed_var, fixed_val)
     bp = dai.BP(sbm_fg, opts)
     bp.init()
     bp.run()
@@ -92,14 +92,14 @@ def runLBPLibdai(sbm_model, fixed_var = -1, fixed_val = -1, maxiter = 5000, tol 
     #print(beliefs)
     return beliefs, bp.logZ()
     
-def runJT(sbm_model, fixed_var = -1, fixed_val = -1, maxiter = 10000, tol = 1e-9, verbose = 1, updates = "HUGIN"):
+def runJT(sbm_fg, maxiter = 10000, tol = 1e-9, verbose = 1, updates = "HUGIN"):
     opts = dai.PropertySet()
     opts["maxiter"] = str(maxiter)
     opts["tol"] = str(tol)
     opts["verbose"] = str(verbose)
     opts["updates"] = updates
     opts["updates"] = "HUGIN"
-    sbm_fg = build_libdaiFactorGraph_from_SBM(sbm_model, fixed_var, fixed_val)
+    #sbm_fg = build_libdaiFactorGraph_from_SBM(sbm_model, fixed_var, fixed_val)
     jt = dai.JTree(sbm_fg, opts)
     # Initialize junction tree algorithm
     jt.init()

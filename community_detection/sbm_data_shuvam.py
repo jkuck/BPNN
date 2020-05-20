@@ -39,7 +39,7 @@ class StochasticBlockModel:
             lab_dct[labs[i]].append(i)
             ind_dct[i] = labs[i]
         diff_inds = np.array([x for x in diff_inds if ind_dct[x[0]] != ind_dct[x[1]]])
-        same_lst = [np.array(list(combinations(lab_dct[curr], 2))) for curr in lab_dct]
+        same_lst = [np.array(list(combinations(lab_dct[curr], 2))) for curr in lab_dct if len(lab_dct[curr]) > 1]
         same_inds = reduce(lambda x,y: np.concatenate((x,y), axis = 0), same_lst)
         same_mask = np.random.binomial(1, P, same_inds.shape[0])
         diff_mask = np.random.binomial(1, Q, diff_inds.shape[0])
@@ -110,7 +110,7 @@ def buildBinaryFactor(sbm_model, edge, fixed_var, fixed_val):
     factorVarEdgeIndexBi = np.stack((edgeToFacBi, edgeToVarBi))
     return bi_factors, factor_mask_bi, factorVarEdgeIndexBi
 
-def build_factorgraph_from_sbm(sbm_model, var_cardinality, belief_repeats, fixed_var = -1, fixed_val = -1):
+def build_factorgraph_from_sbm(sbm_model, var_cardinality, belief_repeats, fixed_var = -1, fixed_val = -1, logZ = None):
     '''
     Convert a sbm model to a factor graph pytorch representation
 
@@ -174,15 +174,15 @@ def build_factorgraph_from_sbm(sbm_model, var_cardinality, belief_repeats, fixed
     factor_graph = FactorGraphData(factor_potentials = torch.Tensor(factor_potentials),
                  factorToVar_edge_index = torch.tensor(factorVarEdgeIndex, dtype = torch.long), numVars = sbm_model.N, numFactors = factor_potentials.shape[0], 
                  edge_var_indices = torch.tensor(edge_var_indices, dtype = torch.long), state_dimensions = 2, factor_potential_masks = torch.Tensor(factor_potential_masks),
-                 ln_Z=None, factorToVar_double_list = factorToVar, gt_variable_labels = torch.tensor(sbm_model.gt_variable_labels, dtype = torch.long), var_cardinality = var_cardinality, belief_repeats = belief_repeats)
+                 ln_Z=logZ, factorToVar_double_list = factorToVar, gt_variable_labels = torch.tensor(sbm_model.gt_variable_labels, dtype = torch.long), var_cardinality = var_cardinality, belief_repeats = belief_repeats)
     
     return factor_graph
 
-sbm = StochasticBlockModel(25, .5, .1, 2)
-ln_Z = runJT(sbm)
-print(ln_Z)
-for i in range(1):
-    beliefs, ln_Z = runLBPLibdai(sbm)
-    print(beliefs, ln_Z)
+#sbm = StochasticBlockModel(20, .9, .1, 2, community_probs = [.8, .2])
+#ln_Z = runJT(sbm, fixed_var = 8, fixed_val = 0)
+#print(ln_Z)
+#for i in range(1):
+#    beliefs, ln_Z = runLBPLibdai(sbm, fixed_var = 8, fixed_val = 0)
+#    print(sbm.gt_variable_labels,beliefs, ln_Z)
 #fg = build_factorgraph_from_sbm(sbm, 2, 16, 97, 0)
 #print(fg)

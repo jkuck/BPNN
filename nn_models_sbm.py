@@ -59,12 +59,16 @@ class lbp_message_passing_network(nn.Module):
             self.final_fc = Linear(belief_repeats * var_cardinality, var_cardinality)
             #self.final_fc = Seq(Linear(belief_repeats * var_cardinality, 16), torch.nn.BatchNorm1d(16), torch.nn.LeakyReLU(.2), Linear(16, var_cardinality))
         if learn_BP_init:
-            self.BP_layers = nn.ModuleList([FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP = True, factor_state_space = 2 ** max_factor_state_dimensions, var_cardinality = var_cardinality, belief_repeats = 1, use_MLP1=False, use_MLP2=False, use_MLP3=False, use_MLP4=False) for i in range(num_BP_layers)])
-        if pre_BP_mlp:
-            self.varToFactor_fc = Seq(Linear(belief_repeats * var_cardinality, belief_repeats * var_cardinality), bn(var_cardinality * belief_repeats), LeakyReLU(.2), Linear(belief_repeats * var_cardinality, var_cardinality), bn(var_cardinality), Sigmoid())
-            self.factorToVar_fc = Seq(Linear(belief_repeats * var_cardinality, belief_repeats * var_cardinality), bn(var_cardinality * belief_repeats), LeakyReLU(.2), Linear(belief_repeats * var_cardinality, var_cardinality), bn(var_cardinality), Sigmoid())
-            self.factor_fc = Seq(Linear(2 ** max_factor_state_dimensions * belief_repeats, 2 ** max_factor_state_dimensions * belief_repeats * 2), bn(2 ** max_factor_state_dimensions * belief_repeats * 2), LeakyReLU(.2), Linear(2 ** max_factor_state_dimensions * 2 * belief_repeats, 2 ** max_factor_state_dimensions), bn(2 ** max_factor_state_dimensions), Sigmoid())
+            self.BP_layers = nn.ModuleList([FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP = False, factor_state_space = 2 ** max_factor_state_dimensions, var_cardinality = var_cardinality, belief_repeats = 1, use_MLP1=False, use_MLP2=False, use_MLP3=False, use_MLP4=False) for i in range(num_BP_layers)])
+            if pre_BP_mlp:
+                #self.varToFactor_fc = Seq(Linear(belief_repeats * var_cardinality, belief_repeats * var_cardinality), bn(var_cardinality * belief_repeats), LeakyReLU(.2), Linear(belief_repeats * var_cardinality, var_cardinality), bn(var_cardinality), Sigmoid())
+                #self.factorToVar_fc = Seq(Linear(belief_repeats * var_cardinality, belief_repeats * var_cardinality), bn(var_cardinality * belief_repeats), LeakyReLU(.2), Linear(belief_repeats * var_cardinality, var_cardinality), bn(var_cardinality), Sigmoid())
+                #self.factor_fc = Seq(Linear(2 ** max_factor_state_dimensions * belief_repeats, 2 ** max_factor_state_dimensions * belief_repeats * 2), bn(2 ** max_factor_state_dimensions * belief_repeats * 2), LeakyReLU(.2), Linear(2 ** max_factor_state_dimensions * 2 * belief_repeats, 2 ** max_factor_state_dimensions), bn(2 ** max_factor_state_dimensions), Sigmoid())
+                self.varToFactor_fc = Seq(Linear(belief_repeats * var_cardinality, 64), bn(64), LeakyReLU(.2), Linear(64, 128), bn(128), LeakyReLU(.2), Linear(128, 128), bn(128), LeakyReLU(.2), Linear(128, 32), bn(32), LeakyReLU(.2), Linear(32, var_cardinality), bn(var_cardinality), Sigmoid())
+                self.factorToVar_fc = Seq(Linear(belief_repeats * var_cardinality, 64), bn(64), LeakyReLU(.2), Linear(64, 128), bn(128), LeakyReLU(.2), Linear(128, 128), bn(128), LeakyReLU(.2), Linear(128, 32), bn(32), LeakyReLU(.2), Linear(32, var_cardinality), bn(var_cardinality), Sigmoid())
+                self.factor_fc = Seq(Linear(2 ** max_factor_state_dimensions * belief_repeats, 128), bn(128), LeakyReLU(.2), Linear(128, 256), bn(256), LeakyReLU(.2), Linear(256, 256), bn(256), LeakyReLU(.2), Linear(256, 64), bn(64), LeakyReLU(.2), Linear(64, 2 ** max_factor_state_dimensions), bn(2 ** max_factor_state_dimensions), Sigmoid())
  
+
 
         if bethe_MLP:
             var_cardinality = var_cardinality #2 for binary variables
@@ -166,8 +170,8 @@ class lbp_message_passing_network(nn.Module):
             var_beliefs = self.final_fc(var_beliefs)
         else:
             var_beliefs = torch.mean(var_beliefs, dim = 1)
- 
-        return var_beliefs
+        if not self.bethe_MLP: 
+            return var_beliefs
 
         if self.bethe_MLP:
             learned_estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
