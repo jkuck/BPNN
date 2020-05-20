@@ -7,6 +7,7 @@ import time
 import sys
 sys.path.append('/sailhome/shuvamc/learn_BP')
 from factor_graph import FactorGraphData
+from parameters_sbm import LN_ZERO
 
 class StochasticBlockModel:
     def __init__(self, N, P, Q, C, community_probs=None):
@@ -44,12 +45,13 @@ class StochasticBlockModel:
         same_edges = same_inds[same_mask == 1]
         diff_edges = diff_inds[diff_mask == 1]
         edges = np.concatenate((same_edges, diff_edges), axis = 0)
-        #edges = edges[np.argsort(edges[:,0])]
+        edges = edges[np.argsort(edges[:,0])]
         #edges_full = np.concatenate((edges, np.flip(edges, axis = 1)), axis = 0)
         edge_index = np.flip(edges.T, axis = 0)
         same_noedges = same_inds[same_mask == 0]
         diff_noedges = diff_inds[diff_mask == 0]
         noedges = np.concatenate((same_noedges, diff_noedges), axis = 0)
+        noedges = noedges[np.argsort(noedges[:,0])] 
         noedge_index = np.flip(noedges.T, axis = 0)
         #edge_index_full = np.flip(edges_full.T, axis = 0)
         #count = collections.Counter(edge_index_full[1])
@@ -76,7 +78,7 @@ class StochasticBlockModel:
         time.sleep(1000)
         '''
 
-def buildBinaryFactor(sbm_model, edge):
+def buildBinaryFactor(sbm_model, edge, fixed_var, fixed_val):
     same = sbm_model.p if edge else 1 - sbm_model.p
     diff = sbm_model.q if edge else 1 - sbm_model.q
     denom = 2*same + 2*diff
@@ -92,6 +94,14 @@ def buildBinaryFactor(sbm_model, edge):
         shift += sbm_model.edge_index.shape[1]
     bi_factors = np.repeat(single_factor[np.newaxis, :, :], num_facs, axis = 0)
     factor_mask_bi = np.zeros_like(bi_factors)
+    if fixed_var >= 0 and fixed_val >= 0:
+        mask_1 = np.zeros_like(single_factor)
+        mask_2 = np.zeros_like(single_factor)
+        mask_1[fixed_val, :] = 1
+        mask_2[:, fixed_val] = 1
+        factor_potentials_mask = np.array([mask_1 if edge_ind[1][i] == fixed_var else mask_2 if edge_ind[0][i] == fixed_var else np.ones_like(single_factor) for i in range(num_facs)])
+        ln_zero_mask = (1 - factor_potentials_mask) * LN_ZERO
+        bi_factors = bi_factors * factor_potentials_mask + ln_zero_mask
     edgeToFacBi = np.repeat(np.arange(num_facs), 2) + shift
     edgeToVarBi = np.ones(num_facs * 2)
     edgeToVarBi[0::2] = edge_ind[1]
@@ -99,7 +109,7 @@ def buildBinaryFactor(sbm_model, edge):
     factorVarEdgeIndexBi = np.stack((edgeToFacBi, edgeToVarBi))
     return bi_factors, factor_mask_bi, factorVarEdgeIndexBi
 
-def build_factorgraph_from_sbm(sbm_model, var_cardinality, belief_repeats):
+def build_factorgraph_from_sbm(sbm_model, var_cardinality, belief_repeats, fixed_var = -1, fixed_val = -1):
     '''
     Convert a sbm model to a factor graph pytorch representation
 
@@ -113,12 +123,19 @@ def build_factorgraph_from_sbm(sbm_model, var_cardinality, belief_repeats):
     #Unary Factors
     un_potentials = np.log(sbm_model.community_probs)
     un_factors = np.repeat(np.repeat(un_potentials[np.newaxis, :], sbm_model.C, axis = 0)[np.newaxis, :, :], sbm_model.N, axis = 0)
+    if fixed_var >= 0 and fixed_val >= 0:
+        new_fac = LN_ZERO * np.ones_like(sbm_model.community_probs)
+        new_fac[fixed_val] = np.log(sbm_model.community_probs[fixed_val])
+        un_factors[fixed_var, :, 0] = new_fac
     factor_mask_un = np.ones_like(un_factors)
     factor_mask_un[:,:,0] = 0
     factorVarEdgeIndexUn = np.repeat(np.arange(sbm_model.N)[np.newaxis, :], 2, axis = 0) 
     
-    edge_fac, edge_fac_mask, edge_fv_edge_index = buildBinaryFactor(sbm_model, True)
-    noedge_fac, noedge_fac_mask, noedge_fv_edge_index = buildBinaryFactor(sbm_model, False)    
+    edge_fac, edge_fac_mask, edge_fv_edge_index = buildBinaryFactor(sbm_model, True, fixed_var, fixed_val)
+    noedge_fac, noedge_fac_mask, noedge_fv_edge_index = buildBinaryFactor(sbm_model, False, fixed_var, fixed_val)    
+    print(noedge_fac[-8:-1])
+    print(sbm_model.noedge_index.T[-8:-1])
+    time.sleep(1000)
     '''
     #Binary Factors
     same_potential = np.log(sbm_model.p / (2*sbm_model.p + 2*sbm_model.q))
@@ -159,6 +176,6 @@ def build_factorgraph_from_sbm(sbm_model, var_cardinality, belief_repeats):
                  ln_Z=None, factorToVar_double_list = factorToVar, gt_variable_labels = torch.tensor(sbm_model.gt_variable_labels, dtype = torch.long), var_cardinality = var_cardinality, belief_repeats = belief_repeats)
     
     return factor_graph
-#sbm = StochasticBlockModel(100, .1, .01, 2)
-#fg = build_factorgraph_from_sbm(sbm, 2, 16)
+sbm = StochasticBlockModel(100, .1, .01, 2)
+fg = build_factorgraph_from_sbm(sbm, 2, 16, 97, 0)
 #print(fg)
