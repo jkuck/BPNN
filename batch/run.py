@@ -5,14 +5,17 @@ import sys, subprocess
 
 args =sys.argv[1:]
 command = ' '.join(args)
-name = ''.join([a.strip().strip('-')[0] for a in args[:-1]])+'_'+args[-1].split('.')[0]
+name = ''.join([a.strip().strip('-')[0] for a in args])
 
 context = '''#!/bin/bash
 #SBATCH --partition=atlas
-#SBATCH --time=24:00:00
+#SBATCH --time=36:00:00
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=10G
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=8G
+
+# only use the following on partition with GPUs
+#SBATCH --gres=gpu:1
 
 #SBATCH --job-name="%s"
 #SBATCH --output=%s-%%j.out
@@ -45,4 +48,4 @@ echo "Done"'''%(name, name, command)
 filename = 'tmp.sh'
 with open(filename, 'w') as f:
     f.write(context)
-subprocess.call(['sbatch', '--exclude=atlas16,atlas15,atlas14,atlas19,atlas20,atlas21,atlas22', 'tmp.sh'])
+subprocess.call(['sbatch', 'tmp.sh'])
