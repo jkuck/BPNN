@@ -156,6 +156,11 @@ class lbp_message_passing_network(nn.Module):
             var_cardinality = var_cardinality #2 for binary variables
             num_ones = belief_repeats*(2*(var_cardinality**max_factor_state_dimensions)+var_cardinality)
             mlp_size =  msg_passing_iters*num_ones
+            # print("mlp_size:", mlp_size)
+            # print("msg_passing_iters:", msg_passing_iters)
+            # print("belief_repeats:", belief_repeats)
+            # print("var_cardinality:", var_cardinality)
+            # print("max_factor_state_dimensions:", max_factor_state_dimensions)
 #             self.final_mlp = Seq(Linear(mlp_size, mlp_size), ReLU(), Linear(mlp_size, 1))
             self.linear1 = Linear(mlp_size, mlp_size)
             self.linear2 = Linear(mlp_size, 1)
@@ -193,7 +198,7 @@ class lbp_message_passing_network(nn.Module):
 
 
     def forward(self, factor_graph, random_message_init_every_iter=False,
-                PLOT_CONVERGENCE=False, sample_perm_number=None,):
+                PLOT_CONVERGENCE=False, sample_perm_number=None, return_tuple_flag=False):
 #         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
 
         if self.learn_initial_messages:
@@ -236,7 +241,7 @@ class lbp_message_passing_network(nn.Module):
             # random_msg_passing_iters = 200
 
             # print()
-            # print("random_msg_passing_iters =", random_msg_passing_iters)
+            print("random_msg_passing_iters =", random_msg_passing_iters)
             if PLOT_CONVERGENCE:
                 norm_per_isingmodel_vTOf_perIterList = []
                 norm_per_isingmodel_fTOv_perIterList = []
@@ -438,8 +443,10 @@ class lbp_message_passing_network(nn.Module):
 
                 return final_estimate
             else:
-                return learned_estimated_ln_partition_function
-
+                if return_tuple_flag:
+                    return learned_estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages, prv_varToFactor_messages, prv_factorToVar_messages
+                else:
+                    return learned_estimated_ln_partition_function
         else:
             if self.use_old_bethe:
 #                 print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
@@ -476,8 +483,10 @@ class lbp_message_passing_network(nn.Module):
             # sleep(asldkfj)
 
             estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)/self.belief_repeats
-            return estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages, prv_varToFactor_messages, prv_factorToVar_messages
-            # return estimated_ln_partition_function
+            if return_tuple_flag:
+                return estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages, prv_varToFactor_messages, prv_factorToVar_messages
+            else:
+                return estimated_ln_partition_function
 
 
 

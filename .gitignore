@@ -5,3 +5,4 @@ trained_models*
 wandb
 batch/*.out
 batch/*.sh
+UAI_inference_data/multi_year/data
