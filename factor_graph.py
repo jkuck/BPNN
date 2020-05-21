@@ -163,8 +163,11 @@ class FactorGraphData(DataFactorGraph_partial):
             self.facStates_to_varIdx, self.facToVar_edge_idx = self.create_factorStates_to_varIndices(factorToVar_double_list)
 #             self.facStates_to_varIdx_FIXED, self.facToVar_edge_idx_FIXED = self.create_factorStates_to_varIndices_FIXED(factorToVar_double_list)
         elif factorToVar_edge_index is not None:
-            self.facToVar_edge_idx = factorToVar_edge_index
-            self.facStates_to_varIdx = None
+            if factorToVar_double_list is not None:
+                assert((self.facToVar_edge_idx == factorToVar_edge_index).all())
+            else:
+                self.facToVar_edge_idx = factorToVar_edge_index
+                self.facStates_to_varIdx = None
         else:
             self.facToVar_edge_idx = None
             self.facStates_to_varIdx = None

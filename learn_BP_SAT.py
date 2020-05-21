@@ -48,7 +48,7 @@ parser.add_argument('--msg_passing_iters', type=int, default=5)
 #to increasing node feature dimensions in a standard graph neural network
 parser.add_argument('--belief_repeats', type=int, default=1)
 
-parser.add_argument('--batch_size', type=int, default=5)
+parser.add_argument('--batch_size', type=int, default=10)
 
 # 0.0001
 # 0.0005
@@ -103,7 +103,7 @@ parser.add_argument('--use_old_bethe', type=boolean_string, default=False)
 #args.random_seed = 0 and 1 seem to produce very different results for s_problems
 parser.add_argument('--random_seed', type=int, default=1)
 
-parser.add_argument('--problem_category_train', type=str, default='problems_75',\
+parser.add_argument('--problem_category_train', type=str, default='blasted_problems',\
     choices=['problems_75','problems_90','or_50_problems','or_60_problems','or_70_problems',\
     'or_100_problems', 'blasted_problems','s_problems','group1','group2','group3','group4'])
 
@@ -259,7 +259,7 @@ LEARNING_RATE = args.learning_rate
 # wandb.init(project="learn_BP_sat_debug")
 
 # wandb.init(project="learn_BP_sat_compareParams_mlp4Debug_normalizeBeliefs")
-wandb.init(project="learn_BP_sat_dampingMLP")
+wandb.init(project="learn_BP_sat_dampingMLP_70to100iter")
 
 
 # wandb.init(project="test")
@@ -364,8 +364,12 @@ if NEW_FAST_DATA_LOADING == False:
 
 
 def train():
-    # lbp_net.load_state_dict(torch.load('wandb/run-20200515_052334-erpuze4k/model.pt')) #RMSE train=3.69 val=3.984
-    print("NO LOAD")
+    # lbp_net.load_state_dict(torch.load('wandb/run-20200515_052334-erpuze4k/model.pt')) #'75'
+
+    # lbp_net.load_state_dict(torch.load('wandb/run-20200515_053747-0p3hyls0/model.pt')) #'or_50'
+
+    # 
+    # print("LOAD")
     wandb.watch(lbp_net)
     
     lbp_net.train()
@@ -448,6 +452,8 @@ def train():
         training_problem_count_check = 0
         epoch_loss = 0
 #         optimizer.zero_grad()
+        print("len(train_data_loader)", len(train_data_loader))
+        sleep(temp)
         for sat_problem in train_data_loader:
             optimizer.zero_grad()
             if SQUEEZE_BELIEF_REPEATS:

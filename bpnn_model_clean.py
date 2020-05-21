@@ -148,10 +148,14 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             assert(factor_state_space is not None)     
             self.linear1 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
             self.linear2 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
-            self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-            self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
-            self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+            self.linear2a = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+            if initialize_exact_BP:
+                self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
+                self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
+                self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+                self.linear2a.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
+                self.linear2a.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
             self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space           
             if lne_mlp:            
@@ -159,7 +163,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             else:
                 print("ADDED 2 mlp1/2 reflected RELU!!!!!!!!!!!!!!!!")
 
-                self.mlp1 = Seq(self.linear1, self.reflected_relu, self.linear2, self.reflected_relu)  
+                self.mlp1 = Seq(self.linear1, self.reflected_relu, self.linear2, self.reflected_relu)#, self.linear2a, self.reflected_relu)  
 
 
             #add factor potential as part of MLP
@@ -175,17 +179,21 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             #add factor potential after MLP
             self.linear3 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
             self.linear4 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            self.linear3.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
-            self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-            self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
-            self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+            self.linear4a = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+            if initialize_exact_BP:
+                self.linear3.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
+                self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
+                self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+                self.linear4a.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
+                self.linear4a.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
 
 #             self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
             if lne_mlp:
                 self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu) 
             else:
-                self.mlp2 = Seq(self.linear3, self.reflected_relu, self.linear4, self.reflected_relu)  
+                self.mlp2 = Seq(self.linear3, self.reflected_relu, self.linear4, self.reflected_relu)#, self.linear4a, self.reflected_relu)
 
                 
             self.linear5 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
@@ -686,8 +694,39 @@ var_cardinality))))
             else:
                 varToFactor_expandedMessages_shape = varToFactor_expandedMessages.shape
                 assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
+                
+                var_idx_permutation_equivariant = False
+                if var_idx_permutation_equivariant:
+                    swap_idx_tensor = torch.tensor([1,0], device='cuda')
+                    perm1 = torch.index_select(varToFactor_expandedMessages, dim=2, index=swap_idx_tensor)
+                    perm2 = torch.index_select(varToFactor_expandedMessages, dim=3, index=swap_idx_tensor)
+                    perm3 = torch.index_select(varToFactor_expandedMessages, dim=4, index=swap_idx_tensor)
+                    perm4 = torch.index_select(perm1, dim=4, index=swap_idx_tensor)
+                    perm5 = torch.index_select(perm2, dim=4, index=swap_idx_tensor)
 
-                varToFactor_expandedMessages = (1-alpha2)*self.mlp1(varToFactor_expandedMessages.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape) + alpha2*varToFactor_expandedMessages
+                    out0 = self.mlp1(varToFactor_expandedMessages.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape)
+
+                    out1 = self.mlp1(perm1.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape)
+                    out1 = torch.index_select(out1, dim=2, index=swap_idx_tensor)
+
+                    out2 = self.mlp1(perm2.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape)
+                    out2 = torch.index_select(out2, dim=3, index=swap_idx_tensor)
+
+                    out3 = self.mlp1(perm3.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape)
+                    out3 = torch.index_select(out3, dim=4, index=swap_idx_tensor)
+
+                    out4 = self.mlp1(perm4.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape)
+                    out4 = torch.index_select(out4, dim=4, index=swap_idx_tensor)
+                    out4 = torch.index_select(out4, dim=2, index=swap_idx_tensor)
+
+                    out5 = self.mlp1(perm5.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape)
+                    out5 = torch.index_select(out5, dim=4, index=swap_idx_tensor)
+                    out5 = torch.index_select(out5, dim=3, index=swap_idx_tensor)
+
+                    combined_out = (out0 + out1 + out2 + out3 + out4 + out5)/6
+                    varToFactor_expandedMessages = (1-alpha2)*combined_out + alpha2*varToFactor_expandedMessages
+                else:
+                    varToFactor_expandedMessages = (1-alpha2)*self.mlp1(varToFactor_expandedMessages.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape) + alpha2*varToFactor_expandedMessages
                 
             
         assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
@@ -725,7 +764,39 @@ var_cardinality))))
             else:
                 factor_beliefs_shape = factor_beliefs.shape
                 check_factor_beliefs(factor_beliefs) #debugging
-                factor_beliefs = (1-alpha2)*self.mlp2(factor_beliefs.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) + alpha2*factor_beliefs
+
+                var_idx_permutation_equivariant = False
+                if var_idx_permutation_equivariant:
+                    swap_idx_tensor = torch.tensor([1,0], device='cuda')
+                    perm1 = torch.index_select(factor_beliefs, dim=2, index=swap_idx_tensor)
+                    perm2 = torch.index_select(factor_beliefs, dim=3, index=swap_idx_tensor)
+                    perm3 = torch.index_select(factor_beliefs, dim=4, index=swap_idx_tensor)
+                    perm4 = torch.index_select(perm1, dim=4, index=swap_idx_tensor)
+                    perm5 = torch.index_select(perm2, dim=4, index=swap_idx_tensor)
+
+                    out0 = self.mlp1(factor_beliefs.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
+
+                    out1 = self.mlp1(perm1.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
+                    out1 = torch.index_select(out1, dim=2, index=swap_idx_tensor)
+
+                    out2 = self.mlp1(perm2.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
+                    out2 = torch.index_select(out2, dim=3, index=swap_idx_tensor)
+
+                    out3 = self.mlp1(perm3.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
+                    out3 = torch.index_select(out3, dim=4, index=swap_idx_tensor)
+
+                    out4 = self.mlp1(perm4.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
+                    out4 = torch.index_select(out4, dim=4, index=swap_idx_tensor)
+                    out4 = torch.index_select(out4, dim=2, index=swap_idx_tensor)
+
+                    out5 = self.mlp1(perm5.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
+                    out5 = torch.index_select(out5, dim=4, index=swap_idx_tensor)
+                    out5 = torch.index_select(out5, dim=3, index=swap_idx_tensor)
+
+                    combined_out = (out0 + out1 + out2 + out3 + out4 + out5)/6
+                    factor_beliefs = (1-alpha2)*combined_out + alpha2*factor_beliefs
+                else:                
+                    factor_beliefs = (1-alpha2)*self.mlp2(factor_beliefs.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) + alpha2*factor_beliefs
 
                 # check_factor_beliefs(factor_beliefs) #debugging
                 assert(not torch.isnan(factor_beliefs).any()), factor_beliefs
@@ -1131,6 +1202,12 @@ var_cardinality))))
             else:
                 factorToVar_messages = self.alpha_damping_FtoV*factorToVar_messages + (1 - self.alpha_damping_FtoV)*prv_factorToVar_messages
 
+                # test_mask0 = torch.randint_like(factorToVar_messages, low=0, high=2)
+                # # print("test_mask0", test_mask0)
+                # # print("test_mask0.shape", test_mask0.shape)
+                # # print("factorToVar_messages.shape", factorToVar_messages.shape)
+                # factorToVar_messages = test_mask0*prv_factorToVar_messages +\
+                #                        (1-test_mask0)*(self.alpha_damping_FtoV*factorToVar_messages + (1 - self.alpha_damping_FtoV)*prv_factorToVar_messages)
 
             
 
@@ -1175,8 +1252,6 @@ var_cardinality))))
             assert(torch.max(torch.abs(check_messages-1)) < .001), (torch.sum(torch.abs(check_messages-1)), torch.max(torch.abs(check_messages-1)), check_messages)
         #for numerical stability, don't let log messages get smaller than LN_ZERO (constant set in parameters.py)
         varToFactor_messages = torch.clamp(varToFactor_messages, min=LN_ZERO)
-
-
         
         if self.learn_damping_coefficients:
             varToFactor_messages = self.alpha_VtoF_msg*varToFactor_messages + (1 - self.alpha_VtoF_msg)*prv_varToFactor_messages
@@ -1200,6 +1275,10 @@ var_cardinality))))
                 # varToFactor_messages = varToFactor_messages + (1 - self.alpha_damping_VtoF)*(prv_varToFactor_messages-varToFactor_messages)
             else:
                 varToFactor_messages = self.alpha_damping_VtoF*varToFactor_messages + (1 - self.alpha_damping_VtoF)*prv_varToFactor_messages
+
+                # test_mask0 = torch.randint_like(varToFactor_messages, low=0, high=2)
+                # varToFactor_messages = test_mask0*prv_varToFactor_messages +\
+                #     (1-test_mask0)*(self.alpha_damping_VtoF*varToFactor_messages + (1 - self.alpha_damping_VtoF)*prv_varToFactor_messages)
 
             #print("890 varToFactor_messages post damping:", varToFactor_messages)
         
