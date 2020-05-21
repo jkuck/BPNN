@@ -249,7 +249,7 @@ def test(model, data, orig_data, device, bp_data = None, run_fc = True, initial 
         else:
             sbm_model_orig = orig_data[i]
             sbm_fg = build_libdaiFactorGraph_from_SBM(sbm_model_orig) 
-            var_beliefs, _ = runLBPLibdai(sbm_fg)
+            var_beliefs, _ = runLBPLibdai(sbm_fg, sbm_model_orig)
         labels = sbm_model.gt_variable_labels
         out_labs = var_beliefs.max(dim=1)[1]
         #print(var_beliefs_2-var_beliefs)

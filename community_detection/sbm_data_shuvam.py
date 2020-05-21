@@ -8,7 +8,7 @@ import sys
 sys.path.append('/sailhome/shuvamc/learn_BP')
 from factor_graph import FactorGraphData
 from parameters_sbm import LN_ZERO
-from sbm_libdai import runLBPLibdai, runJT
+from community_detection.sbm_libdai import runLBPLibdai, runJT, build_libdaiFactorGraph_from_SBM
  
 class StochasticBlockModel:
     def __init__(self, N, P, Q, C, community_probs=None):
@@ -45,13 +45,27 @@ class StochasticBlockModel:
         diff_mask = np.random.binomial(1, Q, diff_inds.shape[0])
         same_edges = same_inds[same_mask == 1]
         diff_edges = diff_inds[diff_mask == 1]
-        edges = np.concatenate((same_edges, diff_edges), axis = 0)
+        if diff_edges.shape[0] == 0:
+            diff_edges = diff_edges.reshape(0,2)
+        try:
+            edges = np.concatenate((same_edges, diff_edges), axis = 0)
+        except:
+            print("same edges, diff edges concat error")
+            print(same_edges.shape, diff_edges.shape)
+            raise
         edges = edges[np.argsort(edges[:,0])]
         #edges_full = np.concatenate((edges, np.flip(edges, axis = 1)), axis = 0)
         edge_index = np.flip(edges.T, axis = 0)
         same_noedges = same_inds[same_mask == 0]
         diff_noedges = diff_inds[diff_mask == 0]
-        noedges = np.concatenate((same_noedges, diff_noedges), axis = 0)
+        if same_noedges.shape[0] == 0:
+            same_noedges = same_noedges.reshape(0,2)
+        try:
+            noedges = np.concatenate((same_noedges, diff_noedges), axis = 0)
+        except:
+            print("same noedges, diff noedges concat error")
+            print(same_noedges.shape, diff_noedges.shape)
+            raise
         noedges = noedges[np.argsort(noedges[:,0])] 
         noedge_index = np.flip(noedges.T, axis = 0)
         #edge_index_full = np.flip(edges_full.T, axis = 0)
@@ -134,9 +148,6 @@ def build_factorgraph_from_sbm(sbm_model, var_cardinality, belief_repeats, fixed
     
     edge_fac, edge_fac_mask, edge_fv_edge_index = buildBinaryFactor(sbm_model, True, fixed_var, fixed_val)
     noedge_fac, noedge_fac_mask, noedge_fv_edge_index = buildBinaryFactor(sbm_model, False, fixed_var, fixed_val)    
-    print(noedge_fac[-8:-1])
-    print(sbm_model.noedge_index.T[-8:-1])
-    time.sleep(1000)
     '''
     #Binary Factors
     same_potential = np.log(sbm_model.p / (2*sbm_model.p + 2*sbm_model.q))
@@ -179,10 +190,11 @@ def build_factorgraph_from_sbm(sbm_model, var_cardinality, belief_repeats, fixed
     return factor_graph
 
 #sbm = StochasticBlockModel(20, .9, .1, 2, community_probs = [.8, .2])
-#ln_Z = runJT(sbm, fixed_var = 8, fixed_val = 0)
+#sbm_fg = build_libdaiFactorGraph_from_SBM(sbm, fixed_var = 12, fixed_val = 0)
+#ln_Z = runJT(sbm_fg)
 #print(ln_Z)
 #for i in range(1):
-#    beliefs, ln_Z = runLBPLibdai(sbm, fixed_var = 8, fixed_val = 0)
+#    beliefs, ln_Z = runLBPLibdai(sbm_fg, sbm)
 #    print(sbm.gt_variable_labels,beliefs, ln_Z)
 #fg = build_factorgraph_from_sbm(sbm, 2, 16, 97, 0)
 #print(fg)

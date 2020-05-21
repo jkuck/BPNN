@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
 import parameters_sbm
-from parameters_sbm_bethe import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, FINAL_MLP, BETHE_MLP, NUM_MLPS, N, A, B, C, NUM_SAMPLES_TRAIN, NUM_SAMPLES_VAL, SMOOTHING, BELIEF_REPEATS, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP 
+from parameters_sbm_bethe import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, FINAL_MLP, BETHE_MLP, NUM_MLPS, N, A_TRAIN, B_TRAIN, A_VAL, B_VAL, C, NUM_SAMPLES_TRAIN, NUM_SAMPLES_VAL, SMOOTHING, BELIEF_REPEATS, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP 
 
 INITIAL_TEST = True
 USE_WANDB = True
@@ -40,7 +40,7 @@ BPNN_trained_model_path = '/atlas/u/shuvamc/community_detection/SBM/wandb/run-20
 ###################################
 ####### Training PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 20 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 10 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 # MODEL_NAME = "debugCUDA_spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
 MODEL_NAME = "sbm_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, alpha)
@@ -50,15 +50,15 @@ MODEL_NAME = "sbm_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, alpha)
 ##########################################
 ####### Data Generation PARAMETERS #######
 N_TRAIN = N #nodes in each graph
-P_TRAIN = A/N_TRAIN #probability of an edge between vertices in the same community
-Q_TRAIN = B/N_TRAIN #probability of an edge between vertices in different communities
+P_TRAIN = A_TRAIN/N_TRAIN #probability of an edge between vertices in the same community
+Q_TRAIN = B_TRAIN/N_TRAIN #probability of an edge between vertices in different communities
 C_TRAIN = C #number of communities
 # could also store the probability that each node belongs to each community, but that's uniform for now
 
 
 N_VAL = N
-P_VAL = A/N_VAL #probability of an edge between vertices in the same community
-Q_VAL = B/N_VAL #probability of an edge between vertices in different communities
+P_VAL = A_VAL/N_VAL #probability of an edge between vertices in the same community
+Q_VAL = B_VAL/N_VAL #probability of an edge between vertices in different communities
 C_VAL = C #number of communities
 
 REGENERATE_DATA = True
@@ -79,21 +79,21 @@ TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' dat
 
 ##### Optimizer parameters #####
 STEP_SIZE=50
-LR_DECAY=.8
-LEARNING_RATE = 1e-3
+LR_DECAY=1
+LEARNING_RATE = 5e-4
 
 
 
 ##########################
 if USE_WANDB:
-    wandb.init(project="learnBP_init_sbm", name="Experiments_BP_init")
+    wandb.init(project="learn_partition_sbm", name="Experiments_bpnn_partition")
     wandb.config.epochs = EPOCH_COUNT
     wandb.config.N_TRAIN = N_TRAIN
     wandb.config.P_TRAIN = P_TRAIN
     wandb.config.Q_TRAIN = Q_TRAIN
     wandb.config.C_TRAIN = C_TRAIN
-    wandb.config.TRAINING_DATA_SIZE = NUM_SAMPLES_TRAIN
-    wandb.config.VAL_DATA_SIZE = NUM_SAMPLES_VAL
+    wandb.config.TRAINING_DATA_SIZE = NUM_SAMPLES_TRAIN * N_TRAIN * C_TRAIN
+    wandb.config.VAL_DATA_SIZE = NUM_SAMPLES_VAL * N_VAL * C_VAL
     wandb.config.alpha = alpha
     wandb.config.alpha2 = alpha2
     wandb.config.SHARE_WEIGHTS = SHARE_WEIGHTS
@@ -136,7 +136,7 @@ def get_dataset(dataset_type):
     dataset_file = DATA_DIR + dataset_type + '%d_%d_%d_%.2f_%.2f.pkl' % (datasize, N, C, P, Q)
     if REGENERATE_DATA or (not os.path.exists(dataset_file)):
         print("REGENERATING DATA!!")
-        sbm_models_list = [StochasticBlockModel(N=N, P=P, Q=Q, C=C) for i in range(datasize)]
+        sbm_models_list = [StochasticBlockModel(N=N, P=P, Q=Q, C=C, community_probs = [.8, .2]) for i in range(datasize)]
         if not os.path.exists(DATA_DIR):
             os.makedirs(DATA_DIR)
         with open(dataset_file, 'wb') as f:
@@ -190,6 +190,7 @@ def train(model, data, optim, loss, scheduler, device, bp_data = None):
     tot_acc = 0
     #optim.zero_grad()
     data = zip(data, bp_data) if bp_data is not None else data
+    train_loss = 0
     for i, sbm_problem in enumerate(data):
         #sbm_problem.to(device)
         if bp_data is not None:
@@ -198,21 +199,24 @@ def train(model, data, optim, loss, scheduler, device, bp_data = None):
         sbm_problem.to(device)
         #labels = sbm_problem.gt_variable_labels
         true_partition = sbm_problem.ln_Z
-        optim.zero_grad()
         #var_beliefs = model(sbm_problem, device) if bp_data is None else model(sbm_problem, device, sbm_problem_bp)
-        estimated_partition = model(sbm_problem, device)
-        train_loss = loss(estimated_partition, true_partition)
+        estimated_partition = model(sbm_problem, device).squeeze(dim = 1)
+        curr_loss = loss(estimated_partition, true_partition.float())
+        train_loss += curr_loss
         #train_loss = getPermInvariantLoss(var_beliefs, labels, C_TRAIN, loss, device)
         #tot_acc +=  getPermInvariantAcc(var_beliefs.max(dim = 1)[1], labels, C_TRAIN, device)
-        train_loss.backward()
-        optim.step()
+        if i % 16 == 0:
+            train_loss.backward()
+            optim.step()
+            train_loss = 0
+            optim.zero_grad()
         #scheduler.step()
         
         #for p in model.parameters():
         #    print (p, p.grad)
         #    time.sleep(1)
         #time.sleep(2)
-        tot_loss += train_loss
+        tot_loss += curr_loss
     #for p in model.parameters():
     #    p.retain_grad()
     #tot_loss.backward()
@@ -240,47 +244,48 @@ def test(model, data, orig_data, device, bp_data = None, run_fc = True, initial 
         sbm_model.to(device)
         if not initial:
             with torch.no_grad():
-                estimated_partition = model(sbm_model, device) if bp_data is None else model(sbm_model, device, sbm_model_bp)
+                #estimated_partition = model(sbm_model, device) if bp_data is None else model(sbm_model, device, sbm_model_bp)
+                estimated_partition = model(sbm_model, device).squeeze(dim = 1)
         else:
             sbm_model_orig = orig_data[i]
-            var_beliefs, _ = runLBPLibdai(sbm_model_orig)
+            sbm_fg = build_libdaiFactorGraph_from_SBM(sbm_model)
+            var_beliefs, _ = runLBPLibdai(sbm_fg, sbm_model_orig)
         true_partition = sbm_model.ln_Z
-        tot_loss += (estimated_partition - true_partition) ** 2
+        tot_loss += (estimated_partition - true_partition.float()) ** 2
     #acc = tot_correct / (VAL_DATA_SIZE * N_VAL)
     #overlap = (acc - 1/C_VAL) / (1 - 1/C_VAL)
-    return tot_loss / len(data)
+    return tot_loss.item() / len(data)
     #print("accuracy: " + str(acc))
     #print("overlap: " + str((acc - 1 / C_VAL) / (1-1/C_VAL)))
     
 def constructFixedDataset(sbm_models_lst, init = False):
     fg_models = []
     init_mse = 0
-    for sbm_model in sbm_models_st:
+    for sbm_model in sbm_models_lst:
         for i in range(N):
             for j in range(C): 
                 sbm_fg = build_libdaiFactorGraph_from_SBM(sbm_model, fixed_var = i, fixed_val = j)     
                 jt_ln_z = runJT(sbm_fg)
                 if init:       
-                    _, lbp_ln_z = runLBPLibdai(sbm_fg)
-                    init_mse += (jt_ln_z + lbp_ln_z) ** 2
+                    _, lbp_ln_z = runLBPLibdai(sbm_fg, sbm_model)
+                    print(jt_ln_z, lbp_ln_z)
+                    init_mse += (jt_ln_z - lbp_ln_z) ** 2
                 bpnn_fg = build_factorgraph_from_sbm(sbm_model, C, BELIEF_REPEATS, fixed_var = i, fixed_val = j, logZ = jt_ln_z)
                 fg_models.append(bpnn_fg)
 
-    return fg_models, init_mse
+    return fg_models, init_mse / len(fg_models)
                 
-
-
 if __name__ == "__main__":
     
     #device = torch.device('cpu')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    bpnn_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS, device=device, share_weights = SHARE_WEIGHTS, bethe_MLP = BETHE_MLP, var_cardinality = C_TRAIN, belief_repeats = BELIEF_REPEATS, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP)
+    bpnn_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS, device=device, share_weights = SHARE_WEIGHTS, bethe_MLP = BETHE_MLP, var_cardinality = C_TRAIN, belief_repeats = BELIEF_REPEATS, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP)
     bpnn_net = bpnn_net.to(device)
     optimizer = torch.optim.Adam(bpnn_net.parameters(), lr=LEARNING_RATE)
     #optimizer = torch.optim.SGD(bpnn_net.parameters(), lr = LEARNING_RATE, momentum = .9)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=LR_DECAY) #multiply lr by gamma every step_size epochs    
     #loss_func = torch.nn.CrossEntropyLoss() if SMOOTHING is None else crossEntropySmoothing(SMOOTHING)
-    loss_func = torch.nn.MSE()
+    loss_func = torch.nn.MSELoss()
 
     sbm_models_list_train = get_dataset(dataset_type='train')
     #sbm_models_fg_train = [build_factorgraph_from_sbm(sbm_model, C_TRAIN, BELIEF_REPEATS) for sbm_model in sbm_models_list_train]
@@ -300,15 +305,14 @@ if __name__ == "__main__":
         sbm_models_fg_val_bp = [build_factorgraph_from_sbm(sbm_model, C_TRAIN, 1) for sbm_model in sbm_models_list_val]
         val_data_loader_pytorchGeometric_bp = DataLoader_pytorchGeometric(sbm_models_fg_val_bp, batch_size=1, shuffle = False)
 
-    if INITIAL_BP: 
-        print("Initial MSE: " + str(init_test_mse)
+    if INITIAL_TEST: 
+        print("Initial MSE: " + str(init_test_mse))
         if USE_WANDB:
             wandb.log({"Initial Test MSE": init_test_mse})
         #init_test_acc, init_test_overlap, init_test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, sbm_models_list_val, device=torch.device('cpu'), run_fc = False, initial = True)
         #print("Initial BP Overlap: " + str(init_test_overlap))
         #if USE_WANDB:
         #    wandb.log({"Initial BP Overlap": init_test_overlap, "Initial Loss": init_test_loss})        
-
     for i in range(1, EPOCH_COUNT+1):
         train_loss = train(bpnn_net, train_data_loader_pytorchGeometric, optimizer, loss_func, scheduler, device, train_data_loader_pytorchGeometric_bp)
         test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, sbm_models_list_val, device, val_data_loader_pytorchGeometric_bp)

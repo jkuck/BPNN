@@ -12,12 +12,12 @@ import time
 import math
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
 from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
-from parameters_sbm import LN_ZERO, SHARE_WEIGHTS, BETHE_MLP, alpha2, FINAL_MLP, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP
+from parameters_sbm_bethe import LN_ZERO, SHARE_WEIGHTS, BETHE_MLP, alpha2, FINAL_MLP, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP
 
 class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
                 bethe_MLP=BETHE_MLP, belief_repeats=None, var_cardinality=None, learn_bethe_residual_weight=False,
-                initialize_to_exact_bethe = True, final_mlp = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP):
+                initialize_to_exact_bethe = False, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -38,7 +38,7 @@ class lbp_message_passing_network(nn.Module):
         self.msg_passing_iters = msg_passing_iters
         self.bethe_MLP = bethe_MLP
         self.learn_bethe_residual_weight = learn_bethe_residual_weight
-        self.final_mlp = final_mlp and not learn_BP_init
+        self.final_fc_layers = final_fc_layers and not learn_BP_init
         self.learn_BP_init = learn_BP_init
         self.num_BP_layers = NUM_BP_LAYERS
         self.pre_BP_mlp = PRE_BP_MLP
@@ -55,7 +55,7 @@ class lbp_message_passing_network(nn.Module):
                                                             var_cardinality=var_cardinality, belief_repeats=belief_repeats, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True)\
                                                          for i in range(msg_passing_iters)])
         self.device = device
-        if final_mlp:
+        if final_fc_layers:
             self.final_fc = Linear(belief_repeats * var_cardinality, var_cardinality)
             #self.final_fc = Seq(Linear(belief_repeats * var_cardinality, 16), torch.nn.BatchNorm1d(16), torch.nn.LeakyReLU(.2), Linear(16, var_cardinality))
         if learn_BP_init:
@@ -96,8 +96,10 @@ class lbp_message_passing_network(nn.Module):
                 self.linear2.weight = torch.nn.Parameter(weight_initialization)
                 self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape)) 
         
-            self.shifted_relu = shift_func(ReLU(), shift=-500)
-            self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)  
+                self.shifted_relu = shift_func(ReLU(), shift=-500)
+                self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)  
+            else:
+                self.final_mlp = Seq(self.linear1, bn(mlp_size), LeakyReLU(.2), self.linear2
 #             self.final_mlp = Seq(self.linear1, self.linear2)  
 
 
@@ -165,7 +167,7 @@ class lbp_message_passing_network(nn.Module):
             for BP_layer in self.BP_layers:
                  prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs = BP_layer(factor_graph_BP, prv_varToFactor_messages=prv_varToFactor_messages, prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
             var_beliefs = torch.exp(torch.mean(prv_var_beliefs, dim = 1))
-        elif self.final_mlp:
+        elif self.final_fc_layers:
             var_beliefs = torch.flatten(var_beliefs, start_dim = 1, end_dim = -1) 
             var_beliefs = self.final_fc(var_beliefs)
         else:
