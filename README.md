@@ -25,6 +25,9 @@ Run learn_BP_spinGlass.py with mode="train"
 Run learn_GNN_spinGlass.py with mode="train"
 
 ## Making figures/tables
+Compiling spin glass tables into the figure in the paper
+- learn_BP/data/experiments/make_figure_from_table.py (save as .eps, as shown here for high quality figures)
+
 Run learn_BP_spinGlass.py with mode="test" 
 - To make the table call create_many_ising_model_figures() 
 - To make a single figure, call create_ising_model_figure()

@@ -2,18 +2,12 @@ import os
 import math
 from torch.utils.data import Dataset
 from collections import defaultdict
-from factor_graph import FactorGraphData
+from factor_graph_partialRefactor import FactorGraphData
 from utils import dotdict
 import numpy as np
 from decimal import Decimal
 import torch
-import multiprocessing as mp
-import psutil
-from joblib import Parallel, delayed
-from torch_geometric.data import InMemoryDataset
-
 from parameters import LN_ZERO
-from data.SAT_train_test_split import ALL_TRAIN_PROBLEMS, ALL_TEST_PROBLEMS
 
 
 def parse_dimacs(filename, verbose=False):
@@ -121,7 +115,7 @@ def parse_dimacs(filename, verbose=False):
         print()
     return n_vars, clauses, load_successful
 
-def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, dataset_size=None, begin_idx=0, verbose=True, epsilon=0, 
+def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0, verbose=True, epsilon=0, 
                      max_factor_dimensions=5, return_logZ_list=False, belief_repeats=None):
     '''
     Inputs:
@@ -134,11 +128,7 @@ def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, d
     - begin_idx: (int) discard the first begin_idx problems, e.g. for validation
     - epsilon (float): set factor states with potential 0 to epsilon for numerical stability
     - max_factor_dimensions (int): do not construct a factor graph if the largest factor (clause) contains
-        more than this many variables      
-    - dataset_size (int): return a maximum dataset_size SAT problems.  If none, return all problems  
-
-    Outputs:
-    - sat_problems (list of FactorGraphData): list of sat problems represented as factor graphs
+        more than this many variables        
     '''
     sat_problems = []
     ln_solution_counts = []
@@ -157,7 +147,7 @@ def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, d
 
 
     for problem_name in problems_to_load:
-        if (dataset_size is not None) and (len(sat_problems) == dataset_size):
+        if len(sat_problems) == dataset_size:
             break
         # problem_file = problem_name[:-19] + '.cnf'
         problem_file = problem_name + '.cnf.gz.no_w.cnf'
@@ -237,208 +227,6 @@ def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, d
     else:
         return sat_problems    
     
-
-class SATDataset(InMemoryDataset):    
-    def __init__(self, root, dataset_type, problem_category, belief_repeats, epsilon=0, max_factor_dimensions=5,\
-                 transform=None, pre_transform=None, SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/exact_SAT_counts_noIndSets/",\
-                 SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"):
-        '''
-        Inputs:
-        - dataset_type (string): 'train', 'val', or 'test'
-        - problem_category (string): 'or_50_problems', 'or_60_problems', 'or_70_problems', 'or_100_problems', 'blasted_problems', 's_problems', 'problems_75', or 'problems_90'
-        - epsilon (float): set factor states with potential 0 to epsilon for numerical stability
-        - max_factor_dimensions (int): do not construct a factor graph if the largest factor (clause) contains
-            more than this many variables        
-        '''      
-        self.dataset_type = dataset_type
-        self.problem_category = problem_category
-        self.belief_repeats = belief_repeats
-        self.epsilon = epsilon
-        self.max_factor_dimensions = max_factor_dimensions
-        self.SOLUTION_COUNTS_DIR = SOLUTION_COUNTS_DIR
-        self.SAT_PROBLEMS_DIR = SAT_PROBLEMS_DIR
-
-        assert(self.dataset_type in ['train', 'test'])
-        if self.dataset_type == 'test':
-            self.problem_names = [benchmark['problem'] for benchmark in ALL_TEST_PROBLEMS[problem_category]]
-        else:
-            self.problem_names = [benchmark['problem'] for benchmark in ALL_TRAIN_PROBLEMS[problem_category]]
-
-
-        super(SATDataset, self).__init__(root, transform, pre_transform)
-
-        self.data, self.slices = torch.load(self.processed_paths[0])
-
-    @property
-    def raw_file_names(self):
-        return ['unused']
-        pass
-        # print("HI, looking for raw files :)")
-        # # return ['some_file_1', 'some_file_2', ...]
-        # dataset_file = './' + self.root + '/' + self.dataset_type + '%d_%d_%d_%.2f_%.2f_attField=%s.pkl' % (self.datasize, self.N_MIN, self.N_MAX, self.F_MAX, self.C_MAX, self.ATTRACTIVE_FIELD)
-        # print("dataset_file:", dataset_file)
-        # return [dataset_file]
-
-    @property
-    def processed_file_names(self):
-        processed_dataset_file = self.dataset_type + '_%s_%d_%f_%d_pyTorchGeomProccesed.pt' %\
-                                 (self.problem_category, self.belief_repeats, self.epsilon, self.max_factor_dimensions)
-        
-        return [processed_dataset_file]
-
-    def download(self):
-        pass
-        # assert(False), "Error, need to generate new data!!"
-        # Download to `self.raw_dir`.
-
-    def process(self):
-        # get a list of sat problems as factor graphs (FactorGraphData objects)    
-        SAT_problem_list = get_SATproblems_list(problems_to_load=self.problem_names, counts_dir_name=self.SOLUTION_COUNTS_DIR,\
-                           problems_dir_name=self.SAT_PROBLEMS_DIR, verbose=True, epsilon=self.epsilon, max_factor_dimensions=self.max_factor_dimensions,\
-                           return_logZ_list=False, belief_repeats=self.belief_repeats)
-
-
-        data, slices = self.collate(SAT_problem_list)
-        torch.save((data, slices), self.processed_paths[0])
-
-
-
-
-#loading in parallel seems to actually hurt performance.  Instead use the pytorch geometric dataset to preprocess/load fast
-# def get_SATproblems_list_parallel_helper(problem_name, problems_in_cnf_dir, problems_in_counts_dir, counts_dir_name, problems_dir_name,\
-def get_SATproblems_list_parallel_helper(problem_name, counts_dir_name, problems_dir_name,\
-                                         epsilon, max_factor_dimensions, belief_repeats, verbose):
-    return_dictionary = {"sat_problem": None,
-                         "ln_solution_count": None,
-                         "load_failure_count": False,
-                         "no_solution_count": False,
-                         "unsolved_count": False,
-                         "factors_to_large_count": False,
-                         "dsharp_sharpsat_disagree": False,
-                         }
-
-    problem_file = problem_name + '.cnf.gz.no_w.cnf'
-    # if problem_file not in problems_in_cnf_dir:
-    #     if verbose:
-    #         print('no corresponding cnf file for', problem_file, "problem_name:", problem_name)
-    #     return return_dictionary
-    count_file = problem_name + '.txt'
-    # if count_file not in problems_in_counts_dir:
-    #     if verbose:
-    #         print('no corresponding sat count file for', count_file, "problem_name:", problem_name)
-    #     return return_dictionary            
-
-    with open(counts_dir_name + "/" + count_file, 'r') as f_solution_count:
-        sharpSAT_solution_count = None
-        dsharp_solution_count = None
-        for line in f_solution_count:
-            #Only use dsharp counts because dsharp and sharpSAT seem to disagree on some benchmarks
-            #dsharp is consistent with randomized hashing methods while sharpSAT is not
-            #this is with sampling sets removed, not sure what is going on with sharpSAT
-#                 if line.strip().split(" ")[0] == 'sharpSAT':
-#                     sharpSAT_solution_count = Decimal(line.strip().split(" ")[4])
-#                     if Decimal.is_nan(sharpSAT_solution_count):
-#                         sharpSAT_solution_count = None
-            if line.strip().split(" ")[0] == 'dsharp':
-                dsharp_solution_count = Decimal(line.strip().split(" ")[4])
-                if Decimal.is_nan(dsharp_solution_count):
-                    dsharp_solution_count = None 
-
-
-        if (dsharp_solution_count is not None) and (sharpSAT_solution_count is not None):
-            # assert(dsharp_solution_count == sharpSAT_solution_count), (dsharp_solution_count, sharpSAT_solution_count)
-            if dsharp_solution_count != sharpSAT_solution_count:
-                return_dictionary["dsharp_sharpsat_disagree"] = True
-                return return_dictionary
-        if dsharp_solution_count is not None:
-            solution_count = dsharp_solution_count
-        elif sharpSAT_solution_count is not None:
-            solution_count = sharpSAT_solution_count
-        else:
-            solution_count = None
-
-    # assert(solution_count is not None)
-    if solution_count is None:
-        return_dictionary["unsolved_count"] = True
-        return return_dictionary
-
-    if solution_count == 0:
-        return_dictionary["no_solution_count"] = True
-        return return_dictionary
-
-    ln_solution_count = float(solution_count.ln())
-    n_vars, clauses, load_successful = parse_dimacs(problems_dir_name + "/" + problem_file)
-    if not load_successful:
-        return_dictionary["load_failure_count"] = True
-        return return_dictionary
-        
-    # print("factor_graph:", factor_graph)
-    # print('using problem:', problem_file)
-    factor_graph = build_factorgraph_from_SATproblem(clauses, epsilon=epsilon, max_factor_dimensions=max_factor_dimensions, ln_Z=ln_solution_count, belief_repeats=belief_repeats)
-    if factor_graph is None: #largest clause contains too many variables
-        return_dictionary["factors_to_large_count"] = True
-        return return_dictionary            
-
-    
-    print("successfully loaded:", problem_name)    
-    return_dictionary["sat_problem"] = factor_graph
-    return_dictionary["ln_solution_count"] = ln_solution_count
-    return return_dictionary      
-
-def get_SATproblems_list_parallel(problems_to_load, counts_dir_name, problems_dir_name, dataset_size, begin_idx=0, verbose=True, epsilon=0, 
-                     max_factor_dimensions=5, return_logZ_list=False, belief_repeats=None):
-    '''
-    parallel version of get_SATproblems_list
-    Inputs:
-    - problems_to_load (list of strings): problems to load
-    - problems_dir_name (string): directory containing problems in cnf form 
-    - counts_dir_name (string): directory containing .txt files with model counts for problems
-        File name format: problem1.txt
-        File content format: "sharpSAT time_out: False solution_count: 2097152 sharp_sat_time: 0.0"
-
-    - dataset_size (int): number of problems to return
-
-    - begin_idx: (int) discard the first begin_idx problems, e.g. for validation
-    - epsilon (float): set factor states with potential 0 to epsilon for numerical stability
-    - max_factor_dimensions (int): do not construct a factor graph if the largest factor (clause) contains
-        more than this many variables        
-    '''
-    sat_problems = []
-    ln_solution_counts = []
-
-    problems_in_cnf_dir = os.listdir(problems_dir_name)
-    # print("problems_in_cnf_dir:", problems_in_cnf_dir)
-    problems_in_counts_dir = os.listdir(counts_dir_name)
-
-    num_cpu = psutil.cpu_count(logical = False)
-    num_cores = 4
-
-    print("loading sat problems using", num_cores, "cores")
-    for idx in range(begin_idx, len(problems_to_load), num_cores):
-        processed_list = Parallel(n_jobs=num_cores, prefer="threads")(\
-            # delayed(get_SATproblems_list_parallel_helper)(problem_name=problem_name, problems_in_cnf_dir=problems_in_cnf_dir,\
-            #                                              problems_in_counts_dir=problems_in_counts_dir, counts_dir_name=counts_dir_name,\
-            delayed(get_SATproblems_list_parallel_helper)(problem_name=problem_name, counts_dir_name=counts_dir_name,\
-                                                         problems_dir_name=problems_dir_name, epsilon=epsilon,\
-                                                         max_factor_dimensions=max_factor_dimensions, belief_repeats=belief_repeats, verbose=verbose) 
-            for problem_name in problems_to_load[idx:idx+num_cores])
-        cur_sat_problems = [d['sat_problem'] for d in processed_list if (d['sat_problem'] is not None)]
-        cur_ln_solution_counts = [d['ln_solution_count'] for d in processed_list if (d['ln_solution_count'] is not None)]
-        assert(len(cur_sat_problems) == len(cur_ln_solution_counts)), (len(cur_sat_problems), len(cur_ln_solution_counts))
-        sat_problems.extend(cur_sat_problems)
-        ln_solution_counts.extend(cur_ln_solution_counts)
-        if len(sat_problems) >= dataset_size:
-            break
-        print("finished iteration :)")
-
-        
-    assert(len(ln_solution_counts) == len(sat_problems))
-    print(len(ln_solution_counts), "SAT problems loaded successfully")    
-    if return_logZ_list:
-        return sat_problems[:dataset_size], ln_solution_counts[:dataset_size]
-    else:
-        return sat_problems[:dataset_size]    
-        
     
 #Pytorch dataset
 class SatProblems(Dataset):
@@ -457,14 +245,11 @@ class SatProblems(Dataset):
             more than this many variables        
         '''
         # print("HI!!")
-        # self.sat_problems, self.ln_solution_counts = get_SATproblems_list(problems_to_load=problems_to_load, counts_dir_name=counts_dir_name,\
-        #     problems_dir_name=problems_dir_name, dataset_size=dataset_size, begin_idx=begin_idx, verbose=verbose, epsilon=epsilon, 
-        #              max_factor_dimensions=max_factor_dimensions, return_logZ_list=True)
-
-        self.sat_problems, self.ln_solution_counts = get_SATproblems_list_parallel(problems_to_load=problems_to_load, counts_dir_name=counts_dir_name,\
+        self.sat_problems, self.ln_solution_counts = get_SATproblems_list(problems_to_load=problems_to_load, counts_dir_name=counts_dir_name,\
             problems_dir_name=problems_dir_name, dataset_size=dataset_size, begin_idx=begin_idx, verbose=verbose, epsilon=epsilon, 
                      max_factor_dimensions=max_factor_dimensions, return_logZ_list=True)
-                     
+
+
     def __len__(self):
         return len(self.ln_solution_counts)
 
@@ -658,8 +443,7 @@ def build_factorgraph_from_SATproblem(clauses, initialize_randomly=False, epsilo
     factor_graph = FactorGraphData(factor_potentials=log_potentials,
                  factorToVar_edge_index=factorToVar_edge_index.t().contiguous(), numVars=N, numFactors=num_factors, 
                  edge_var_indices=edge_var_indices, state_dimensions=state_dimensions,
-                 factor_potential_masks=factor_potential_masks, ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list,
-                 var_cardinality=2, belief_repeats=belief_repeats)
+                 factor_potential_masks=factor_potential_masks, ln_Z=ln_Z, factorToVar_double_list=factorToVar_double_list)
 
     return factor_graph
 
