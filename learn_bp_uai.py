@@ -331,7 +331,7 @@ def train():
             if True:
                 estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
                     prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(
-                        factor_graph, sampler_perm_number=args.sampler_perm_number,
+                        factor_graph, sample_perm_number=args.sample_perm_number,
                         return_tuple_flag=True,
                     )
 
@@ -342,7 +342,7 @@ def train():
 
             else:
                 estimated_ln_partition_function = lbp_net(
-                    factor_graph, sampler_perm_number=args.sampler_perm_number,
+                    factor_graph, sample_perm_number=args.sample_perm_number,
                 )
 
             # vTof_convergence_loss = loss_func(prv_varToFactor_messages, prv_prv_varToFactor_messages)
@@ -416,12 +416,12 @@ def train():
                 if True:
                     estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
                         prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(
-                            factor_graph, sampler_perm_number=3*args.sampler_perm_number,
+                            factor_graph, sample_perm_number=3*args.sample_perm_number,
                             return_tuple_flag=True,
                         )
                 else:
                     estimated_ln_partition_function = lbp_net(
-                        factor_graph, sampler_perm_number=args.sampler_perm_number
+                        factor_graph, sample_perm_number=args.sample_perm_number
                     )
 
                 loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float().squeeze())
