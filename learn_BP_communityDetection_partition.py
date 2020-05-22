@@ -40,7 +40,7 @@ BPNN_trained_model_path = '/atlas/u/shuvamc/community_detection/SBM/wandb/run-20
 ###################################
 ####### Training PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 10 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 20 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 # MODEL_NAME = "debugCUDA_spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
 MODEL_NAME = "sbm_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, alpha)
@@ -80,13 +80,13 @@ TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' dat
 ##### Optimizer parameters #####
 STEP_SIZE=50
 LR_DECAY=1
-LEARNING_RATE = 5e-4
+LEARNING_RATE = 1e-5
 
 
 
 ##########################
 if USE_WANDB:
-    wandb.init(project="learn_partition_sbm", name="Experiments_bpnn_partition")
+    wandb.init(project="learn_partition_sbm", name="Experiments_bpnn_partition_dampingMLPs_mlp34")
     wandb.config.epochs = EPOCH_COUNT
     wandb.config.N_TRAIN = N_TRAIN
     wandb.config.P_TRAIN = P_TRAIN
@@ -200,7 +200,11 @@ def train(model, data, optim, loss, scheduler, device, bp_data = None):
         #labels = sbm_problem.gt_variable_labels
         true_partition = sbm_problem.ln_Z
         #var_beliefs = model(sbm_problem, device) if bp_data is None else model(sbm_problem, device, sbm_problem_bp)
-        estimated_partition = model(sbm_problem, device).squeeze(dim = 1)
+        estimated_partition, fv_diff, vf_diff = model(sbm_problem, device, perform_bethe = True)
+        if USE_WANDB:
+            wandb.log({"Final max ftoV diff": fv_diff, "Final max vtoF diff": vf_diff})
+        if BETHE_MLP:
+            estimated_partition = estimated_partition.squeeze(dim = 1)
         curr_loss = loss(estimated_partition, true_partition.float())
         train_loss += curr_loss
         #train_loss = getPermInvariantLoss(var_beliefs, labels, C_TRAIN, loss, device)
@@ -245,7 +249,11 @@ def test(model, data, orig_data, device, bp_data = None, run_fc = True, initial 
         if not initial:
             with torch.no_grad():
                 #estimated_partition = model(sbm_model, device) if bp_data is None else model(sbm_model, device, sbm_model_bp)
-                estimated_partition = model(sbm_model, device).squeeze(dim = 1)
+                estimated_partition, fv_diff, vf_diff = model(sbm_model, device, perform_bethe = True)
+                if USE_WANDB:
+                    wandb.log({"Final max ftoV diff": fv_diff, "Final max vtoF diff": vf_diff})
+                if BETHE_MLP:
+                    estimated_partition = estimated_partition.squeeze(dim = 1)
         else:
             sbm_model_orig = orig_data[i]
             sbm_fg = build_libdaiFactorGraph_from_SBM(sbm_model)
@@ -319,6 +327,8 @@ if __name__ == "__main__":
         print('Epoch {:03d}, Train: {:.4f}, Test: {:.4f}'.format(i, train_loss, test_loss))
         if USE_WANDB:
             wandb.log({"Train Loss": train_loss, "Test Loss": test_loss})
+            if i % 10 == 0:
+                wandb.log({"Train Loss Smooth": train_loss, "Test Loss Smooth": test_loss})
         #scheduler.step()
         if LEARN_BP_INIT:
             perm = np.random.permutation(NUM_SAMPLES_TRAIN)

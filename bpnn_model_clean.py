@@ -10,7 +10,7 @@ import time
 import matplotlib.pyplot as plt
 import matplotlib
 #import mrftools
-from parameters import alpha2, LN_ZERO
+from parameters_sbm_bethe import alpha2, LN_ZERO, alpha_damping
 
 __size_error_msg__ = ('All tensors which should get mapped to the same source '
                       'or target nodes must be of same size in dimension 0.')
@@ -112,9 +112,9 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
     def __init__(self, learn_BP=True, factor_state_space=None, var_cardinality=None, belief_repeats=None,\
                  lne_mlp=True, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True, use_MLP5=False,\
-                 use_MLP6=False, use_MLP_EQUIVARIANT=False, subtract_prv_messages=True,\
+                 use_MLP6=False, use_MLP_EQUIVARIANT=False, subtract_prv_messages=False,\
                  learn_residual_weights=False, learn_damping_coefficients=False, initialize_exact_BP=True,\
-                 alpha_damping_FtoV=None, alpha_damping_VtoF=None, USE_MLP_DAMPING_FtoV=False, USE_MLP_DAMPING_VtoF=False):
+                 alpha_damping_FtoV=alpha_damping, alpha_damping_VtoF=alpha_damping, USE_MLP_DAMPING_FtoV=True, USE_MLP_DAMPING_VtoF=True):
         super(FactorGraphMsgPassingLayer_NoDoubleCounting, self).__init__()
         
         self.use_MLP1 = use_MLP1
@@ -334,7 +334,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             else:     
                 self.mlp_dampingVtoF = Seq(self.linear11, self.linear12)             
                         
-    def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, iter):
+    def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, iter = -1):
         '''
         Inputs:
         - factor_graph: (FactorGraphData, defined in factor_graph.py) the factor graph we will perform one
@@ -554,8 +554,9 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         if self.use_MLP4:
             vTOf_mesg_shape = varToFactor_messages.shape        
             assert(vTOf_mesg_shape[0] == fTOv_mesg_shape[0]), (vTOf_mesg_shape, fTOv_mesg_shape)
+            #print(varToFactor_messages.shape, torch.abs(torch.sum(torch.exp(varToFactor_messages), dim = -1)))
             varToFactor_messages = varToFactor_messages.view(vTOf_mesg_shape[0], factor_graph.belief_repeats*factor_graph.var_cardinality)
-            
+            #print(varToFactor_messages.shape)
             quick_test = False
             if False:
                 varToFactor_messages_exp = torch.exp(varToFactor_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
@@ -570,7 +571,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 varToFactor_messages_exp = torch.exp(varToFactor_messages) #go from log-space to standard probability space to avoid negative numbers, getting NaN's without this
                 assert((varToFactor_messages_exp >= 0.0).all())
                 assert((varToFactor_messages_exp <= 1.0).all())  
-                assert((torch.abs(torch.sum(varToFactor_messages_exp, dim=1)) - 1.0 < .0001).all())
+                #assert((torch.abs(torch.sum(varToFactor_messages_exp, dim=-1)) - 1.0 < .0001).all()), varToFactor_messages_exp.shape
                 # print("varToFactor_messages_exp:", varToFactor_messages_exp)
                 # print("varToFactor_messages_exp.shape:", varToFactor_messages_exp.shape)
                 # print("HI from check 2")

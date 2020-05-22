@@ -45,6 +45,8 @@ class StochasticBlockModel:
         diff_mask = np.random.binomial(1, Q, diff_inds.shape[0])
         same_edges = same_inds[same_mask == 1]
         diff_edges = diff_inds[diff_mask == 1]
+        if same_edges.shape[0] == 0:
+            same_edges = same_edges.reshape(0,2)
         if diff_edges.shape[0] == 0:
             diff_edges = diff_edges.reshape(0,2)
         try:
@@ -60,6 +62,8 @@ class StochasticBlockModel:
         diff_noedges = diff_inds[diff_mask == 0]
         if same_noedges.shape[0] == 0:
             same_noedges = same_noedges.reshape(0,2)
+        if diff_noedges.shape[0] == 0:
+            diff_noedges = diff_noedges.reshape(0,2)
         try:
             noedges = np.concatenate((same_noedges, diff_noedges), axis = 0)
         except:

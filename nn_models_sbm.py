@@ -52,7 +52,7 @@ class lbp_message_passing_network(nn.Module):
         else:
             self.message_passing_layers = nn.ModuleList([\
                 FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
-                                                            var_cardinality=var_cardinality, belief_repeats=belief_repeats, use_MLP1=False, use_MLP2=False, use_MLP3=True, use_MLP4=True)\
+                                                            var_cardinality=var_cardinality, belief_repeats=belief_repeats, use_MLP1=False, use_MLP2=False, use_MLP3=False, use_MLP4=False, initialize_exact_BP = True, USE_MLP_DAMPING_FtoV=False, USE_MLP_DAMPING_VtoF=False)\
                                                          for i in range(msg_passing_iters)])
         self.device = device
         if final_fc_layers:
@@ -96,23 +96,22 @@ class lbp_message_passing_network(nn.Module):
                 self.linear2.weight = torch.nn.Parameter(weight_initialization)
                 self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape)) 
         
-                self.shifted_relu = shift_func(ReLU(), shift=-500)
-                self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)  
-            else:
-                self.final_mlp = Seq(self.linear1, bn(mlp_size), LeakyReLU(.2), self.linear2
+            self.shifted_relu = shift_func(ReLU(), shift=-500)
+            self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)  
 #             self.final_mlp = Seq(self.linear1, self.linear2)  
 
 
         
         
         
-    def forward(self, factor_graph, device, factor_graph_BP = None):
+    def forward(self, factor_graph, device, perform_bethe = False, factor_graph_BP = None):
 #         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
         prv_varToFactor_messages = factor_graph.prv_varToFactor_messages
         prv_factorToVar_messages = factor_graph.prv_factorToVar_messages
         prv_factor_beliefs = factor_graph.prv_factor_beliefs
 #         print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
-#         print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
+        #print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
+        #print("prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)
 #         print("factor_graph.facToVar_edge_idx.shape:", factor_graph.facToVar_edge_idx.shape)
 
         
@@ -128,17 +127,12 @@ class lbp_message_passing_network(nn.Module):
                     pooled_states.append(cur_pooled_states)            
         else:
             for message_passing_layer in self.message_passing_layers:
-#                 print("prv_varToFactor_messages:", prv_varToFactor_messages)
-#                 print("prv_factorToVar_messages:", prv_factorToVar_messages)
-#                 print("prv_factor_beliefs:", prv_factor_beliefs)
-#                 print("prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)
-#                 print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
-#                 print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape) 
-#                 prv_factor_beliefs[torch.where(prv_factor_beliefs==-np.inf)] = 0
-
+                prv_varToFactor_messages_saved = prv_varToFactor_messages
+                prv_factorToVar_messages_saved = prv_factorToVar_messages
                 prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
                     message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                           prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+                #print(torch.max(torch.abs(prv_varToFactor_messages_saved - prv_varToFactor_messages)), torch.max(torch.abs(prv_factorToVar_messages_saved - prv_factorToVar_messages)))
     #                 message_passing_layer(factor_graph, prv_varToFactor_messages=factor_graph.prv_varToFactor_messages,
     #                                       prv_factorToVar_messages=factor_graph.prv_factorToVar_messages, prv_factor_beliefs=factor_graph.prv_factor_beliefs) 
                 if self.bethe_MLP:
@@ -148,6 +142,8 @@ class lbp_message_passing_network(nn.Module):
 #                     print("cur_pooled_states.shape:", cur_pooled_states.shape)
                     pooled_states.append(cur_pooled_states)
         var_beliefs = torch.exp(prv_var_beliefs)
+        max_diff_messages_fv = torch.max(torch.abs(prv_factorToVar_messages - prv_factorToVar_messages_saved))
+        max_diff_messages_vf = torch.max(torch.abs(prv_varToFactor_messages - prv_varToFactor_messages_saved))
         if self.learn_BP_init:
             if self.pre_BP_mlp:
                 prv_varToFactor_messages = torch.exp(prv_varToFactor_messages)
@@ -172,7 +168,7 @@ class lbp_message_passing_network(nn.Module):
             var_beliefs = self.final_fc(var_beliefs)
         else:
             var_beliefs = torch.mean(var_beliefs, dim = 1)
-        if not self.bethe_MLP: 
+        if not perform_bethe: 
             return var_beliefs
 
         if self.bethe_MLP:
@@ -188,10 +184,9 @@ class lbp_message_passing_network(nn.Module):
 #                 print("learned_estimated_ln_partition_function.shape:", learned_estimated_ln_partition_function.shape)
 #                 print("final_estimate.shape:", final_estimate.shape)
 
-                return final_estimate
+                ret = final_estimate
             else:
-                return learned_estimated_ln_partition_function
-        
+                ret = learned_estimated_ln_partition_function   
         else:
             if False:
                 #broken for batch_size > 1
@@ -206,12 +201,13 @@ class lbp_message_passing_network(nn.Module):
     #                 print("estimated_ln_partition_function:", estimated_ln_partition_function)
     #                 sleep(debug_bethe)
                     assert(torch.allclose(check_estimated_ln_partition_function, estimated_ln_partition_function)), (check_estimated_ln_partition_function, estimated_ln_partition_function)
-                return estimated_ln_partition_function
+                ret = estimated_ln_partition_function
   
             #corrected for batch_size > 1
             final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
             estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)
-            return estimated_ln_partition_function            
+            ret = estimated_ln_partition_function
+        return ret, max_diff_messages_fv, max_diff_messages_vf      
 
 
 
