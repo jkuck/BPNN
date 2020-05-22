@@ -724,7 +724,7 @@ var_cardinality))))
                                 for permed_tensor in permed_varToFactor_expandedMessages_clone]
                     mlp1_out = torch.mean(torch.stack(mlp1_out, dim=0), dim=0)
                 else:
-                    mlp1_out = self.mlp1(varToFactor_expandedMessages_clone.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape)
+                    mlp1_out = self.mlp1(varToFactor_expandedMessages.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape)
                 varToFactor_expandedMessages = (1-alpha2)*mlp1_out + alpha2*varToFactor_expandedMessages
 
 
@@ -784,7 +784,7 @@ var_cardinality))))
                                 for permed_tensor in permed_factor_beliefs_clone]
                     mlp2_out = torch.mean(torch.stack(mlp2_out, dim=0), dim=0)
                 else:
-                    mlp2_out = self.mlp2(factor_beliefs_clone.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
+                    mlp2_out = self.mlp2(factor_beliefs.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape)
                 factor_beliefs = (1-alpha2)*mlp2_out + alpha2*factor_beliefs
 
                 # check_factor_beliefs(factor_beliefs) #debugging

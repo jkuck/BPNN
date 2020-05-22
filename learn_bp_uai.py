@@ -126,8 +126,8 @@ parser.add_argument('--problem_category_train', type=str, default='DBN',\
 parser.add_argument('--train_val_split', type=str, default='random_shuffle',\
     choices=["random_shuffle", "easyTrain_hardVal", "separate_categories"])
 
-parser.add_argument('--lr_decay_flag', action='store_true', default=True)
-parser.add_argument('--perm_invariant_flag', action='store_true', default=True)
+parser.add_argument('--lr_decay_flag', action='store_true', default=False)
+parser.add_argument('--perm_invariant_flag', action='store_true', default=False)
 parser.add_argument('--sample_perm_number', type=int, default=None)
 
 
@@ -416,12 +416,12 @@ def train():
                 if True:
                     estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
                         prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(
-                            factor_graph, sample_perm_number=3*args.sample_perm_number,
+                            factor_graph, sample_perm_number=3*args.sample_perm_number if args.sample_perm_number else None,
                             return_tuple_flag=True,
                         )
                 else:
                     estimated_ln_partition_function = lbp_net(
-                        factor_graph, sample_perm_number=args.sample_perm_number
+                        factor_graph, sample_perm_number=3*args.sample_perm_number if args.sample_perm_number else None,
                     )
 
                 loss = loss_func(estimated_ln_partition_function.squeeze(), exact_ln_partition_function.float().squeeze())

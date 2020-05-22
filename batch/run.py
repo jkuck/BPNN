@@ -12,7 +12,7 @@ context = '''#!/bin/bash
 #SBATCH --time=36:00:00
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=8G
+#SBATCH --mem=18G
 
 # only use the following on partition with GPUs
 #SBATCH --gres=gpu:1

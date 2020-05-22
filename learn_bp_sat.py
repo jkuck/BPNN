@@ -109,8 +109,8 @@ parser.add_argument('--problem_category_train', type=str, default='group2',\
 parser.add_argument('--train_val_split', type=str, default='random_shuffle',\
     choices=["random_shuffle", "easyTrain_hardVal", "separate_categories"])
 
-parser.add_argument('--lr_decay_flag', action='store_true', default=True)
-parser.add_argument('--perm_invariant_flag', action='store_true', default=True)
+parser.add_argument('--lr_decay_flag', action='store_true', default=False)
+parser.add_argument('--perm_invariant_flag', action='store_true', default=False)
 parser.add_argument('--sample_perm_number', type=int, default=None)
 
 

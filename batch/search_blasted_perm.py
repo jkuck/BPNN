@@ -2,10 +2,10 @@
 
 import random, subprocess as sp
 
-PROCESS_NUM = 75
+PROCESS_NUM = 25
 
 jobs = [
-    'python learn_bp_sat.py --problem_category_train blasted_problems --alpha_damping_FtoV 1. \
+    'python learn_bp_sat.py --problem_category_train blasted_problems \
     --batch_size 10 --use_MLP1 True --use_MLP2 True --use_MLP3 False --use_MLP4 False\
     --perm_invariant_flag --sample_perm_number %d\
     %s --SHARE_WEIGHTS %s --bethe_mlp %s --learning_rate %f \
