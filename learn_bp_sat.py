@@ -112,12 +112,14 @@ parser.add_argument('--train_val_split', type=str, default='random_shuffle',\
 parser.add_argument('--lr_decay_flag', action='store_true', default=False)
 parser.add_argument('--perm_invariant_flag', action='store_true', default=False)
 parser.add_argument('--sample_perm_number', type=int, default=None)
+parser.add_argument('--random_flag', type=boolean_string, default=True)
 
 
 # parser.add_argument('--mode', type=str, default='train', choices=['train', 'test'])
 # parser.add_argument('--test_freq', type=int, default=200)
 # parser.add_argument('--save_freq', type=int, default=1000)
-args, _ = parser.parse_known_args()
+args = parser.parse_args()
+print(args)
 
 print("args.problem_category_train:", args.problem_category_train)
 
@@ -301,6 +303,7 @@ wandb.config.subtract_prv_messages = args.subtract_prv_messages
 wandb.config.use_old_bethe = args.use_old_bethe
 wandb.config.perm_invariant_flag = args.perm_invariant_flag
 wandb.config.sample_perm_number = args.sample_perm_number
+wandb.config.random_flag = args.random_flag
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # device = 'cpu'
@@ -484,7 +487,7 @@ def train():
             exact_ln_partition_function = sat_problem.ln_Z
 
             assert(sat_problem.state_dimensions == args.max_factor_state_dimensions)
-            estimated_ln_partition_function = lbp_net(sat_problem, sample_perm_number=args.sample_perm_number)
+            estimated_ln_partition_function = lbp_net(sat_problem, sample_perm_number=args.sample_perm_number, random_flag=args.random_flag)
             # estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
             #     prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)
             # vTof_convergence_loss = loss_func(prv_varToFactor_messages, prv_prv_varToFactor_messages)
@@ -554,7 +557,11 @@ def train():
                 exact_ln_partition_function = sat_problem.ln_Z
                 assert(sat_problem.state_dimensions == args.max_factor_state_dimensions)
                 with torch.no_grad():
-                    estimated_ln_partition_function = lbp_net(sat_problem, sample_perm_number=3*args.sample_perm_number)
+                    estimated_ln_partition_function = lbp_net(
+                        sat_problem,
+                        sample_perm_number=(3 if args.random_flag else 1)*args.sample_perm_number,
+                        random_flag=args.random_flag,
+                    )
                 # estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
                 #     prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)
 

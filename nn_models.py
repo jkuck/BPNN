@@ -198,7 +198,8 @@ class lbp_message_passing_network(nn.Module):
 
 
     def forward(self, factor_graph, random_message_init_every_iter=False,
-                PLOT_CONVERGENCE=False, sample_perm_number=None, return_tuple_flag=False):
+                PLOT_CONVERGENCE=False, sample_perm_number=None,
+                return_tuple_flag=False, random_flag=True):
 #         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
 
         if self.learn_initial_messages:
@@ -253,7 +254,7 @@ class lbp_message_passing_network(nn.Module):
                     varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
                         self.message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                             prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs,
-                                            iter=iter, sample_perm_number=sample_perm_number,)
+                                            iter=iter, sample_perm_number=sample_perm_number, random_flag=random_flag,)
 
                 else:
                     tmp_varToFactor_messages = prv_varToFactor_messages
@@ -263,7 +264,7 @@ class lbp_message_passing_network(nn.Module):
                         tmp_varToFactor_messages, tmp_factorToVar_messages, tmp_var_beliefs, tmp_factor_beliefs =\
                             message_passing_layer(factor_graph, prv_varToFactor_messages=tmp_varToFactor_messages,
                                                 prv_factorToVar_messages=tmp_factorToVar_messages, prv_factor_beliefs=tmp_factor_beliefs,
-                                                iter=iter, sample_perm_number=sample_perm_number,)
+                                                iter=iter, sample_perm_number=sample_perm_number, random_flag=random_flag,)
 
                     varToFactor_messages = tmp_varToFactor_messages
                     factorToVar_messages = tmp_factorToVar_messages
@@ -300,7 +301,7 @@ class lbp_message_passing_network(nn.Module):
                         varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
                             self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                                 prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs,
-                                                iter=-1, sample_perm_number=sample_perm_number,)
+                                                iter=-1, sample_perm_number=sample_perm_number, random_flag=random_flag,)
 
 
                         prv_prv_varToFactor_messages = prv_varToFactor_messages
@@ -343,7 +344,7 @@ class lbp_message_passing_network(nn.Module):
                         self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                             prv_factorToVar_messages=prv_factorToVar_messages,
                                             prv_factor_beliefs=prv_factor_beliefs, iter=-1,
-                                            sample_perm_number=sample_perm_number,)
+                                            sample_perm_number=sample_perm_number, random_flag=random_flag,)
 
                     prv_prv_varToFactor_messages = prv_varToFactor_messages
                     prv_prv_factorToVar_messages = prv_factorToVar_messages
@@ -376,7 +377,7 @@ class lbp_message_passing_network(nn.Module):
                     message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                           prv_factorToVar_messages=prv_factorToVar_messages,
                                           prv_factor_beliefs=prv_factor_beliefs, iter=-1,
-                                          sample_perm_number=sample_perm_number,)
+                                          sample_perm_number=sample_perm_number, random_flag=random_flag,)
     #                 message_passing_layer(factor_graph, prv_varToFactor_messages=factor_graph.prv_varToFactor_messages,
     #                                       prv_factorToVar_messages=factor_graph.prv_factorToVar_messages, prv_factor_beliefs=factor_graph.prv_factor_beliefs)
                 if self.bethe_MLP != 'none':
@@ -395,7 +396,7 @@ class lbp_message_passing_network(nn.Module):
                         self.convergence_BPNN_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                                     prv_factorToVar_messages=prv_factorToVar_messages,
                                                     prv_factor_beliefs=prv_factor_beliefs, iter=-1,
-                                                    sample_perm_number=sample_perm_number,)
+                                                    sample_perm_number=sample_perm_number, random_flag=random_flag,)
 
                     prv_prv_varToFactor_messages = prv_varToFactor_messages
                     prv_prv_factorToVar_messages = prv_factorToVar_messages
@@ -418,7 +419,7 @@ class lbp_message_passing_network(nn.Module):
                 fac_potential_pooled_states = pooled_states[:,:,:tmp_dim_size].reshape([D1,D2,]+[self.var_cardinality]*self.max_factor_state_dimensions)
                 fac_beliefs_pooled_states = pooled_states[:,:,tmp_dim_size:-self.var_cardinality].reshape([D1,D2,]+[self.var_cardinality]*self.max_factor_state_dimensions)
                 fac_pooled_states = torch.stack([fac_beliefs_pooled_states, fac_potential_pooled_states, ], dim=-self.max_factor_state_dimensions-1)
-                permed_fac_pooled_states = random_perm(fac_pooled_states, self.max_factor_state_dimensions, sample_perm_number,)
+                permed_fac_pooled_states = random_perm(fac_pooled_states, self.max_factor_state_dimensions, sample_perm_number, random_flag=random_flag,)
                 permed_pooled_states = [
                     torch.cat([permed_tensor.reshape([D1, D2, -1]), var_pooled_states], dim=-1)
                     for permed_tensor in permed_fac_pooled_states

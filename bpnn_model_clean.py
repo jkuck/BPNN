@@ -21,12 +21,14 @@ SAT_PROBLEM_DIRECTORY = '/Users/jkuck/research/learn_BP/SAT_problems/'
 
 PRINT_INFO = False
 
-def random_perm(x, cardinality, sample_num):
+def random_perm(x, cardinality, sample_num, random_flag=True):
     x_dim = len(x.shape)
     perm_dim = [i+x_dim-cardinality for i in range(cardinality)]
     iter_perm_dim = list(itertools.permutations(perm_dim))
     iter_perm_dim = [list(range(x_dim-cardinality))+list(pd) for pd in iter_perm_dim]
-    choiced_idx = range(len(iter_perm_dim)) if sample_num is None else np.random.choice(len(iter_perm_dim), sample_num, replace=False)
+    choiced_idx = range(len(iter_perm_dim)) if sample_num is None else (
+        np.random.choice(len(iter_perm_dim), sample_num, replace=False) if random_flag else range(sample_num)
+    )
     permed_x = [x.permute(*(iter_perm_dim[idx])) for idx in choiced_idx]
     return permed_x
 
@@ -348,7 +350,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 self.mlp_dampingVtoF = Seq(self.linear11, self.linear12)
 
     def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages,
-                prv_factor_beliefs, iter, sample_perm_number=None,):
+                prv_factor_beliefs, iter, sample_perm_number=None, random_flag=True):
         '''
         Inputs:
         - factor_graph: (FactorGraphData, defined in factor_graph.py) the factor graph we will perform one
@@ -357,14 +359,14 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         # Step 3-5: Start propagating messages.
         return self.propagate(factor_graph=factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                               prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs,
-                              iter=iter, sample_perm_number=sample_perm_number)
+                              iter=iter, sample_perm_number=sample_perm_number, random_flag=random_flag)
 
 
 
     #testing a simplified version, modelling GIN, that preserves no double counting computation graph
     def propagate(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs,\
                   alpha2=alpha2, debug=False, normalize_messages=True, normalize_beliefs=True, iter=-1,
-                  sample_perm_number=None,):
+                  sample_perm_number=None, random_flag=True):
         r"""Perform one iteration of message passing.  Pass messages from factors to variables, then
         from variables to factors.
 
@@ -696,7 +698,7 @@ var_cardinality))))
                     permed_varToFactor_expandedMessages_clone = random_perm(
                         varToFactor_expandedMessages_clone,
                         self.max_factor_state_dimensions,
-                        sample_perm_number,
+                        sample_perm_number, random_flag=random_flag,
                     )
                     mlp1_out = [self.mlp1(permed_tensor.reshape(varToFactor_expandedMessages_shape[0], -1)).reshape(varToFactor_expandedMessages_shape)
                                 for permed_tensor in permed_varToFactor_expandedMessages_clone]
@@ -718,7 +720,7 @@ var_cardinality))))
                     permed_varToFactor_expandedMessages_clone = random_perm(
                         varToFactor_expandedMessages,
                         self.max_factor_state_dimensions,
-                        sample_perm_number,
+                        sample_perm_number, random_flag=random_flag,
                     )
                     mlp1_out = [self.mlp1(permed_tensor.reshape(varToFactor_expandedMessages_shape[0], -1)).reshape(varToFactor_expandedMessages_shape)
                                 for permed_tensor in permed_varToFactor_expandedMessages_clone]
@@ -755,7 +757,7 @@ var_cardinality))))
                     permed_factor_beliefs_clone = random_perm(
                         factor_beliefs_clone,
                         self.max_factor_state_dimensions,
-                        sample_perm_number,
+                        sample_perm_number, random_flag=random_flag,
                     )
                     mlp2_out = [self.mlp2(permed_tensor.reshape(factor_beliefs_shape[0], -1)).reshape(factor_beliefs_shape)
                                 for permed_tensor in permed_factor_beliefs_clone]
@@ -778,7 +780,7 @@ var_cardinality))))
                     permed_factor_beliefs_clone = random_perm(
                         factor_beliefs,
                         self.max_factor_state_dimensions,
-                        sample_perm_number,
+                        sample_perm_number, random_flag=random_flag,
                     )
                     mlp2_out = [self.mlp2(permed_tensor.reshape(factor_beliefs_shape[0], -1)).reshape(factor_beliefs_shape)
                                 for permed_tensor in permed_factor_beliefs_clone]
