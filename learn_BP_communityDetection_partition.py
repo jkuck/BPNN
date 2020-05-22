@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
 import parameters_sbm
-from parameters_sbm_bethe import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, FINAL_MLP, BETHE_MLP, NUM_MLPS, N, A_TRAIN, B_TRAIN, A_VAL, B_VAL, C, NUM_SAMPLES_TRAIN, NUM_SAMPLES_VAL, SMOOTHING, BELIEF_REPEATS, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP 
+from parameters_sbm_bethe import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, FINAL_MLP, BETHE_MLP, NUM_MLPS, N, A_TRAIN, B_TRAIN, A_VAL, B_VAL, C, NUM_SAMPLES_TRAIN, NUM_SAMPLES_VAL, SMOOTHING, BELIEF_REPEATS, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP, USE_MLP_1, USE_MLP_2, USE_MLP_3, USE_MLP_4, INITIALIZE_EXACT_BP, USE_MLP_DAMPING_FtoV, USE_MLP_DAMPING_VtoF
 
 INITIAL_TEST = True
 USE_WANDB = True
@@ -40,7 +40,7 @@ BPNN_trained_model_path = '/atlas/u/shuvamc/community_detection/SBM/wandb/run-20
 ###################################
 ####### Training PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 20 #the number of iterations of message passing, we have this many layers with their own learnable parameters
+MSG_PASSING_ITERS = 30 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 # MODEL_NAME = "debugCUDA_spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
 MODEL_NAME = "sbm_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, alpha)
@@ -92,23 +92,30 @@ if USE_WANDB:
     wandb.config.P_TRAIN = P_TRAIN
     wandb.config.Q_TRAIN = Q_TRAIN
     wandb.config.C_TRAIN = C_TRAIN
+    wandb.config.N_VAL = N_VAL
+    wandb.config.P_VAL = P_VAL
+    wandb.config.Q_VAL = Q_VAL
+    wandb.config.C_VAL = C_VAL
     wandb.config.TRAINING_DATA_SIZE = NUM_SAMPLES_TRAIN * N_TRAIN * C_TRAIN
     wandb.config.VAL_DATA_SIZE = NUM_SAMPLES_VAL * N_VAL * C_VAL
+    wandb.config.USE_MLP_1 = USE_MLP_1
+    wandb.config.USE_MLP_2 = USE_MLP_2 
+    wandb.config.USE_MLP_3 = USE_MLP_3
+    wandb.config.USE_MLP_4 = USE_MLP_4
+    wandb.config.INITIALIZE_EXACT_BP = INITIALIZE_EXACT_BP
+    wandb.config.USE_MLP_DAMPING_FtoV = USE_MLP_DAMPING_FtoV
+    wandb.config.USE_MLP_DAMPING_VtoF = USE_MLP_DAMPING_VtoF
     wandb.config.alpha = alpha
     wandb.config.alpha2 = alpha2
     wandb.config.SHARE_WEIGHTS = SHARE_WEIGHTS
     wandb.config.BETHE_MLP = BETHE_MLP
     wandb.config.MSG_PASSING_ITERS = MSG_PASSING_ITERS
-    wandb.config.BP_ITERS = NUM_BP_LAYERS
-    wandb.config.PRE_BP_MLP = PRE_BP_MLP
     wandb.config.STEP_SIZE = STEP_SIZE
     wandb.config.LR_DECAY = LR_DECAY
     wandb.config.LEARNING_RATE = LEARNING_RATE
-    wandb.config.NUM_MLPS = NUM_MLPS
     wandb.config.LR_DECAY = LR_DECAY
     wandb.config.STEP_SIZE = STEP_SIZE
     wandb.config.BELIEF_REPEATS = BELIEF_REPEATS
-    wandb.config.FINAL_FC = FINAL_MLP
 
 
 
@@ -202,7 +209,7 @@ def train(model, data, optim, loss, scheduler, device, bp_data = None):
         #var_beliefs = model(sbm_problem, device) if bp_data is None else model(sbm_problem, device, sbm_problem_bp)
         estimated_partition, fv_diff, vf_diff = model(sbm_problem, device, perform_bethe = True)
         if USE_WANDB:
-            wandb.log({"Final max ftoV diff": fv_diff, "Final max vtoF diff": vf_diff})
+            wandb.log({"Final Train max ftoV diff": fv_diff, "Final Train max vtoF diff": vf_diff})
         if BETHE_MLP:
             estimated_partition = estimated_partition.squeeze(dim = 1)
         curr_loss = loss(estimated_partition, true_partition.float())
@@ -251,7 +258,7 @@ def test(model, data, orig_data, device, bp_data = None, run_fc = True, initial 
                 #estimated_partition = model(sbm_model, device) if bp_data is None else model(sbm_model, device, sbm_model_bp)
                 estimated_partition, fv_diff, vf_diff = model(sbm_model, device, perform_bethe = True)
                 if USE_WANDB:
-                    wandb.log({"Final max ftoV diff": fv_diff, "Final max vtoF diff": vf_diff})
+                    wandb.log({"Final Test max ftoV diff": fv_diff, "Final Test max vtoF diff": vf_diff})
                 if BETHE_MLP:
                     estimated_partition = estimated_partition.squeeze(dim = 1)
         else:
@@ -287,7 +294,7 @@ if __name__ == "__main__":
     
     #device = torch.device('cpu')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    bpnn_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS, device=device, share_weights = SHARE_WEIGHTS, bethe_MLP = BETHE_MLP, var_cardinality = C_TRAIN, belief_repeats = BELIEF_REPEATS, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP)
+    bpnn_net = lbp_message_passing_network(max_factor_state_dimensions=MAX_FACTOR_STATE_DIMENSIONS, msg_passing_iters=MSG_PASSING_ITERS, device=device, share_weights = SHARE_WEIGHTS, bethe_MLP = BETHE_MLP, var_cardinality = C_TRAIN, belief_repeats = BELIEF_REPEATS, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP, use_mlp_1 = USE_MLP_1, use_mlp_2 = USE_MLP_2, use_mlp_3 = USE_MLP_3, use_mlp_4 = USE_MLP_4, init_exact_bp = INITIALIZE_EXACT_BP, mlp_damping_FtoV = USE_MLP_DAMPING_FtoV, mlp_damping_VtoF = USE_MLP_DAMPING_VtoF)
     bpnn_net = bpnn_net.to(device)
     optimizer = torch.optim.Adam(bpnn_net.parameters(), lr=LEARNING_RATE)
     #optimizer = torch.optim.SGD(bpnn_net.parameters(), lr = LEARNING_RATE, momentum = .9)

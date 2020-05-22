@@ -12,12 +12,13 @@ import time
 import math
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
 from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
-from parameters_sbm_bethe import LN_ZERO, SHARE_WEIGHTS, BETHE_MLP, alpha2, FINAL_MLP, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP
+from parameters_sbm_bethe import LN_ZERO, SHARE_WEIGHTS, BETHE_MLP, alpha2, FINAL_MLP, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP, USE_MLP_1, USE_MLP_2, USE_MLP_3, USE_MLP_4, INITIALIZE_EXACT_BP, USE_MLP_DAMPING_FtoV, USE_MLP_DAMPING_VtoF
+
 
 class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
                 bethe_MLP=BETHE_MLP, belief_repeats=None, var_cardinality=None, learn_bethe_residual_weight=False,
-                initialize_to_exact_bethe = False, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP):
+                initialize_to_exact_bethe = False, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP, use_mlp_1 = USE_MLP_1, use_mlp_2 = USE_MLP_2, use_mlp_3 = USE_MLP_3, use_mlp_4 = USE_MLP_4, init_exact_bp = INITIALIZE_EXACT_BP, mlp_damping_FtoV = USE_MLP_DAMPING_FtoV, mlp_damping_VtoF = USE_MLP_DAMPING_VtoF):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -52,7 +53,7 @@ class lbp_message_passing_network(nn.Module):
         else:
             self.message_passing_layers = nn.ModuleList([\
                 FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
-                                                            var_cardinality=var_cardinality, belief_repeats=belief_repeats, use_MLP1=False, use_MLP2=False, use_MLP3=False, use_MLP4=False, initialize_exact_BP = True, USE_MLP_DAMPING_FtoV=False, USE_MLP_DAMPING_VtoF=False)\
+                                                            var_cardinality=var_cardinality, belief_repeats=belief_repeats, use_MLP1=use_mlp_1, use_MLP2=use_mlp_2, use_MLP3=use_mlp_3, use_MLP4=use_mlp_4, initialize_exact_BP = init_exact_bp, USE_MLP_DAMPING_FtoV=mlp_damping_FtoV, USE_MLP_DAMPING_VtoF = mlp_damping_VtoF)\
                                                          for i in range(msg_passing_iters)])
         self.device = device
         if final_fc_layers:
