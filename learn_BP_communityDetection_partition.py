@@ -17,10 +17,10 @@ import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
 import parameters_sbm
-from parameters_sbm_bethe import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, FINAL_MLP, BETHE_MLP, NUM_MLPS, N, A_TRAIN, B_TRAIN, A_VAL, B_VAL, C, NUM_SAMPLES_TRAIN, NUM_SAMPLES_VAL, SMOOTHING, BELIEF_REPEATS, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP, USE_MLP_1, USE_MLP_2, USE_MLP_3, USE_MLP_4, INITIALIZE_EXACT_BP, USE_MLP_DAMPING_FtoV, USE_MLP_DAMPING_VtoF
+from parameters_sbm_bethe import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, FINAL_MLP, BETHE_MLP, EXACT_BETHE, NUM_MLPS, N, A_TRAIN, B_TRAIN, A_VAL, B_VAL, C, NUM_SAMPLES_TRAIN, NUM_SAMPLES_VAL, SMOOTHING, BELIEF_REPEATS, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP, USE_MLP_1, USE_MLP_2, USE_MLP_3, USE_MLP_4, INITIALIZE_EXACT_BP, USE_MLP_DAMPING_FtoV, USE_MLP_DAMPING_VtoF
 
 INITIAL_TEST = True
-USE_WANDB = True
+USE_WANDB = False
 # os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
 MODE = "test" #run "test" or "train" mode
 
@@ -80,13 +80,13 @@ TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' dat
 ##### Optimizer parameters #####
 STEP_SIZE=50
 LR_DECAY=1
-LEARNING_RATE = 1e-5
+LEARNING_RATE = 1e-4
 
 
 
 ##########################
 if USE_WANDB:
-    wandb.init(project="learn_partition_sbm", name="Experiments_bpnn_partition_dampingMLPs_mlp34")
+    wandb.init(project="learn_partition_sbm", name="Experiments_bpnn_partition_dampingMLPs_deep")
     wandb.config.epochs = EPOCH_COUNT
     wandb.config.N_TRAIN = N_TRAIN
     wandb.config.P_TRAIN = P_TRAIN
@@ -109,11 +109,11 @@ if USE_WANDB:
     wandb.config.alpha2 = alpha2
     wandb.config.SHARE_WEIGHTS = SHARE_WEIGHTS
     wandb.config.BETHE_MLP = BETHE_MLP
+    wandb.config.EXACT_BETHE = EXACT_BETHE
     wandb.config.MSG_PASSING_ITERS = MSG_PASSING_ITERS
     wandb.config.STEP_SIZE = STEP_SIZE
     wandb.config.LR_DECAY = LR_DECAY
     wandb.config.LEARNING_RATE = LEARNING_RATE
-    wandb.config.LR_DECAY = LR_DECAY
     wandb.config.STEP_SIZE = STEP_SIZE
     wandb.config.BELIEF_REPEATS = BELIEF_REPEATS
 
@@ -189,7 +189,7 @@ class crossEntropySmoothing(torch.nn.Module):
         logsoftmax = torch.nn.LogSoftmax()
         return torch.mean(torch.sum(-new_labs * logsoftmax(pred), dim=1))
     
-def train(model, data, optim, loss, scheduler, device, bp_data = None):
+def train(model, data, optim, loss, device, bp_data = None):
     #if USE_WANDB:        
     #    wandb.watch(bpnn_net)
     model.train()
@@ -207,9 +207,9 @@ def train(model, data, optim, loss, scheduler, device, bp_data = None):
         #labels = sbm_problem.gt_variable_labels
         true_partition = sbm_problem.ln_Z
         #var_beliefs = model(sbm_problem, device) if bp_data is None else model(sbm_problem, device, sbm_problem_bp)
-        estimated_partition, fv_diff, vf_diff = model(sbm_problem, device, perform_bethe = True)
-        if USE_WANDB:
-            wandb.log({"Final Train max ftoV diff": fv_diff, "Final Train max vtoF diff": vf_diff})
+        _, estimated_partition, fv_diff, vf_diff = model(sbm_problem, device, perform_bethe = True)
+        #if USE_WANDB:
+        #    wandb.log({"Final Train max ftoV diff": fv_diff, "Final Train max vtoF diff": vf_diff})
         if BETHE_MLP:
             estimated_partition = estimated_partition.squeeze(dim = 1)
         curr_loss = loss(estimated_partition, true_partition.float())
@@ -242,7 +242,7 @@ def train(model, data, optim, loss, scheduler, device, bp_data = None):
     return tot_loss.item() / len(data) #, train_overlap
         
 
-def test(model, data, orig_data, device, bp_data = None, run_fc = True, initial = False):
+def test(model, data, device, orig_data = None, bp_data = None, run_fc = True, initial = False):
     #model.eval()
     tot_correct = 0
     tot_loss = 0
@@ -256,9 +256,9 @@ def test(model, data, orig_data, device, bp_data = None, run_fc = True, initial 
         if not initial:
             with torch.no_grad():
                 #estimated_partition = model(sbm_model, device) if bp_data is None else model(sbm_model, device, sbm_model_bp)
-                estimated_partition, fv_diff, vf_diff = model(sbm_model, device, perform_bethe = True)
-                if USE_WANDB:
-                    wandb.log({"Final Test max ftoV diff": fv_diff, "Final Test max vtoF diff": vf_diff})
+                _, estimated_partition, fv_diff, vf_diff = model(sbm_model, device, perform_bethe = True)
+                #if USE_WANDB:
+                #    wandb.log({"Final Test max ftoV diff": fv_diff, "Final Test max vtoF diff": vf_diff})
                 if BETHE_MLP:
                     estimated_partition = estimated_partition.squeeze(dim = 1)
         else:
@@ -270,23 +270,34 @@ def test(model, data, orig_data, device, bp_data = None, run_fc = True, initial 
     #acc = tot_correct / (VAL_DATA_SIZE * N_VAL)
     #overlap = (acc - 1/C_VAL) / (1 - 1/C_VAL)
     return tot_loss.item() / len(data)
-    #print("accuracy: " + str(acc))
-    #print("overlap: " + str((acc - 1 / C_VAL) / (1-1/C_VAL)))
     
-def constructFixedDataset(sbm_models_lst, init = False):
+def constructFixedDataset(sbm_models_lst, init = False, debug = False, model = None):
     fg_models = []
     init_mse = 0
     for sbm_model in sbm_models_lst:
         for i in range(N):
-            for j in range(C): 
+            for j in range(C):
                 sbm_fg = build_libdaiFactorGraph_from_SBM(sbm_model, fixed_var = i, fixed_val = j)     
                 jt_ln_z = runJT(sbm_fg)
-                if init:       
-                    _, lbp_ln_z = runLBPLibdai(sbm_fg, sbm_model)
-                    print(jt_ln_z, lbp_ln_z)
-                    init_mse += (jt_ln_z - lbp_ln_z) ** 2
                 bpnn_fg = build_factorgraph_from_sbm(sbm_model, C, BELIEF_REPEATS, fixed_var = i, fixed_val = j, logZ = jt_ln_z)
                 fg_models.append(bpnn_fg)
+                if init:       
+                    v_b, lbp_ln_z = runLBPLibdai(sbm_fg, sbm_model)
+                    print(jt_ln_z, lbp_ln_z)
+                    init_mse += (jt_ln_z - lbp_ln_z) ** 2
+                    if debug:
+                        model.to(torch.device('cpu'))
+                        with torch.no_grad():
+                            dl = DataLoader_pytorchGeometric([bpnn_fg], batch_size = 1)
+                            for d in dl:
+                                var_beliefs, est, fv_diff, vf_diff = model(d, torch.device('cpu'), perform_bethe = True)
+                        print(jt_ln_z, lbp_ln_z, est)
+                        print(fv_diff, vf_diff)
+                        print(v_b)
+                        time.sleep(5)
+                        print(torch.exp(var_beliefs))
+                        time.sleep(5)
+                        print(torch.max(torch.abs(var_beliefs - v_b)))
 
     return fg_models, init_mse / len(fg_models)
                 
@@ -304,7 +315,7 @@ if __name__ == "__main__":
 
     sbm_models_list_train = get_dataset(dataset_type='train')
     #sbm_models_fg_train = [build_factorgraph_from_sbm(sbm_model, C_TRAIN, BELIEF_REPEATS) for sbm_model in sbm_models_list_train]
-    sbm_models_fg_train, _ = constructFixedDataset(sbm_models_list_train)
+    sbm_models_fg_train, init_train_mse = constructFixedDataset(sbm_models_list_train, init = True)
     train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_train, batch_size=1, shuffle = not LEARN_BP_INIT)
     train_data_loader_pytorchGeometric_bp = None
     if LEARN_BP_INIT:
@@ -321,22 +332,27 @@ if __name__ == "__main__":
         val_data_loader_pytorchGeometric_bp = DataLoader_pytorchGeometric(sbm_models_fg_val_bp, batch_size=1, shuffle = False)
 
     if INITIAL_TEST: 
-        print("Initial MSE: " + str(init_test_mse))
+        print("Initial Libdai Train MSE: " + str(init_train_mse) + "Initial Libdai Test MSE: " + str(init_test_mse))
         if USE_WANDB:
-            wandb.log({"Initial Test MSE": init_test_mse})
+            wandb.log({"Initial Libdai Test MSE": init_test_mse, "Initial Libdai Train MSE": init_train_mse})
+        init_train_loss = test(bpnn_net, train_data_loader_pytorchGeometric, device)
+        init_test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, device)
+        print('Epoch {:03d}, Train: {:.4f}, Test: {:.4f}'.format(0, init_train_loss, init_test_loss))
+        if USE_WANDB:
+            wandb.log({"Train Loss": init_train_loss, "Test Loss": init_test_loss})
         #init_test_acc, init_test_overlap, init_test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, sbm_models_list_val, device=torch.device('cpu'), run_fc = False, initial = True)
         #print("Initial BP Overlap: " + str(init_test_overlap))
         #if USE_WANDB:
         #    wandb.log({"Initial BP Overlap": init_test_overlap, "Initial Loss": init_test_loss})        
     for i in range(1, EPOCH_COUNT+1):
-        train_loss = train(bpnn_net, train_data_loader_pytorchGeometric, optimizer, loss_func, scheduler, device, train_data_loader_pytorchGeometric_bp)
-        test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, sbm_models_list_val, device, val_data_loader_pytorchGeometric_bp)
+        train_loss = train(bpnn_net, train_data_loader_pytorchGeometric, optimizer, loss_func, device)
+        test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, device)
         print('Epoch {:03d}, Train: {:.4f}, Test: {:.4f}'.format(i, train_loss, test_loss))
         if USE_WANDB:
             wandb.log({"Train Loss": train_loss, "Test Loss": test_loss})
             if i % 10 == 0:
                 wandb.log({"Train Loss Smooth": train_loss, "Test Loss Smooth": test_loss})
-        #scheduler.step()
+        scheduler.step()
         if LEARN_BP_INIT:
             perm = np.random.permutation(NUM_SAMPLES_TRAIN)
             sbm_models_fg_train = [sbm_models_fg_train[i] for i in perm]

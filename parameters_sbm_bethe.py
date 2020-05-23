@@ -1,10 +1,11 @@
 ROOT_DIR = "/sailhome/shuvamc/learn_BP" #file path to the directory cloned from github
 
 alpha = .5 #residual weighting on messages, e.g. damping.  alpha=1 corresponds to no skip connection, alpha=0 removes the neural network
-alpha2 = .4 #residual weighting directly around MLP
-alpha_damping = .95
+alpha2 = .5 #residual weighting directly around MLP
+alpha_damping = .5
 SHARE_WEIGHTS = False #if true, share the weights between layers in a BPNN
-BETHE_MLP = True #if true, use a final layer MLP for BPNN that is initialized to the Bethe approximation
+BETHE_MLP = False #if true, use a final layer MLP for BPNN that is initialized to the Bethe approximation
+EXACT_BETHE = True
 NUM_MLPS = 2 #the number of MLPs per layer in BPNN (1 or 2)
 
 FINAL_MLP = False
@@ -25,8 +26,8 @@ B_TRAIN = 1
 C = 2
 A_VAL = 19
 B_VAL = 1
-NUM_SAMPLES_TRAIN=5
-NUM_SAMPLES_VAL=3
+NUM_SAMPLES_TRAIN=1
+NUM_SAMPLES_VAL=1
 SMOOTHING=None
 BELIEF_REPEATS = 1
 LN_ZERO = -99

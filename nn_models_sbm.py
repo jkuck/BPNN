@@ -11,14 +11,14 @@ from utils import neg_inf_to_zero, shift_func
 import time
 import math
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
-from bpnn_model_clean import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
-from parameters_sbm_bethe import LN_ZERO, SHARE_WEIGHTS, BETHE_MLP, alpha2, FINAL_MLP, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP, USE_MLP_1, USE_MLP_2, USE_MLP_3, USE_MLP_4, INITIALIZE_EXACT_BP, USE_MLP_DAMPING_FtoV, USE_MLP_DAMPING_VtoF
+from bpnn_model_sbm_dampingmlp import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
+from parameters_sbm_bethe import LN_ZERO, SHARE_WEIGHTS, BETHE_MLP, EXACT_BETHE, alpha2, FINAL_MLP, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP, USE_MLP_1, USE_MLP_2, USE_MLP_3, USE_MLP_4, INITIALIZE_EXACT_BP, USE_MLP_DAMPING_FtoV, USE_MLP_DAMPING_VtoF
 
 
 class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
                 bethe_MLP=BETHE_MLP, belief_repeats=None, var_cardinality=None, learn_bethe_residual_weight=False,
-                initialize_to_exact_bethe = False, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP, use_mlp_1 = USE_MLP_1, use_mlp_2 = USE_MLP_2, use_mlp_3 = USE_MLP_3, use_mlp_4 = USE_MLP_4, init_exact_bp = INITIALIZE_EXACT_BP, mlp_damping_FtoV = USE_MLP_DAMPING_FtoV, mlp_damping_VtoF = USE_MLP_DAMPING_VtoF):
+                initialize_to_exact_bethe = EXACT_BETHE, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP, use_mlp_1 = USE_MLP_1, use_mlp_2 = USE_MLP_2, use_mlp_3 = USE_MLP_3, use_mlp_4 = USE_MLP_4, init_exact_bp = INITIALIZE_EXACT_BP, mlp_damping_FtoV = USE_MLP_DAMPING_FtoV, mlp_damping_VtoF = USE_MLP_DAMPING_VtoF):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -128,6 +128,7 @@ class lbp_message_passing_network(nn.Module):
                     pooled_states.append(cur_pooled_states)            
         else:
             for message_passing_layer in self.message_passing_layers:
+                #print(prv_var_beliefs)
                 prv_varToFactor_messages_saved = prv_varToFactor_messages
                 prv_factorToVar_messages_saved = prv_factorToVar_messages
                 prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
@@ -208,7 +209,7 @@ class lbp_message_passing_network(nn.Module):
             final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
             estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)
             ret = estimated_ln_partition_function
-        return ret, max_diff_messages_fv, max_diff_messages_vf      
+        return torch.mean(prv_var_beliefs, dim = 1), ret, max_diff_messages_fv, max_diff_messages_vf      
 
 
 

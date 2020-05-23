@@ -76,7 +76,7 @@ def getBeliefs(sbm_model, fg, bp_object):
         beliefs.append(b)
     return beliefs
 
-def runLBPLibdai(sbm_fg, sbm_model, maxiter = 5000, tol = 1e-9, verbose = 1, updates = 'PARALL', logdomain = 1, damping = .8):
+def runLBPLibdai(sbm_fg, sbm_model, maxiter = 5000, tol = 1e-9, verbose = 1, updates = 'PARALL', logdomain = 1, damping = .5):
     opts = dai.PropertySet()
     opts["maxiter"] = str(maxiter)
     opts["tol"] = str(tol)
