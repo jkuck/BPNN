@@ -1,4 +1,5 @@
 import numpy as np
+import random
 from itertools import combinations
 from functools import reduce
 from torch_geometric.data import Data
@@ -11,30 +12,31 @@ from torch_geometric.datasets import ModelNet, S3DIS
 import torch_geometric.transforms as T
 from torch_geometric.data import DataLoader, DataListLoader
 from torch_geometric.nn import GINConv, EdgeConv, DynamicEdgeConv, DynamicEdgeConv2, global_mean_pool, global_max_pool, DataParallel
-from nn_models_sbm import 
+from nn_models_sbm import GIN_Network_withEdgeFeatures
 import time
 import collections
 import itertools
 import wandb
 from community_detection.sbm_data_shuvam import StochasticBlockModel
 from community_detection.sbm_libdai import runLBPLibdai, runJT, build_libdaiFactorGraph_from_SBM
-
+import os
 
 USE_WANDB = True
 N_TRAIN=20
 A_TRAIN=19
 B_TRAIN=1
 C=2
-N_VAL = 100
+N_VAL = 20
 A_VAL = 19
 B_VAL = 1
 numLayers = 20
-featsize = 8
+featsize = 4
 NUM_TRAIN = 10
-NUM_VAL = 5
+NUM_VAL = 4
 
+exp_name = "GINConv_sbm_partition"
 if USE_WANDB:
-    wandb.init(project="GNN_sbm", name="DGCNN_SBM_2_class_small_fc")
+    wandb.init(project="GNN_sbm_partition", name=exp_name)
     wandb.config.N_TRAIN = N_TRAIN
     wandb.config.A_TRAIN = A_TRAIN
     wandb.config.B_TRAIN = B_TRAIN
@@ -44,11 +46,10 @@ if USE_WANDB:
     wandb.config.B_VAL = B_VAL
     wandb.config.numLayers = numLayers
     wandb.config.MPfeatsize = featsize
-    wandb.config.NUM_TRAIN = NUM_TRAIN
-    wandb.config.NUM_VAL = NUM_VAL
+    wandb.config.NUM_TRAIN = NUM_TRAIN*N_TRAIN*C
+    wandb.config.NUM_VAL = NUM_VAL*N_VAL*C
    
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def createSBM(num, p, q, classes):
     prior = [.75, .25]
@@ -98,7 +99,7 @@ def getDataLibdai(num, p, q, classes, num_examples):
     overlap = (acc - 1 / classes)/(1 - 1 / classes)
     return dataset, overlap
   
-def getDataPartition(num, p, q, classes, num_examples, prior_prob)
+def getDataPartition(num, p, q, classes, num_examples, prior_prob):
     normal_edge = np.array([p, q, q, p])
     normal_noedge = np.array([1-p, 1-q, 1-q, 1-p])
     normal_mask = np.ones(4)
@@ -110,8 +111,8 @@ def getDataPartition(num, p, q, classes, num_examples, prior_prob)
         sbm_model = StochasticBlockModel(num, p, q, classes, community_probs = prior_prob)
         edge_index = sbm_model.edge_index_full.copy()
         noedge_index = np.concatenate((sbm_model.noedge_index, np.flip(sbm_model.noedge_index, axis = 0)), axis = 1)
-        edge_attr = np.repeat(normal_edge[np.newaxis, :], edge_index.shape[1])
-        noedge_attr = np.repeat(normal_noedge[np.newaxis, :], noedge_index.shape[1])
+        edge_attr = np.repeat(normal_edge[np.newaxis, :], edge_index.shape[1], axis = 0)
+        noedge_attr = np.repeat(normal_noedge[np.newaxis, :], noedge_index.shape[1], axis = 0)
         for j in range(num):
             jt_Z_lst = []
             bp_Z_lst = []
@@ -122,23 +123,23 @@ def getDataPartition(num, p, q, classes, num_examples, prior_prob)
                 else:
                     var_1_mask[-2:] = 0
                     var_2_mask[1::3] = 0
-                edge_mask = np.array([var_1_mask if edge_index[m][1] == j else var_2_mask if edge_index[m][0] == j else normal_mask for m in range(edge_index.shape[1])])
-                noedge_mask = np.array([var_1_mask if noedge_index[m][1] == j else var_2_mask if noedge_index[m][0] == j else normal_mask for m in range(noedge_index.shape[1])])
+                edge_mask = np.array([var_1_mask if edge_index[1][m] == j else var_2_mask if edge_index[0][m] == j else normal_mask for m in range(edge_index.shape[1])])
+                noedge_mask = np.array([var_1_mask if noedge_index[1][m] == j else var_2_mask if noedge_index[0][m] == j else normal_mask for m in range(noedge_index.shape[1])])
                 edge_attr = edge_attr * edge_mask
                 noedge_attr = noedge_attr * noedge_mask
-                tot_edge_mask = np.concatenate((edge_mask, noedge_mask), axis = 1)
-                tot_edge_attr = np.concatenate((edge_attr, noedge_attr), axis = 1)
+                tot_edge_index = np.concatenate((edge_index, noedge_index), axis = 1)
+                tot_edge_attr = np.concatenate((edge_attr, noedge_attr), axis = 0)
                 libdai_fg = build_libdaiFactorGraph_from_SBM(sbm_model, fixed_var = j, fixed_val = k)
                 jt_Z, _ = runJT(libdai_fg, sbm_model)
-                bp_Z, _ = runLBPLibday(libdai_fg, sbm_model)
+                _, bp_Z = runLBPLibdai(libdai_fg, sbm_model)
                 print(jt_Z, bp_Z)
                 jt_Z_lst.append(jt_Z)
                 bp_Z_lst.append(bp_Z)
-                d = Data(x = torch.Tensor(sbm_model.deg_lst), y = torch.Tensor(jt_Z), edge_index = torch.Tensor(tot_edge_index).long(), edge_attr = torch.Tensor(tot_edge_attr))
+                d = Data(x = torch.Tensor(sbm_model.deg_lst), y = torch.tensor([jt_Z]).float(), edge_index = torch.Tensor(tot_edge_index).long(), edge_attr = torch.Tensor(tot_edge_attr))
                 dataset.append(d)
-            jt_Z = np.array(jt_Z)
-            bp_Z = np.array(bp_Z)
-            mse = min(np.sum((jt_Z-bp_Z)**2), np.sum((jt_Z - bp_Z[::-1])**2))
+            jt_Z_lst = np.array(jt_Z_lst)
+            bp_Z_lst = np.array(bp_Z_lst)
+            mse = min(np.sum((jt_Z_lst-bp_Z_lst)**2), np.sum((jt_Z_lst - bp_Z_lst[::-1])**2))
             print(mse)
             init_mse += mse
     return dataset, init_mse / len(dataset)
@@ -152,7 +153,7 @@ def getTrainTest(num, classes, k, d, num_examples, batch_size, test_ind):
     train_loader = DataListLoader(dataset[test_ind:], batch_size = batch_size, shuffle = True)
     test_loader = DataListLoader(dataset[:test_ind], batch_size = batch_size, shuffle = False)
 '''
-def getPermInvariantLoss(out, y, n, crit):
+def getPermInvariantLoss(out, y, n, crit, device):
     perms = list(itertools.permutations(np.arange(n)))
     loss = crit(out, y)
     for p in perms[1:]:
@@ -163,7 +164,7 @@ def getPermInvariantLoss(out, y, n, crit):
     return loss, crit(out, y)
 
 
-def getPermInvariantAcc(out, y, n, device = device):
+def getPermInvariantAcc(out, y, n, device):
     perms = list(itertools.permutations(np.arange(n)))
     acc = out.eq(y).sum()
     for p in perms[1:]:
@@ -274,64 +275,80 @@ def get_train_acc(data):
     print("train_acc: " + str(tot_acc / (N_TRAIN*len(data.dataset))))
     return tot_acc / (N_TRAIN*len(data.dataset))
 
-def train():
+def train(train_loader, model, optimizer, device, loss_func):
     model.train()
 
     total_loss = 0
-    norm_loss = 0
     for data in train_loader:
-        #data.to(device)
+        data.to(device)
+        edge_index = data.edge_index
+        x = data.x
+        true_partition = data.y
+        edge_attr = data.edge_attr
+        batch = data.batch
         optimizer.zero_grad()
-        out = model(data)
-        loss,norm = getPermInvariantLoss(out, getListLoadery(data), C, nn.CrossEntropyLoss())
-        norm_loss += norm.item()
+        out = model(x, edge_index, edge_attr, batch)
+        loss = loss_func(out, true_partition)
         loss.backward()
         total_loss += loss.item()
         optimizer.step()
-        #debug(data, out, loss)
-    train_acc = get_train_acc(train_loader)
-    return total_loss/len(train_loader.dataset), (train_acc-(1/C))/(1-1/C)
+
+    return total_loss/len(train_loader)
 
 
-def test(loader):
+def test(loader, model, device, loss_func):
     #model.eval()
-    correct = 0
     tot_loss = 0
     for data in loader:
-        #data.to(device)
+        data.to(device)
+        edge_index = data.edge_index
+        x = data.x
+        edge_attr = data.edge_attr
+        true_partition = data.y
+        batch = data.batch
         with torch.no_grad():
-            out = model(data)
-        acc, norm_curr = getPermInvariantAcc(out.max(dim = 1)[1], getListLoadery(data), C)
-        correct += acc
-        loss, _ = getPermInvariantLoss(out, getListLoadery(data), C, nn.CrossEntropyLoss())
+            out = model(x, edge_index, edge_attr, batch)
+            loss = loss_func(out, true_partition)
         tot_loss += loss.item()
-    acc = correct / (N_VAL*len(loader.dataset))
-    return (acc - (1/C))/(1-1/C), tot_loss / len(loader.dataset)
+    return tot_loss / len(loader)
 
+if __name__ == '__main__':
 
-model = DGCNNGeom(numLayers, C, featsize, 1, aggr = 'add').to(device)
-model = DataParallel(model)
-#optimizer = torch.optim.SGD(model.parameters(), lr=.1, momentum=.9, weight_decay=1e-4)
-optimizer = torch.optim.Adam(model.parameters(), lr = 2e-3)
-#scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
-#scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 200, eta_min=1e-3)
-
-train_dataset = getData(N_TRAIN, A_TRAIN/N_TRAIN, B_TRAIN/N_TRAIN, C, NUM_TRAIN)
-test_dataset, init_overlap = getDataLibdai(N_VAL, A_VAL/N_VAL, B_VAL/N_VAL, C, NUM_VAL)
-print("Initial BP Overlap: " + str(init_overlap))
-if USE_WANDB:
-    wandb.log({"Initial BP Overlap": init_overlap})
-train_loader = DataListLoader(train_dataset, batch_size = 1, shuffle = True)
-test_loader = DataListLoader(test_dataset, batch_size = 1, shuffle = False)
-
-for epoch in range(1, 301):
-    #test_acc, norm = test(test_loader)
-    #print(test_acc, norm)
-    loss, acc = train()
-    test_acc, test_loss = test(test_loader)
-    #print(norm)
-    print('Epoch {:03d}, Loss: {:.4f}, Test: {:.4f}'.format(epoch, loss, test_acc))
+    random.seed(8)
+    np.random.seed(12)
+    model = GIN_Network_withEdgeFeatures(input_state_size=1, edge_attr_size=2**C, hidden_size=featsize, msg_passing_iters=numLayers)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.to(device)
+    #model = DGCNNGeom(numLayers, C, featsize, 1, aggr = 'add').to(device)
+    #model = DataParallel(model)
+    #optimizer = torch.optim.SGD(model.parameters(), lr=.1, momentum=.9, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr = 2e-4)
+    #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+    #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 200, eta_min=1e-3)
+    loss_func = torch.nn.MSELoss()   
+    train_dataset, libdai_train_mse = getDataPartition(N_TRAIN, A_TRAIN/N_TRAIN, B_TRAIN/N_TRAIN, C, NUM_TRAIN, prior_prob = [.75, .25])
+    test_dataset, libdai_test_mse = getDataPartition(N_VAL, A_VAL/N_VAL, B_VAL/N_VAL, C, NUM_VAL, prior_prob = [.75, .25])
+        
+    train_loader = DataLoader(train_dataset, batch_size = 16, shuffle = True)
+    test_loader = DataLoader(test_dataset, batch_size = 16, shuffle = False)
+    print(train_loader)
+    init_train_loss = test(train_loader, model, device, loss_func)
+    init_test_loss = test(test_loader, model, device, loss_func)
+    print("Initial Libdai Train MSE: " + str(libdai_train_mse) + "Initial Libdai Test MSE: " + str(libdai_test_mse))
+    print('Epoch {:03d}, Loss: {:.4f}, Test: {:.4f}'.format(0, init_train_loss, init_test_loss)) 
     if USE_WANDB:
-        wandb.log({"train_loss": loss, "train_overlap": acc, "test_loss": test_loss, "test_overlap": test_acc}) 
-    #torch.save(model.state_dict(), '/sailhome/shuvamc/model_weights/baseline_classif_2/epoch_'+str(epoch)+'.pt')
-    #scheduler.step()
+        wandb.log({"Initial Libdai Train MSE": libdai_train_mse, "Initial Libdai Test MSE": libdai_test_mse, "Train Loss": init_train_loss, "Test Loss": init_test_loss})
+
+    save_path = os.path.join('/atlas/u/shuvamc/model_weights', exp_name)
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
+    for epoch in range(1, 301):
+        train_loss = train(train_loader, model, optimizer, device, loss_func)
+        test_loss = test(test_loader, model, device, loss_func)
+        print('Epoch {:03d}, Loss: {:.4f}, Test: {:.4f}'.format(epoch, train_loss, test_loss))
+        if USE_WANDB:
+            wandb.log({"Train Loss": train_loss, "Test Loss": test_loss}) 
+        torch.save(model.state_dict(), os.path.join(save_path, 'epoch_' + str(epoch) + '.pt'))
+
+
