@@ -23,6 +23,7 @@ class StochasticBlockModel:
         - community_probs (torch tensor): shape # communities, give the probability that
 			each node belongs to each community.  Set to uniform if None is given 
         '''
+        #np.random.seed(8)
         self.N = N
         self.p = P
         self.q = Q
@@ -56,7 +57,7 @@ class StochasticBlockModel:
             print(same_edges.shape, diff_edges.shape)
             raise
         edges = edges[np.argsort(edges[:,0])]
-        #edges_full = np.concatenate((edges, np.flip(edges, axis = 1)), axis = 0)
+        edges_full = np.concatenate((edges, np.flip(edges, axis = 1)), axis = 0)
         edge_index = np.flip(edges.T, axis = 0)
         same_noedges = same_inds[same_mask == 0]
         diff_noedges = diff_inds[diff_mask == 0]
@@ -72,15 +73,15 @@ class StochasticBlockModel:
             raise
         noedges = noedges[np.argsort(noedges[:,0])] 
         noedge_index = np.flip(noedges.T, axis = 0)
-        #edge_index_full = np.flip(edges_full.T, axis = 0)
-        #count = collections.Counter(edge_index_full[1])
-        #deg_lst = []
-        #for i in range(N):
-        #    deg_lst.append([count[i]])
+        edge_index_full = np.flip(edges_full.T, axis = 0)
+        count = collections.Counter(edge_index_full[1])
+        deg_lst = []
+        for i in range(N):
+            deg_lst.append([count[i]])
         self.noedge_index = noedge_index
         self.edge_index = edge_index
-        #self.edge_index_full = edge_index_full
-        #self.deg_lst = np.array(deg_lst)
+        self.edge_index_full = edge_index_full
+        self.deg_lst = np.array(deg_lst)
         self.gt_variable_labels = labs
         ''' 
         print(N, P, Q, C)
@@ -100,7 +101,7 @@ class StochasticBlockModel:
 def buildBinaryFactor(sbm_model, edge, fixed_var, fixed_val):
     same = sbm_model.p if edge else 1 - sbm_model.p
     diff = sbm_model.q if edge else 1 - sbm_model.q
-    denom = 2*same + 2*diff
+    denom = 1#2*same + 2*diff
     same_potential = np.log(same / denom)
     diff_potential = np.log(diff / denom)
     non_diag = np.full((sbm_model.C, sbm_model.C), diff_potential) * (np.eye(sbm_model.C) * -1 + np.ones(sbm_model.C))
@@ -193,12 +194,16 @@ def build_factorgraph_from_sbm(sbm_model, var_cardinality, belief_repeats, fixed
     
     return factor_graph
 
-#sbm = StochasticBlockModel(20, .9, .1, 2, community_probs = [.8, .2])
-#sbm_fg = build_libdaiFactorGraph_from_SBM(sbm, fixed_var = 12, fixed_val = 0)
-#ln_Z = runJT(sbm_fg)
-#print(ln_Z)
-#for i in range(1):
-#    beliefs, ln_Z = runLBPLibdai(sbm_fg, sbm)
-#    print(sbm.gt_variable_labels,beliefs, ln_Z)
-#fg = build_factorgraph_from_sbm(sbm, 2, 16, 97, 0)
-#print(fg)
+if __name__ == "__main__":
+    np.random.seed(4)
+    sbm = StochasticBlockModel(20, .9, .1, 2, community_probs = [.75, .25])
+    sbm_fg = build_libdaiFactorGraph_from_SBM(sbm)#, fixed_var = 1, fixed_val = 1)
+    ln_Z, jt_beliefs = runJT(sbm_fg, sbm)
+    print(ln_Z, jt_beliefs)
+    for i in range(1):
+        beliefs, ln_Z = runLBPLibdai(sbm_fg, sbm)
+        print(beliefs, ln_Z)
+    loss = torch.nn.KLDivLoss(reduction = 'batchmean')
+    print(loss(beliefs, jt_beliefs))
+    #fg = build_factorgraph_from_sbm(sbm, 2, 16, 97, 0)
+    #print(fg)
