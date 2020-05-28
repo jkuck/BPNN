@@ -13,7 +13,6 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir) 
 from collections import defaultdict
 
-
 def build_libdaiFactor(factor_potential, factor_variables, all_variables, debug=False):
     '''
     
@@ -49,6 +48,9 @@ def build_libdaiFactor(factor_potential, factor_variables, all_variables, debug=
         if debug:
             time.sleep(.1)
         factor[idx] = state_val.item()
+
+    # print("factor_potential:", factor_potential)
+    # exit(0)
     return factor
 
 #test me!!
@@ -70,25 +72,22 @@ def build_libdaiFactorGraph(factor_potentials, factorToVar_double_list, N, var_c
     for var_idx in range(N):
         all_variables.append(dai.Var(var_idx, var_cardinality)) #variable can take var_cardinality values
 
-    assert(len(factor_potentials) == len(factorToVar_double_list))
-    factors = []
+    assert(len(factor_potentials) == len(factorToVar_double_list)), (len(factor_potentials), len(factorToVar_double_list))
+    libdai_factors = dai.VecFactor()
     print("len(factorToVar_double_list):", len(factorToVar_double_list))
     for factor_idx, factor_variables in enumerate(factorToVar_double_list):
         factor_potential = factor_potentials[factor_idx]
-
+        assert(factor_potential.numel() == var_cardinality**len(factor_variables))
         libdai_factor = build_libdaiFactor(factor_potential, factor_variables, all_variables, debug=False)
         # if factor_idx == 5:
         #     exit(0)
 
-        factors.append(libdai_factor)
+        libdai_factors.append(libdai_factor)
 
         # print("FACTOR APPENDED!")
         # time.sleep(1)
     # Build factor graph
-    sat_Factors = dai.VecFactor()
-    for factor in factors:
-        sat_Factors.append(factor)
-    sat_FactorGraph = dai.FactorGraph(sat_Factors)
+    sat_FactorGraph = dai.FactorGraph(libdai_factors)
 
     return sat_FactorGraph
 
@@ -199,7 +198,39 @@ def run_loopyBP(factor_potentials, factorToVar_double_list, N, var_cardinality, 
     ln_z_estimate = bp.logZ()
     return ln_z_estimate
 
+    # ##################### Run Junction Tree Algorithm #####################
+    # print()
+    # print( '-'*80        )
+    # # Construct a JTree (junction tree) object from the FactorGraph sat_FactorGraph
+    # # using the parameters specified by opts and an additional property
+    # # that specifies the type of updates the JTree algorithm should perform
+    # jtopts = opts
+    # jtopts["updates"] = "HUGIN"
+    # jt = dai.JTree( sat_FactorGraph, jtopts )
+    # # Initialize junction tree algorithm
+    # jt.init()
+    # # Run junction tree algorithm
+    # jt.run()
 
+    # # Construct another JTree (junction tree) object that is used to calculate
+    # # the joint configuration of variables that has maximum probability (MAP state)
+    # jtmapopts = opts
+    # jtmapopts["updates"] = "HUGIN"
+    # jtmapopts["inference"] = "MAXPROD"
+    # jtmap = dai.JTree( sat_FactorGraph, jtmapopts )
+    # # Initialize junction tree algorithm
+    # jtmap.init()
+    # # Run junction tree algorithm
+    # jtmap.run()
+    # # Calculate joint state of all variables that has maximum probability
+    # jtmapstate = jtmap.findMaximum()
+    # # Report log partition sum (normalizing constant) of sat_FactorGraph, calculated by the junction tree algorithm
+    # print()
+    # print( '-'*80    )
+    # print( 'Exact log partition sum:', jt.logZ())
+
+    # return ln_z_estimate
+    
 def run_mean_field(clauses, maxiter=1000):
     
     sat_FactorGraph = build_libdaiFactorGraph(clauses, N)

@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
 from torch_scatter import scatter_logsumexp
 from sat_helpers.sat_data import parse_dimacs, SatProblems, build_factorgraph_from_SATproblem
-from utils import dotdict, logminusexp, shift_func, logsumexp_multipleDim, reflect_xy #wrote a helper function that is not used in this file: log_normalize
+from utils import dotdict, logminusexp, shift_func, logsumexp_multipleDim, reflect_xy, variable_state_equivariant_22 #wrote a helper function that is not used in this file: log_normalize
 import time
 import matplotlib.pyplot as plt
 import matplotlib
@@ -145,25 +145,26 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
         if learn_BP:
             self.reflected_relu = reflect_xy(ReLU()) 
 
-            assert(factor_state_space is not None)     
-            self.linear1 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            self.linear2 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            self.linear2a = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            if initialize_exact_BP:
-                self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
-                self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-                self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
-                self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
-                self.linear2a.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
-                self.linear2a.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+            if use_MLP1:
+                assert(factor_state_space is not None)     
+                self.linear1 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+                self.linear2 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+                self.linear2a = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+                if initialize_exact_BP:
+                    self.linear1.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
+                    self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                    self.linear2.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
+                    self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+                    self.linear2a.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
+                    self.linear2a.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
-            self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space           
-            if lne_mlp:            
-                self.mlp1 = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)  
-            else:
-                print("ADDED 2 mlp1/2 reflected RELU!!!!!!!!!!!!!!!!")
+                self.shifted_relu = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space           
+                if lne_mlp:            
+                    self.mlp1 = Seq(self.linear1, ReLU(), self.linear2, self.shifted_relu)  
+                else:
+                    print("ADDED 2 mlp1/2 reflected RELU!!!!!!!!!!!!!!!!")
 
-                self.mlp1 = Seq(self.linear1, self.reflected_relu, self.linear2, self.reflected_relu)#, self.linear2a, self.reflected_relu)  
+                    self.mlp1 = Seq(self.linear1, self.reflected_relu, self.linear2, self.reflected_relu)  
 
 
             #add factor potential as part of MLP
@@ -176,172 +177,195 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
 
 #                 self.shifted_relu1 = shift_func(ReLU(), shift=-50) #allow beliefs less than 0    
 
-            #add factor potential after MLP
-            self.linear3 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            self.linear4 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            self.linear4a = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            if initialize_exact_BP:
-                self.linear3.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
-                self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
-                self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
-                self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
-                self.linear4a.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
-                self.linear4a.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+            if use_MLP2:
+                #add factor potential after MLP
+                self.linear3 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+                self.linear4 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+                self.linear4a = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+                if initialize_exact_BP:
+                    self.linear3.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
+                    self.linear3.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                    self.linear4.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
+                    self.linear4.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+                    self.linear4a.weight = torch.nn.Parameter(torch.eye(factor_state_space*belief_repeats))
+                    self.linear4a.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
 
 
-#             self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
-            if lne_mlp:
-                self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu) 
-            else:
-                self.mlp2 = Seq(self.linear3, self.reflected_relu, self.linear4, self.reflected_relu)#, self.linear4a, self.reflected_relu)
+    #             self.shifted_relu1 = shift_func(ReLU(), shift=.0000000000000000001) #we'll get NaN's if we take the log of 0 or a negative number when going back to log space   
+                if lne_mlp:
+                    self.mlp2 = Seq(self.linear3, ReLU(), self.linear4, self.shifted_relu) 
+                else:
+                    self.mlp2 = Seq(self.linear3, self.reflected_relu, self.linear4, self.reflected_relu)  
 
-                
-            self.linear5 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            self.linear6 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            self.linear6b = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            if initialize_exact_BP:
-                self.linear5.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
-                self.linear5.bias = torch.nn.Parameter(torch.zeros(self.linear5.bias.shape))
-                self.linear6.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
-                self.linear6.bias = torch.nn.Parameter(torch.zeros(self.linear6.bias.shape))
-                self.linear6b.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
-                self.linear6b.bias = torch.nn.Parameter(torch.zeros(self.linear6b.bias.shape))
-            else:    
-                pass
-#                 w5 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-#                 torch.nn.init.uniform_(w5, -.1, .1)
-#                 w5 += torch.eye(var_cardinality*belief_repeats)
-#                 self.linear5.weight = torch.nn.Parameter(w5)
-                
-#                 b5 = torch.empty(self.linear5.bias.shape)
-#                 torch.nn.init.uniform_(w5, -.1, .1)
-#                 self.linear5.bias = torch.nn.Parameter(b5)
-                
-#                 w6 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-#                 torch.nn.init.uniform_(w6, -.1, .1)
-#                 w6 += torch.eye(var_cardinality*belief_repeats)
-#                 self.linear6.weight = torch.nn.Parameter(w6)
-                
-#                 b6 = torch.empty(self.linear6.bias.shape)
-#                 torch.nn.init.uniform_(w6, -.1, .1)
-#                 self.linear6.bias = torch.nn.Parameter(b6)    
- 
+            if use_MLP3:
+                self.linear5 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+                self.linear6 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+                self.linear6b = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+                if initialize_exact_BP:
+                    self.linear5.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                    self.linear5.bias = torch.nn.Parameter(torch.zeros(self.linear5.bias.shape))
+                    self.linear6.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                    self.linear6.bias = torch.nn.Parameter(torch.zeros(self.linear6.bias.shape))
+                    self.linear6b.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                    self.linear6b.bias = torch.nn.Parameter(torch.zeros(self.linear6b.bias.shape))
+                else:    
+                    pass
+    #                 w5 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+    #                 torch.nn.init.uniform_(w5, -.1, .1)
+    #                 w5 += torch.eye(var_cardinality*belief_repeats)
+    #                 self.linear5.weight = torch.nn.Parameter(w5)
+                    
+    #                 b5 = torch.empty(self.linear5.bias.shape)
+    #                 torch.nn.init.uniform_(w5, -.1, .1)
+    #                 self.linear5.bias = torch.nn.Parameter(b5)
+                    
+    #                 w6 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+    #                 torch.nn.init.uniform_(w6, -.1, .1)
+    #                 w6 += torch.eye(var_cardinality*belief_repeats)
+    #                 self.linear6.weight = torch.nn.Parameter(w6)
+                    
+    #                 b6 = torch.empty(self.linear6.bias.shape)
+    #                 torch.nn.init.uniform_(w6, -.1, .1)
+    #                 self.linear6.bias = torch.nn.Parameter(b6)    
     
-            if lne_mlp:
-                self.mlp3 = Seq(self.linear5, ReLU(), self.linear6, self.shifted_relu)  
-            else:            
-                self.mlp3 = Seq(self.linear5, self.reflected_relu, self.linear6, self.reflected_relu, self.linear6b, self.reflected_relu)
-            self.alpha_mlp3 = torch.nn.Parameter(alpha2*torch.ones(1))
+        
+                if lne_mlp:
+                    self.mlp3 = Seq(self.linear5, ReLU(), self.linear6, self.shifted_relu)  
+                else:            
+                    self.mlp3 = Seq(self.linear5, self.reflected_relu, self.linear6, self.reflected_relu, self.linear6b, self.reflected_relu)
+                self.alpha_mlp3 = torch.nn.Parameter(alpha2*torch.ones(1))
             
-            self.linear7 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            self.linear8 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            self.linear8b = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-            if initialize_exact_BP:
-                self.linear7.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
-                self.linear7.bias = torch.nn.Parameter(torch.zeros(self.linear7.bias.shape))
-                self.linear8.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
-                self.linear8.bias = torch.nn.Parameter(torch.zeros(self.linear8.bias.shape))
-                self.linear8b.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
-                self.linear8b.bias = torch.nn.Parameter(torch.zeros(self.linear8b.bias.shape))
-                
-            else:    
-                pass
-#                 w7 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-#                 torch.nn.init.uniform_(w7, -.1, .1)
-#                 w7 += torch.eye(var_cardinality*belief_repeats)
-#                 self.linear7.weight = torch.nn.Parameter(w7)
-                
-#                 b7 = torch.empty(self.linear7.bias.shape)
-#                 torch.nn.init.uniform_(w7, -.1, .1)
-#                 self.linear7.bias = torch.nn.Parameter(b7)
-                
-#                 w8 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
-#                 torch.nn.init.uniform_(w8, -.1, .1)
-#                 w8 += torch.eye(var_cardinality*belief_repeats)
-#                 self.linear8.weight = torch.nn.Parameter(w8)
-                
-#                 b8 = torch.empty(self.linear8.bias.shape)
-#                 torch.nn.init.uniform_(w8, -.1, .1)
-#                 self.linear8.bias = torch.nn.Parameter(b8)
-                
-            if lne_mlp:
-                self.mlp4 = Seq(self.linear7, ReLU(), self.linear8, self.shifted_relu)
-            else:     
-                self.mlp4 = Seq(self.linear7, self.reflected_relu, self.linear8, self.reflected_relu, self.linear8, self.reflected_relu)
-            self.alpha_mlp4 = torch.nn.Parameter(alpha2*torch.ones(1))
+            if use_MLP4:
+                self.linear7 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+                self.linear8 = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+                self.linear8b = Linear(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+                if initialize_exact_BP:
+                    self.linear7.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                    self.linear7.bias = torch.nn.Parameter(torch.zeros(self.linear7.bias.shape))
+                    self.linear8.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                    self.linear8.bias = torch.nn.Parameter(torch.zeros(self.linear8.bias.shape))
+                    self.linear8b.weight = torch.nn.Parameter(torch.eye(var_cardinality*belief_repeats))
+                    self.linear8b.bias = torch.nn.Parameter(torch.zeros(self.linear8b.bias.shape))
+                    
+                else:    
+                    pass
+    #                 w7 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+    #                 torch.nn.init.uniform_(w7, -.1, .1)
+    #                 w7 += torch.eye(var_cardinality*belief_repeats)
+    #                 self.linear7.weight = torch.nn.Parameter(w7)
+                    
+    #                 b7 = torch.empty(self.linear7.bias.shape)
+    #                 torch.nn.init.uniform_(w7, -.1, .1)
+    #                 self.linear7.bias = torch.nn.Parameter(b7)
+                    
+    #                 w8 = torch.empty(var_cardinality*belief_repeats, var_cardinality*belief_repeats)
+    #                 torch.nn.init.uniform_(w8, -.1, .1)
+    #                 w8 += torch.eye(var_cardinality*belief_repeats)
+    #                 self.linear8.weight = torch.nn.Parameter(w8)
+                    
+    #                 b8 = torch.empty(self.linear8.bias.shape)
+    #                 torch.nn.init.uniform_(w8, -.1, .1)
+    #                 self.linear8.bias = torch.nn.Parameter(b8)
+                    
+                if lne_mlp:
+                    self.mlp4 = Seq(self.linear7, ReLU(), self.linear8, self.shifted_relu)
+                else:     
+                    self.mlp4 = Seq(self.linear7, self.reflected_relu, self.linear8, self.reflected_relu, self.linear8, self.reflected_relu)
+                self.alpha_mlp4 = torch.nn.Parameter(alpha2*torch.ones(1))
     
             
-            self.linear9 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            self.linear10 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            self.mlp5 = Seq(self.linear9, ReLU(), self.linear10) 
+            if use_MLP_EQUIVARIANT:
+                self.linear9 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+                self.linear10 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+                self.mlp5 = Seq(self.linear9, ReLU(), self.linear10) 
 
-            self.linear11 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            self.linear12 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            self.mlp6 = Seq(self.linear11, ReLU(), self.linear12) 
+                self.linear11 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+                self.linear12 = Linear(factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+                self.mlp6 = Seq(self.linear11, ReLU(), self.linear12) 
 
-            self.linear13 = Linear(2*factor_state_space*belief_repeats, 2*factor_state_space*belief_repeats)
-            self.linear14 = Linear(2*factor_state_space*belief_repeats, factor_state_space*belief_repeats)
-            self.mlpEquivariant = Seq(self.linear13, ReLU(), self.linear14) 
+                self.linear13 = Linear(2*factor_state_space*belief_repeats, 2*factor_state_space*belief_repeats)
+                self.linear14 = Linear(2*factor_state_space*belief_repeats, factor_state_space*belief_repeats)
+                self.mlpEquivariant = Seq(self.linear13, ReLU(), self.linear14) 
 
 
+            if USE_MLP_DAMPING_FtoV:
+                self.FC_damping_layer = False
+                if self.FC_damping_layer:
+                    damping_scale = 460
+                else:
+                    damping_scale = 1
+                damping_mlp_test = True
+                if damping_mlp_test:
+                    self.linear9 = Linear(2*damping_scale*var_cardinality*belief_repeats, 2*damping_scale*var_cardinality*belief_repeats)
+                    self.linear10 = Linear(2*damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
 
-            self.FC_damping_layer = False
-            if self.FC_damping_layer:
-                damping_scale = 460
-            else:
-                damping_scale = 1
-            self.linear9 = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
-            self.linear10 = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
-            # self.linear10b = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
-            # self.linear10c = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
-            # initialize_exact_BP=False
-            if initialize_exact_BP:
-                self.linear9.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
-                self.linear9.bias = torch.nn.Parameter(torch.zeros(self.linear9.bias.shape))
-                self.linear10.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
-                self.linear10.bias = torch.nn.Parameter(torch.zeros(self.linear10.bias.shape))
-                # self.linear10b.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
-                # self.linear10b.bias = torch.nn.Parameter(torch.zeros(self.linear10b.bias.shape))
-                # self.linear10c.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
-                # self.linear10c.bias = torch.nn.Parameter(torch.zeros(self.linear10c.bias.shape))
-                
-            if lne_mlp:
-                print("NEW CODE, no FC 2 layer ReLU non-LINEAR!!!!!!!!!!!!!!! :):):)")
-                # self.mlp_dampingFtoV = Seq(self.linear9, Tanh(), self.linear10, Tanh())
-                self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, ReLU())
-                # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, ReLU(), self.linear10b, ReLU())
-                # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, ReLU(), self.linear10b, ReLU(), self.linear10c, ReLU())
-                # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, self.shifted_relu)
-                # self.mlp_dampingFtoV = Seq(self.linear9, self.reflected_relu, self.linear10, self.reflected_relu)#, Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats), self.reflected_relu)
-                # self.mlp_dampingFtoV = Seq(self.linear9)
-            else:     
-                self.mlp_dampingFtoV = Seq(self.linear9, self.linear10)             
+                else:
+                    self.linear9 = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+                    self.linear10 = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+                # self.linear10b = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+                # self.linear10c = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+                # initialize_exact_BP=False
+                if initialize_exact_BP:
+                    if damping_mlp_test:
+                        self.linear9.weight = torch.nn.Parameter(torch.eye(2*damping_scale*var_cardinality*belief_repeats))
+                        self.linear9.bias = torch.nn.Parameter(torch.zeros(self.linear9.bias.shape))
+                        layer_10_init = torch.zeros((2,4))
+                        layer_10_init[0,0] = 1.0
+                        layer_10_init[1,1] = 1.0
+                        # print("layer_10_init:", layer_10_init)
+                        # sleep(temp)
+                        self.linear10.weight = torch.nn.Parameter(layer_10_init)
+                        self.linear10.bias = torch.nn.Parameter(torch.zeros(self.linear10.bias.shape))
 
-            self.linear11 = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
-            self.linear12 = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
-            # self.linear12b = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
-            # self.linear12c = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
-            if initialize_exact_BP:
-                self.linear11.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
-                self.linear11.bias = torch.nn.Parameter(torch.zeros(self.linear11.bias.shape))
-                self.linear12.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
-                self.linear12.bias = torch.nn.Parameter(torch.zeros(self.linear12.bias.shape))
-                # self.linear12b.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
-                # self.linear12b.bias = torch.nn.Parameter(torch.zeros(self.linear12b.bias.shape))
-                # self.linear12c.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
-                # self.linear12c.bias = torch.nn.Parameter(torch.zeros(self.linear12c.bias.shape))
-                
-            if lne_mlp:
-                # self.mlp_dampingVtoF = Seq(self.linear11, Tanh(), self.linear12, Tanh())
-                self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, ReLU())
-                # self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, ReLU(), self.linear12b, ReLU())
-                # self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, ReLU(), self.linear12b, ReLU(), self.linear12c, ReLU())
-                # self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, self.shifted_relu)
-                # self.mlp_dampingVtoF = Seq(self.linear11, self.reflected_relu, self.linear10, self.reflected_relu)#, Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats), self.reflected_relu)
-                # self.mlp_dampingVtoF = Seq(self.linear11)
-            else:     
-                self.mlp_dampingVtoF = Seq(self.linear11, self.linear12)             
-                        
+                    else:
+                        self.linear9.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
+                        self.linear9.bias = torch.nn.Parameter(torch.zeros(self.linear9.bias.shape))
+                        self.linear10.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
+                        self.linear10.bias = torch.nn.Parameter(torch.zeros(self.linear10.bias.shape))
+                    # self.linear10b.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
+                    # self.linear10b.bias = torch.nn.Parameter(torch.zeros(self.linear10b.bias.shape))
+                    # self.linear10c.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
+                    # self.linear10c.bias = torch.nn.Parameter(torch.zeros(self.linear10c.bias.shape))
+                    
+                if lne_mlp:
+                    print("NEW CODE, no FC 2 layer ReLU non-LINEAR!!!!!!!!!!!!!!! :):):)")
+                    # self.mlp_dampingFtoV = Seq(self.linear9, Tanh(), self.linear10, Tanh())
+                    # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, ReLU())
+                    self.mlp_dampingFtoV = Seq(self.linear9, self.linear10)
+                    # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, ReLU(), self.linear10b, ReLU())
+                    # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, ReLU(), self.linear10b, ReLU(), self.linear10c, ReLU())
+                    # self.mlp_dampingFtoV = Seq(self.linear9, ReLU(), self.linear10, self.shifted_relu)
+                    # self.mlp_dampingFtoV = Seq(self.linear9, self.reflected_relu, self.linear10, self.reflected_relu)#, Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats), self.reflected_relu)
+                    # self.mlp_dampingFtoV = Seq(self.linear9)
+                else:     
+                    self.mlp_dampingFtoV = Seq(self.linear9, self.linear10)             
+
+            if USE_MLP_DAMPING_VtoF:
+                self.linear11 = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+                self.linear12 = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+                # self.linear12b = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+                # self.linear12c = Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats)
+                if initialize_exact_BP:
+                    self.linear11.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
+                    self.linear11.bias = torch.nn.Parameter(torch.zeros(self.linear11.bias.shape))
+                    self.linear12.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
+                    self.linear12.bias = torch.nn.Parameter(torch.zeros(self.linear12.bias.shape))
+                    # self.linear12b.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
+                    # self.linear12b.bias = torch.nn.Parameter(torch.zeros(self.linear12b.bias.shape))
+                    # self.linear12c.weight = torch.nn.Parameter(torch.eye(damping_scale*var_cardinality*belief_repeats))
+                    # self.linear12c.bias = torch.nn.Parameter(torch.zeros(self.linear12c.bias.shape))
+                    
+                if lne_mlp:
+                    # self.mlp_dampingVtoF = Seq(self.linear11, Tanh(), self.linear12, Tanh())
+                    self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, ReLU())
+                    # self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, ReLU(), self.linear12b, ReLU())
+                    # self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, ReLU(), self.linear12b, ReLU(), self.linear12c, ReLU())
+                    # self.mlp_dampingVtoF = Seq(self.linear11, ReLU(), self.linear12, self.shifted_relu)
+                    # self.mlp_dampingVtoF = Seq(self.linear11, self.reflected_relu, self.linear10, self.reflected_relu)#, Linear(damping_scale*var_cardinality*belief_repeats, damping_scale*var_cardinality*belief_repeats), self.reflected_relu)
+                    # self.mlp_dampingVtoF = Seq(self.linear11)
+                else:     
+                    self.mlp_dampingVtoF = Seq(self.linear11, self.linear12)             
+                            
     def forward(self, factor_graph, prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, iter):
         '''
         Inputs:
@@ -695,8 +719,16 @@ var_cardinality))))
                 varToFactor_expandedMessages_shape = varToFactor_expandedMessages.shape
                 assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
                 
-                var_idx_permutation_equivariant = False
-                if var_idx_permutation_equivariant:
+                varIdx_varState_equivariant = False
+                if varIdx_varState_equivariant:
+                    # print("varToFactor_expandedMessages.shape:", varToFactor_expandedMessages.shape)
+                    # sleep(shapecheck_asdf)
+                    assert(self.var_cardinality == 2)
+                    combined_out = variable_state_equivariant_22(mlp=self.mlp1, input_tensor=varToFactor_expandedMessages)       
+                    varToFactor_expandedMessages = (1-alpha2)*combined_out + alpha2*varToFactor_expandedMessages             
+
+                varIdx_permutation_equivariant = False
+                if varIdx_permutation_equivariant:
                     swap_idx_tensor = torch.tensor([1,0], device='cuda')
                     perm1 = torch.index_select(varToFactor_expandedMessages, dim=2, index=swap_idx_tensor)
                     perm2 = torch.index_select(varToFactor_expandedMessages, dim=3, index=swap_idx_tensor)
@@ -765,8 +797,15 @@ var_cardinality))))
                 factor_beliefs_shape = factor_beliefs.shape
                 check_factor_beliefs(factor_beliefs) #debugging
 
-                var_idx_permutation_equivariant = False
-                if var_idx_permutation_equivariant:
+                varIdx_varState_equivariant = False
+                if varIdx_varState_equivariant:
+                    assert(self.var_cardinality == 2)
+                    combined_out = variable_state_equivariant_22(mlp=self.mlp2, input_tensor=factor_beliefs)       
+                    factor_beliefs = (1-alpha2)*combined_out + alpha2*factor_beliefs
+
+
+                varIdx_permutation_equivariant = False
+                if varIdx_permutation_equivariant:
                     swap_idx_tensor = torch.tensor([1,0], device='cuda')
                     perm1 = torch.index_select(factor_beliefs, dim=2, index=swap_idx_tensor)
                     perm2 = torch.index_select(factor_beliefs, dim=3, index=swap_idx_tensor)
@@ -1109,7 +1148,9 @@ var_cardinality))))
         #   [0, i] indicates the index (0 to var_degree_origin - 1) of edge i, among all edges originating at the node which edge i begins at
         #   [1, i] indicates the index (0 to var_degree_end - 1) of edge i, among all edges ending at the node which edge i ends at
 
-        
+        # print("HI :)")
+        # print("prv_factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)]:", prv_factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)])
+        prv_factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)] = LN_ZERO
         assert((prv_factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)] == LN_ZERO).all())
         
         mapped_factor_beliefs = map_beliefs(prv_factor_beliefs, factor_graph, 'factor')
@@ -1195,8 +1236,23 @@ var_cardinality))))
                     factorToVar_messages = factorToVar_messages + (1 - self.alpha_damping_FtoV)*damping_mlp_out
 
                 else:
-                    factorToVar_messages = factorToVar_messages + (1 - self.alpha_damping_FtoV)*(self.mlp_dampingFtoV(prv_factorToVar_messages-factorToVar_messages)
-                                                                                               - self.mlp_dampingFtoV(torch.zeros_like(prv_factorToVar_messages)))
+                    if True:  #quick test
+                        # print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
+                        message_diff = prv_factorToVar_messages-factorToVar_messages
+                        diff_cat_msgs = torch.cat([message_diff, factorToVar_messages], dim=-1)
+                        zero_cat_msgs = torch.cat([torch.zeros_like(prv_factorToVar_messages), factorToVar_messages], dim=-1)
+                        # print("diff_cat_msgs.shape:", diff_cat_msgs.shape)
+                        # print("zero_cat_msgs.shape:", zero_cat_msgs.shape)
+                        mlp_out = self.mlp_dampingFtoV(diff_cat_msgs)
+                        # assert (mlp_out == message_diff).all(), (mlp_out, message_diff)
+                        factorToVar_messages = factorToVar_messages + (1 - self.alpha_damping_FtoV)*(self.mlp_dampingFtoV(diff_cat_msgs)
+                                                                                                   - self.mlp_dampingFtoV(zero_cat_msgs))
+                        # print("factorToVar_messages.shape:", factorToVar_messages.shape)
+                        # sleep(temp)
+
+                    else:
+                        factorToVar_messages = factorToVar_messages + (1 - self.alpha_damping_FtoV)*(self.mlp_dampingFtoV(prv_factorToVar_messages-factorToVar_messages)
+                                                                                                - self.mlp_dampingFtoV(torch.zeros_like(prv_factorToVar_messages)))
                 # factorToVar_messages = factorToVar_messages + (1 - self.alpha_damping_FtoV)*(prv_factorToVar_messages-factorToVar_messages)
 
             else:

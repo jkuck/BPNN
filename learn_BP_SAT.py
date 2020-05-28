@@ -42,26 +42,30 @@ parser = argparse.ArgumentParser()
 #number of variables in the largest factor -> factor has 2^args.max_factor_state_dimensions states
 parser.add_argument('--max_factor_state_dimensions', type=int, default=5)
 #the number of iterations of message passing, we have this many layers with their own learnable parameters
-parser.add_argument('--msg_passing_iters', type=int, default=5)
+parser.add_argument('--msg_passing_iters', type=int, default=10)
 #messages have var_cardinality states in standard belief propagation.  belief_repeats artificially
 #increases this number so that messages have belief_repeats*var_cardinality states, analogous
 #to increasing node feature dimensions in a standard graph neural network
 parser.add_argument('--belief_repeats', type=int, default=1)
 
-parser.add_argument('--batch_size', type=int, default=10)
+parser.add_argument('--batch_size', type=int, default=20)
 
 # 0.0001
 # 0.0005
-# parser.add_argument('--learning_rate', type=float, default=0.0001)
-parser.add_argument('--learning_rate', type=float, default=0.001)
+# parser.add_argument('--learning_rate', type=float, default=0.001)
+# parser.add_argument('--learning_rate', type=float, default=0.00001)
+
+# parser.add_argument('--learning_rate', type=float, default=0.00001)
+
+parser.add_argument('--learning_rate', type=float, default=0.0001)
 # parser.add_argument('--learning_rate', type=float, default=0.0)
 
 # parser.add_argument('--learning_rate', type=float, default=0.0005)
 # parser.add_argument('--learning_rate', type=float, default=0.001)
 
 #damping parameter
-parser.add_argument('--alpha_damping_FtoV', type=float, default=.05)
-parser.add_argument('--alpha_damping_VtoF', type=float, default=.05) #this damping wasn't used in the old code
+parser.add_argument('--alpha_damping_FtoV', type=float, default=.5)
+parser.add_argument('--alpha_damping_VtoF', type=float, default=1.0) #this damping wasn't used in the old code
 
 
 #if true, mlps operate in standard space rather than log space
@@ -72,8 +76,8 @@ parser.add_argument('--use_MLP1', type=boolean_string, default=False)
 parser.add_argument('--use_MLP2', type=boolean_string, default=False)
 
 #new MLPs that operate on variable beliefs
-parser.add_argument('--use_MLP3', type=boolean_string, default=False)
-parser.add_argument('--use_MLP4', type=boolean_string, default=False)
+parser.add_argument('--use_MLP3', type=boolean_string, default=True)
+parser.add_argument('--use_MLP4', type=boolean_string, default=True)
 
 #new MLP that hopefully preservers consistency
 parser.add_argument('--use_MLP5', type=boolean_string, default=False)
@@ -81,18 +85,18 @@ parser.add_argument('--use_MLP6', type=boolean_string, default=False)
 parser.add_argument('--use_MLP_EQUIVARIANT', type=boolean_string, default=False)
 
 #new MLPs that operate on message differences, e.g. in place of damping
-parser.add_argument('--USE_MLP_DAMPING_FtoV', type=boolean_string, default=True)
-parser.add_argument('--USE_MLP_DAMPING_VtoF', type=boolean_string, default=True)
+parser.add_argument('--USE_MLP_DAMPING_FtoV', type=boolean_string, default=False)
+parser.add_argument('--USE_MLP_DAMPING_VtoF', type=boolean_string, default=False)
 
 #if true, share the weights between layers in a BPNN
-parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=True)
+parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=False)
 
 #if true, subtract previously sent messages (to avoid 'double counting')
-parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True)
+parser.add_argument('--subtract_prv_messages', type=boolean_string, default=False)
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='none',\
+parser.add_argument('--bethe_mlp', type=str, default='standard',\
     choices=['shifted','standard','linear','none'])
 
 #if True, use the old Bethe approximation that doesn't work with batches
@@ -259,7 +263,11 @@ LEARNING_RATE = args.learning_rate
 # wandb.init(project="learn_BP_sat_debug")
 
 # wandb.init(project="learn_BP_sat_compareParams_mlp4Debug_normalizeBeliefs")
-wandb.init(project="learn_BP_sat_dampingMLP_70to100iter")
+# wandb.init(project="learn_BP_sat_dampingMLP_70to100iter")
+
+# wandb.init(project="learn_BP_sat_12345")
+# wandb.init(project="learn_BP_sat_debug1")
+wandb.init(project="learn_BP_sat_MLP34_DoubleCount_andBethe")
 
 
 # wandb.init(project="test")
@@ -367,6 +375,9 @@ def train():
     # lbp_net.load_state_dict(torch.load('wandb/run-20200515_052334-erpuze4k/model.pt')) #'75'
 
     # lbp_net.load_state_dict(torch.load('wandb/run-20200515_053747-0p3hyls0/model.pt')) #'or_50'
+    # lbp_net.load_state_dict(torch.load('wandb/run-20200527_215757-b7bn1nda/model.pt')) #'or_50'
+    # lbp_net.load_state_dict(torch.load('wandb/run-20200527_223821-9xg7z54y/model.pt')) #'or_50'
+
 
     # 
     # print("LOAD")
@@ -453,7 +464,7 @@ def train():
         epoch_loss = 0
 #         optimizer.zero_grad()
         print("len(train_data_loader)", len(train_data_loader))
-        sleep(temp)
+        # sleep(temp)
         for sat_problem in train_data_loader:
             optimizer.zero_grad()
             if SQUEEZE_BELIEF_REPEATS:
@@ -481,12 +492,14 @@ def train():
             exact_ln_partition_function = sat_problem.ln_Z
 
             assert(sat_problem.state_dimensions == args.max_factor_state_dimensions)
-            if args.SHARE_WEIGHTS:
+            # if args.SHARE_WEIGHTS:
+            if True:
                 estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
-                    prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)
+                    prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)#, shared_weight_iteration=args.msg_passing_iters)
 
                 max_vTOf = torch.max(torch.abs(prv_prv_varToFactor_messages - prv_varToFactor_messages))
                 max_fTOv = torch.max(torch.abs(prv_prv_factorToVar_messages - prv_factorToVar_messages))
+                print()
                 print("max_vTOf:", max_vTOf)
                 print("max_fTOv:", max_fTOv)
                                     
@@ -496,8 +509,10 @@ def train():
             # vTof_convergence_loss = loss_func(prv_varToFactor_messages, prv_prv_varToFactor_messages)
             # fTov_convergence_loss = loss_func(prv_factorToVar_messages, prv_prv_factorToVar_messages)
 
-            # print("estimated_ln_partition_function:", estimated_ln_partition_function)
-            # print("exact_ln_partition_function:", exact_ln_partition_function)            
+            print("estimated_ln_partition_function:", estimated_ln_partition_function)
+            print("exact_ln_partition_function:", exact_ln_partition_function)   
+            print("torch.abs(exact_ln_partition_function-estimated_ln_partition_function):", torch.abs(exact_ln_partition_function.squeeze()-estimated_ln_partition_function.squeeze()))   
+
 #             time.sleep(.5)
 #             
 #             sleep(stop_early)
@@ -560,9 +575,10 @@ def train():
                 exact_ln_partition_function = sat_problem.ln_Z
                 assert(sat_problem.state_dimensions == args.max_factor_state_dimensions)
 
-                if args.SHARE_WEIGHTS:
+                # if args.SHARE_WEIGHTS:
+                if True:
                     estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
-                        prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)
+                        prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)#, shared_weight_iteration=args.msg_passing_iters)
                 else:                
                     estimated_ln_partition_function = lbp_net(sat_problem)   
 

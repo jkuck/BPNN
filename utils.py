@@ -147,3 +147,60 @@ class reflect_xy(torch.nn.Module):
 
     def forward(self, x):
         return  -self.func(-x)
+
+
+
+
+def variable_state_equivariant_22(mlp, input_tensor):
+    '''
+    Make an MLP that operates on factors of 2 variables with cardinality 2 equivariant
+    to the variable indexing within the factor and the indexing of states within variables
+    '''
+    input_tensor_shape = input_tensor.shape
+    
+    #get all equivariant factor belief orderings
+    input_tensor0 = input_tensor
+    input_tensor1 = torch.index_select(input_tensor, dim=2, index=torch.tensor([1,0], device='cuda'))
+    input_tensor2 = torch.index_select(input_tensor, dim=3, index=torch.tensor([1,0], device='cuda'))
+    input_tensor3 = torch.index_select(input_tensor1, dim=3, index=torch.tensor([1,0], device='cuda'))
+
+    input_tensor4 = input_tensor.permute(0,1,3,2)
+    input_tensor5 = torch.index_select(input_tensor4, dim=2, index=torch.tensor([1,0], device='cuda'))
+    input_tensor6 = torch.index_select(input_tensor4, dim=3, index=torch.tensor([1,0], device='cuda'))
+    input_tensor7 = torch.index_select(input_tensor5, dim=3, index=torch.tensor([1,0], device='cuda'))
+
+
+    outputs0 = mlp(input_tensor0.view(input_tensor_shape[0], -1)).view(input_tensor_shape)
+
+    outputs1 = mlp(input_tensor1.view(input_tensor_shape[0], -1)).view(input_tensor_shape)
+    outputs1 = torch.index_select(outputs1, dim=2, index=torch.tensor([1,0], device='cuda'))
+
+    outputs2 = mlp(input_tensor2.view(input_tensor_shape[0], -1)).view(input_tensor_shape)
+    outputs2 = torch.index_select(outputs2, dim=3, index=torch.tensor([1,0], device='cuda'))
+
+    outputs3 = mlp(input_tensor3.view(input_tensor_shape[0], -1)).view(input_tensor_shape)
+    outputs3 = torch.index_select(outputs3, dim=2, index=torch.tensor([1,0], device='cuda'))
+    outputs3 = torch.index_select(outputs3, dim=3, index=torch.tensor([1,0], device='cuda'))
+    
+    outputs4 = mlp(input_tensor4.reshape(input_tensor_shape[0], -1)).reshape(input_tensor_shape)
+    outputs4 = outputs4.permute(0,1,3,2)
+
+    outputs5 = mlp(input_tensor5.reshape(input_tensor_shape[0], -1)).reshape(input_tensor_shape)
+    outputs5 = torch.index_select(outputs5, dim=2, index=torch.tensor([1,0], device='cuda'))
+    outputs5 = outputs5.permute(0,1,3,2)
+
+    outputs6 = mlp(input_tensor6.reshape(input_tensor_shape[0], -1)).reshape(input_tensor_shape)
+    outputs6 = torch.index_select(outputs6, dim=3, index=torch.tensor([1,0], device='cuda'))
+    outputs6 = outputs6.permute(0,1,3,2)
+
+    outputs7 = mlp(input_tensor7.reshape(input_tensor_shape[0], -1)).reshape(input_tensor_shape)
+    outputs7 = torch.index_select(outputs7, dim=2, index=torch.tensor([1,0], device='cuda'))
+    outputs7 = torch.index_select(outputs7, dim=3, index=torch.tensor([1,0], device='cuda'))
+    outputs7 = outputs7.permute(0,1,3,2)
+
+    combined_output = (outputs0 + outputs1 + outputs2 + outputs3 +\
+                        outputs4 + outputs5 + outputs6 + outputs7)/8
+
+    return combined_output
+
+        

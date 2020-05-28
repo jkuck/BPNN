@@ -11,4 +11,4 @@ LIBDAI_MEAN_FIELD_ITERS = 5 #iterations of mean field to run in libdai
 
 
 # LN_ZERO = -np.inf
-LN_ZERO = -99 #for numerical stability, use this value instead of -infinity for ln(0)
+LN_ZERO = -9999 #for numerical stability, use this value instead of -infinity for ln(0)

@@ -71,7 +71,7 @@ def launch_experiments_on_blasted():
 
 def launch_1experiment_per_category():
     for problem_category_train in ['blasted_problems', 'or_50_problems','problems_75','problems_90','or_60_problems','or_70_problems',\
-                                    'or_100_problems', 's_problems']:
+                                    'or_100_problems', 's_problems', 'group2']:
         subprocess.run(["sbatch", "launch_bpSAT_sbatch.sh", problem_category_train])
                
 # launch_batch_size_experiments()        

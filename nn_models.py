@@ -97,6 +97,10 @@ class lbp_message_passing_network(nn.Module):
                 self.message_passing_layers = nn.ModuleList([FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=var_cardinality**max_factor_state_dimensions)\
                                                for i in range(msg_passing_iters)])
         else:
+            self.fixed_BP_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=var_cardinality**max_factor_state_dimensions,
+                var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=False, use_MLP2=False, 
+                use_MLP3=False, use_MLP4=False, use_MLP5=False, use_MLP6=False, use_MLP_EQUIVARIANT=False, subtract_prv_messages=True, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF) 
+        
             if share_weights:
                 # self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=var_cardinality**max_factor_state_dimensions,
                 #     var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=use_MLP1, use_MLP2=use_MLP2, 
@@ -111,9 +115,6 @@ class lbp_message_passing_network(nn.Module):
                                                              for i in range(BPNN_layers_per_shared_weight_layer)])
                 
 
-                self.fixed_BP_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=var_cardinality**max_factor_state_dimensions,
-                    var_cardinality=var_cardinality, belief_repeats=belief_repeats, lne_mlp=lne_mlp, use_MLP1=False, use_MLP2=False, 
-                    use_MLP3=False, use_MLP4=False, use_MLP5=False, use_MLP6=False, use_MLP_EQUIVARIANT=False, subtract_prv_messages=True, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF) 
             else:
                 self.message_passing_layers = nn.ModuleList([\
                     FactorGraphMsgPassingLayer_NoDoubleCounting(learn_BP=True, factor_state_space=var_cardinality**max_factor_state_dimensions,
@@ -139,6 +140,8 @@ class lbp_message_passing_network(nn.Module):
             # print("max_factor_state_dimensions:", max_factor_state_dimensions)
 #             self.final_mlp = Seq(Linear(mlp_size, mlp_size), ReLU(), Linear(mlp_size, 1))
             self.linear1 = Linear(mlp_size, mlp_size)
+            self.linear1a = Linear(mlp_size, mlp_size)
+            self.linear1b = Linear(mlp_size, mlp_size)
             self.linear2 = Linear(mlp_size, 1)
             if initialize_to_exact_bethe:  
 #                 print("self.linear1.weight:", self.linear1.weight)
@@ -150,8 +153,40 @@ class lbp_message_passing_network(nn.Module):
 
                 self.linear1.weight = torch.nn.Parameter(torch.eye(mlp_size))
                 self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+
+                self.linear1a.weight = torch.nn.Parameter(torch.eye(mlp_size))
+                self.linear1a.bias = torch.nn.Parameter(torch.zeros(self.linear1a.bias.shape))
+
+                self.linear1b.weight = torch.nn.Parameter(torch.eye(mlp_size))
+                self.linear1b.bias = torch.nn.Parameter(torch.zeros(self.linear1b.bias.shape))
+
                 weight_initialization = torch.zeros((1,mlp_size))
-                weight_initialization[0,-num_ones:] = 1.0/belief_repeats
+                # weight_initialization = torch.ones((1,mlp_size))
+                if self.bethe_MLP == 'standard':
+                    assert(belief_repeats == 1), ("Not implemented for belief_repeats > 1!!, need to swap back to returning standard")
+
+                    self.only_final_beliefs = True
+                    if self.only_final_beliefs:
+                        weight_initialization[0, -num_ones:] = -1.0/belief_repeats
+                        weight_initialization[0, -(var_cardinality**max_factor_state_dimensions)-var_cardinality : -var_cardinality] *= -1
+
+
+                    else: #use beliefs from all but exclude_iters_from_finalBetheMLP iterations upon initialization
+                        self.exclude_iters_from_finalBetheMLP = 4
+                        weight_initialization_each_msg_passing_iter = -torch.ones(num_ones)/belief_repeats
+                        weight_initialization_each_msg_passing_iter[-(var_cardinality**max_factor_state_dimensions)-var_cardinality : -var_cardinality] = 1.0/belief_repeats
+
+                        for msg_passing_idx in range(self.exclude_iters_from_finalBetheMLP, self.msg_passing_iters):
+                            weight_initialization[0,msg_passing_idx*num_ones:(msg_passing_idx+1)*num_ones] = weight_initialization_each_msg_passing_iter
+
+                else:
+                    # weight_initialization[0,-num_ones:] = 1.0/belief_repeats
+                    weight_initialization[0, 4*num_ones:] = 1.0/belief_repeats
+
+                # print("weight_initialization:", weight_initialization)
+                # for w in weight_initialization[0]:
+                #     print(w)
+                # sleep(asdflk)
 #             print("self.linear2.weight:", self.linear2.weight)
 #             print("self.linear2.weight.shape:", self.linear2.weight.shape)
 #             print("weight_initialization:", weight_initialization)
@@ -163,7 +198,8 @@ class lbp_message_passing_network(nn.Module):
                 self.shifted_relu = shift_func(ReLU(), shift=-500)
                 self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)  
             elif bethe_MLP == 'standard':
-                self.final_mlp = Seq(self.linear1, ReLU(), self.linear2, ReLU())  
+                self.final_mlp = Seq(self.linear1, ReLU(), self.linear2)  
+                # self.final_mlp = Seq(self.linear1, ReLU(), self.linear1a, ReLU(), self.linear1b, ReLU(), self.linear2)  
             elif bethe_MLP == 'linear':
                 self.final_mlp = Seq(self.linear1, self.linear2)  
             else:
@@ -173,7 +209,7 @@ class lbp_message_passing_network(nn.Module):
 
         
         
-    def forward(self, factor_graph, random_message_init_every_iter=False, PLOT_CONVERGENCE=False):
+    def forward(self, factor_graph, random_message_init_every_iter=False, PLOT_CONVERGENCE=False, shared_weight_iteration=None):
 #         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
         
         if self.learn_initial_messages:
@@ -188,6 +224,7 @@ class lbp_message_passing_network(nn.Module):
                 prv_factorToVar_messages = torch.log(torch.rand_like(factor_graph.prv_factorToVar_messages))
                 prv_factor_beliefs = torch.log(torch.rand_like(factor_graph.prv_factor_beliefs))
                 prv_factor_beliefs[torch.where(factor_graph.factor_potential_masks==1)] = LN_ZERO
+                print("prv_varToFactor_messages:", prv_varToFactor_messages)
 
                 # prv_varToFactor_messages = torch.clamp(prv_varToFactor_messages, min=np.exp(LN_ZERO))
                 # prv_factorToVar_messages = torch.clamp(prv_factorToVar_messages, min=np.exp(LN_ZERO))
@@ -210,12 +247,17 @@ class lbp_message_passing_network(nn.Module):
         
         if self.share_weights:
             # for iter in range(self.msg_passing_iters):
-            # random_msg_passing_iters = np.random.randint(70, 100)
+            if shared_weight_iteration is not None:
+                random_msg_passing_iters = shared_weight_iteration
+            else:
+                # random_msg_passing_iters = np.random.randint(50, 200)
 
-            # random_msg_passing_iters = np.random.randint(5, 30)
+                # random_msg_passing_iters = np.random.randint(5, 30)
+                # random_msg_passing_iters = np.random.randint(9, 11)
+                random_msg_passing_iters = np.random.randint(9, 21)
 
             # random_msg_passing_iters = np.random.randint(20, 50)
-            random_msg_passing_iters = 100
+            # random_msg_passing_iters = 20
             # random_msg_passing_iters = np.random.randint(20, 50)
             # random_msg_passing_iters = 1000
             
@@ -309,14 +351,14 @@ class lbp_message_passing_network(nn.Module):
                 print("len(norm_per_isingmodel_vTOf_perIterList):", len(norm_per_isingmodel_vTOf_perIterList))
                 sleep(slkdfjlksdjfs)
                
-
             if self.APPLY_BP_POST_BPNN:
                 #apply BP for a random number of iterations
                 #goal is to get consistency between variable and factor beleifs
-                # random_fixed_BP_iters = np.random.randint(1, 30)
-                random_fixed_BP_iters = 90
+                # fixed_BP_iters = np.random.randint(1, 30)
+                fixed_BP_iters = 100
+                print("fixed bp fixed_BP_iters:", fixed_BP_iters)
                 # random_msg_passing_iters = 5
-                for iter in range(random_fixed_BP_iters):
+                for iter in range(fixed_BP_iters):
                     varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
                         self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
                                             prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs, iter=-1)
@@ -361,6 +403,24 @@ class lbp_message_passing_network(nn.Module):
                     pooled_states.append(cur_pooled_states)
 
 
+            if self.APPLY_BP_POST_BPNN:
+                fixed_BP_iters = 30
+                print("Hi :) fixed bp fixed_BP_iters:", fixed_BP_iters)
+                # random_msg_passing_iters = 5
+                for iter in range(fixed_BP_iters):
+                    varToFactor_messages, factorToVar_messages, var_beliefs, factor_beliefs =\
+                        self.fixed_BP_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                                            prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs, iter=-1)
+        
+                    prv_prv_varToFactor_messages = prv_varToFactor_messages
+                    prv_prv_factorToVar_messages = prv_factorToVar_messages
+
+                    prv_varToFactor_messages = varToFactor_messages
+                    prv_factorToVar_messages = factorToVar_messages
+                    prv_var_beliefs = var_beliefs
+                    prv_factor_beliefs = factor_beliefs
+
+
             QUICK_TEST = False
             if QUICK_TEST:
                 random_iters = np.random.randint(10, 30)
@@ -385,7 +445,12 @@ class lbp_message_passing_network(nn.Module):
 
             # print("torch.cat(pooled_states, dim=1).shape:", torch.cat(pooled_states, dim=1).shape)
             learned_estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
-                 
+            # print("learned_estimated_ln_partition_function:", learned_estimated_ln_partition_function)
+            if self.only_final_beliefs == False:
+                learned_estimated_ln_partition_function = learned_estimated_ln_partition_function/(self.msg_passing_iters-self.exclude_iters_from_finalBetheMLP)
+            # print(" post division learned_estimated_ln_partition_function:", learned_estimated_ln_partition_function)
+            # print()
+
             if self.learn_bethe_residual_weight:
                 final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
                 bethe_estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)
@@ -454,6 +519,7 @@ class lbp_message_passing_network(nn.Module):
             print("torch.exp(factor_beliefs):", torch.exp(factor_beliefs))
             print("neg_inf_to_zero(factor_potentials):", neg_inf_to_zero(factor_potentials))
         
+
         pooled_fac_beleifPotentials = global_add_pool(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials), batch_factors)
         #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and each factor        
         pooled_fac_beleifPotentials = pooled_fac_beleifPotentials.view(pooled_fac_beleifPotentials.shape[0], -1)
@@ -466,6 +532,8 @@ class lbp_message_passing_network(nn.Module):
             print("pooled_fac_beleifPotentials_orig.shape:", pooled_fac_beleifPotentials_orig.shape)
             print("pooled_fac_beleifPotentials.shape:", pooled_fac_beleifPotentials.shape)
             print("(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)).view(factor_beliefs_shape[0], -1).shape:", (torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)).view(factor_beliefs_shape[0], -1).shape)
+        # assert((pooled_fac_beleifPotentials <= 0).all())
+    
         return pooled_fac_beleifPotentials #negate and sum to get average bethe energy
 
 
@@ -602,8 +670,20 @@ class lbp_message_passing_network(nn.Module):
             cat_dim = 1
         else:
             cat_dim = 0
-                 
-        return torch.cat([pooled_fac_beleifPotentials, pooled_fac_beliefs, pooled_var_beliefs], dim=cat_dim)
+
+        # RETURN_ALL_POSITIVE = True 
+        if self.bethe_MLP == 'standard': #return all non-negative numbers for using relu's in the bethe layer
+            # print((torch.max(pooled_fac_beleifPotentials), torch.min(pooled_fac_beleifPotentials)))
+            # sleep(asldkjf)
+            assert(pooled_fac_beleifPotentials<=0).all(), ('Error, only implemented when factors are in [0,1]', torch.max(pooled_fac_beleifPotentials), torch.min(pooled_fac_beleifPotentials))
+            assert(pooled_fac_beliefs>=0).all()
+            assert(pooled_var_beliefs<=0).all()
+            # print(pooled_fac_beleifPotentials.shape)
+            # print(pooled_fac_beliefs.shape)
+            # print(pooled_var_beliefs.shape)
+            return torch.cat([-pooled_fac_beleifPotentials, pooled_fac_beliefs, -pooled_var_beliefs], dim=cat_dim)
+        else:
+            return torch.cat([pooled_fac_beleifPotentials, pooled_fac_beliefs, pooled_var_beliefs], dim=cat_dim)
 
 
 
