@@ -48,25 +48,16 @@ parser.add_argument('--msg_passing_iters', type=int, default=5)
 #to increasing node feature dimensions in a standard graph neural network
 parser.add_argument('--belief_repeats', type=int, default=1)
 
-parser.add_argument('--batch_size', type=int, default=20)
+parser.add_argument('--batch_size', type=int, default=5)
 
 # 0.0001
 # 0.0005
-# parser.add_argument('--learning_rate', type=float, default=0.001)
-# parser.add_argument('--learning_rate', type=float, default=0.00001)
-
-# parser.add_argument('--learning_rate', type=float, default=0.00001)
-
-parser.add_argument('--learning_rate', type=float, default=0.0001)
-# parser.add_argument('--learning_rate', type=float, default=0.00002)
-# parser.add_argument('--learning_rate', type=float, default=0.0)
-
-# parser.add_argument('--learning_rate', type=float, default=0.0005)
-# parser.add_argument('--learning_rate', type=float, default=0.001)
+parser.add_argument('--learning_rate', type=float, default=0.00002)
+# parser.add_argument('--learning_rate', type=float, default=0.000)
 
 #damping parameter
 parser.add_argument('--alpha_damping_FtoV', type=float, default=.5)
-parser.add_argument('--alpha_damping_VtoF', type=float, default=1.0) #this damping wasn't used in the old code
+parser.add_argument('--alpha_damping_VtoF', type=float, default=1.0)
 
 
 #if true, mlps operate in standard space rather than log space
