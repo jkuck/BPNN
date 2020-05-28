@@ -42,7 +42,7 @@ parser = argparse.ArgumentParser()
 #number of variables in the largest factor -> factor has 2^args.max_factor_state_dimensions states
 parser.add_argument('--max_factor_state_dimensions', type=int, default=5)
 #the number of iterations of message passing, we have this many layers with their own learnable parameters
-parser.add_argument('--msg_passing_iters', type=int, default=10)
+parser.add_argument('--msg_passing_iters', type=int, default=5)
 #messages have var_cardinality states in standard belief propagation.  belief_repeats artificially
 #increases this number so that messages have belief_repeats*var_cardinality states, analogous
 #to increasing node feature dimensions in a standard graph neural network
@@ -58,6 +58,7 @@ parser.add_argument('--batch_size', type=int, default=20)
 # parser.add_argument('--learning_rate', type=float, default=0.00001)
 
 parser.add_argument('--learning_rate', type=float, default=0.0001)
+# parser.add_argument('--learning_rate', type=float, default=0.00002)
 # parser.add_argument('--learning_rate', type=float, default=0.0)
 
 # parser.add_argument('--learning_rate', type=float, default=0.0005)
@@ -96,7 +97,7 @@ parser.add_argument('--subtract_prv_messages', type=boolean_string, default=Fals
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
-parser.add_argument('--bethe_mlp', type=str, default='standard',\
+parser.add_argument('--bethe_mlp', type=str, default='linear',\
     choices=['shifted','standard','linear','none'])
 
 #if True, use the old Bethe approximation that doesn't work with batches
@@ -107,7 +108,7 @@ parser.add_argument('--use_old_bethe', type=boolean_string, default=False)
 #args.random_seed = 0 and 1 seem to produce very different results for s_problems
 parser.add_argument('--random_seed', type=int, default=1)
 
-parser.add_argument('--problem_category_train', type=str, default='blasted_problems',\
+parser.add_argument('--problem_category_train', type=str, default='or_50_problems',\
     choices=['problems_75','problems_90','or_50_problems','or_60_problems','or_70_problems',\
     'or_100_problems', 'blasted_problems','s_problems','group1','group2','group3','group4'])
 

@@ -161,11 +161,12 @@ class lbp_message_passing_network(nn.Module):
                 self.linear1b.bias = torch.nn.Parameter(torch.zeros(self.linear1b.bias.shape))
 
                 weight_initialization = torch.zeros((1,mlp_size))
+                self.only_final_beliefs = True
+
                 # weight_initialization = torch.ones((1,mlp_size))
                 if self.bethe_MLP == 'standard':
                     assert(belief_repeats == 1), ("Not implemented for belief_repeats > 1!!, need to swap back to returning standard")
 
-                    self.only_final_beliefs = True
                     if self.only_final_beliefs:
                         weight_initialization[0, -num_ones:] = -1.0/belief_repeats
                         weight_initialization[0, -(var_cardinality**max_factor_state_dimensions)-var_cardinality : -var_cardinality] *= -1
