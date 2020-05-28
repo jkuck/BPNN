@@ -1,7 +1,7 @@
 import torch
 from torch import autograd
 from nn_models import lbp_message_passing_network, USE_OLD_CODE
-from sat_helpers.libdai_utils_sat import run_loopyBP
+# from sat_helpers.libdai_utils_sat import run_loopyBP
 # from torch.utils.data import DataLoader
 # from torch_geometric.data import DataLoader
 
@@ -48,7 +48,7 @@ parser.add_argument('--msg_passing_iters', type=int, default=5)
 #to increasing node feature dimensions in a standard graph neural network
 parser.add_argument('--belief_repeats', type=int, default=1)
 
-parser.add_argument('--batch_size', type=int, default=5)
+parser.add_argument('--batch_size', type=int, default=20)
 
 # 0.0001
 # 0.0005
@@ -84,7 +84,7 @@ parser.add_argument('--USE_MLP_DAMPING_VtoF', type=boolean_string, default=False
 parser.add_argument('--SHARE_WEIGHTS', type=boolean_string, default=False)
 
 #if true, subtract previously sent messages (to avoid 'double counting')
-parser.add_argument('--subtract_prv_messages', type=boolean_string, default=False)
+parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True)
 
 #if 'none' then use the standard bethe approximation with no learning
 #otherwise, describes (potential) non linearities in the MLP
@@ -347,8 +347,8 @@ if NEW_FAST_DATA_LOADING == False:
             assert(wandb.config.train_val_split == "easyTrain_hardVal")
         train_problems = train_problems_helper[:len(train_problems_helper)*7//10]
         val_problems = train_problems_helper[len(train_problems_helper)*7//10:]
-        wandb.config.TRAINING_DATA_SIZE = len(train_problems_helper)*7//10
-        wandb.config.VAL_DATA_SIZE = len(train_problems_helper) - len(train_problems_helper)*7//10
+        wandb.config.TRAINING_DATA_SIZE = len(train_problems)
+        wandb.config.VAL_DATA_SIZE = len(val_problems)
     else: #use multiple categories for validation and train, using all problems from the categories
         assert(wandb.config.train_val_split == "separate_categories")
         train_problems = []
@@ -688,8 +688,8 @@ def test():
         if runLBP:
             print("about to parse dimacs")
             n_vars, clauses, load_successful = parse_dimacs(filename = SAT_PROBLEMS_DIR + "/" + test_problems[idx] + '.cnf.gz.no_w.cnf')
-            print("about to run_loopyBP")
-            lbp_estimate = run_loopyBP(clauses, n_vars, maxiter=10, updates="SEQRND", damping='.5')
+            # print("about to run_loopyBP")
+            # lbp_estimate = run_loopyBP(clauses, n_vars, maxiter=10, updates="SEQRND", damping='.5')
             print("LBP:", lbp_estimate)
         exact_ln_partition_function = sat_problem.ln_Z
         # sat_problem.compute_bethe_free_energy()

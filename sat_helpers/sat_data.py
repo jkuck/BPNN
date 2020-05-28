@@ -281,7 +281,7 @@ class SATDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        processed_dataset_file = self.dataset_type + '_%s_%d_%f_%d_pyTorchGeomProccesed.pt' %\
+        processed_dataset_file = self.dataset_type + '_%s_%d_%f_%d_pyTorchGeomProccesed_reload.pt' %\
                                  (self.problem_category, self.belief_repeats, self.epsilon, self.max_factor_dimensions)
         
         return [processed_dataset_file]
