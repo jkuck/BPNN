@@ -711,7 +711,6 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
             #avoid double counting
             factorToVar_messages = marginalized_states - prv_varToFactor_messages
         else:
-            print("messages not subtracted!")
             factorToVar_messages = marginalized_states
             
         # FIX ME
