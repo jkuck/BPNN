@@ -36,7 +36,7 @@ Run learn_BP_spinGlass.py with mode="test"
 
 SAT table/figures
 - Make the SAT tables in latex form from wandb results using data/wandbCSV_to_latexTable.py
-- run data/compare_BPNNvsHashing_runtimes.py
+- run data/compare_BPNNvsHashing_runtimes.py (for the figuring comparing approximation of BPNN vs. F2 vs. ApproxMC and for the time ratio comparison)
 
 Make Fig 1, aggregating BPNN/GNN/BP comparison with data/experiments/make_figure_from_table.py
 
