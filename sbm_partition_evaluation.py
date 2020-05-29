@@ -1,4 +1,5 @@
 import numpy as np
+import wandb
 import torch
 from community_detection.sbm_libdai import runLBPLibdai, runJT, build_libdaiFactorGraph_from_SBM
 from community_detection.sbm_data_shuvam import StochasticBlockModel, build_factorgraph_from_sbm
@@ -11,40 +12,57 @@ import random
 from nn_models_sbm import lbp_message_passing_network, GIN_Network_withEdgeFeatures 
 from parameters_sbm_bethe import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, FINAL_MLP, BETHE_MLP, EXACT_BETHE, NUM_MLPS, BELIEF_REPEATS, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP, USE_MLP_1, USE_MLP_2, USE_MLP_3, USE_MLP_4, INITIALIZE_EXACT_BP, USE_MLP_DAMPING_FtoV, USE_MLP_DAMPING_VtoF
 
-USE_WANDB = False
-model_type = 'gnn'
-test_model_path = '/atlas/u/shuvamc/model_weights/GINConv_moreweights_sbm_partition/epoch_300.pt'
-#test_model_path = '/atlas/u/shuvamc/model_weights/bpnn_partition_mlp34_moredata_75prior/epoch_300.pt'  
+USE_WANDB = True
+model_type = 'both'
+gnn_model_path = '/atlas/u/shuvamc/model_weights/GINConv_moreweights_sbm_partition/epoch_300.pt'
+bpnn_model_path = '/atlas/u/shuvamc/model_weights/bpnn_partition_mlp34_moredata_75prior/epoch_300.pt'  
 N_TEST = 20
-A_TEST = 18
-B_TEST = 2
+A_TEST = 19
+B_TEST = 1
 P_TEST = A_TEST / N_TEST
 Q_TEST = B_TEST / N_TEST
 C_TEST = 2
-NUM_EXAMPLES_TEST = 1
+NUM_EXAMPLES_TEST = 5
 gnn_numLayers = 30
 gnn_featsize = 8
-
+mode = 'marginals'
+exp_name = mode + '_estimation_' + str(A_TEST) + '_' + str(B_TEST) + '_moredata'
 if USE_WANDB:
-    wandb.init(project="learn_partition_testing_sbm_" + model_type, name='model: ' + test_model_path)
+    wandb.init(project="learn_partition_testing_sbm", name=exp_name)
     wandb.config.N_TEST = N_TEST
     wandb.config.P_TEST = P_TEST
     wandb.config.Q_TEST = Q_TEST
     wandb.config.C_TEST = C_TEST
+    wandb.config.gnn_model_path = gnn_model_path
+    wandb.config.bpnn_model_path = bpnn_model_path
+    wandb.config.NUM_EXAMPLES = NUM_EXAMPLES_TEST * N_TEST * C_TEST
 
-def constructFixedDatasetBPNN(sbm_models_lst, init = True, debug = False, model = None):
+def calculatelogMarginals(partitions):
+    partitions = torch.tensor(partitions)
+    ln_sum = torch.logsumexp(partitions, dim = 0) 
+    ln_marginals = partitions - ln_sum
+    return ln_marginals.numpy()
+    
+ 
+def constructFixedDatasetBPNN(sbm_models_lst, init = True, debug = False, marginals = False, model = None):
+    init = init or marginals
     fg_models = []
     init_mse = 0
+    bp_marg_mse = 0
+    mod_marg_mse = 0
     for sbm_model in sbm_models_lst:
         for i in range(N_TEST):
             jt_Z = []
             bp_Z = []
+            fg_models_curr = []
             for j in range(C_TEST):
                 sbm_fg = build_libdaiFactorGraph_from_SBM(sbm_model, fixed_var = i, fixed_val = j)     
                 jt_ln_z, jt_beliefs = runJT(sbm_fg, sbm_model)
                 bpnn_fg = build_factorgraph_from_sbm(sbm_model, C_TEST, BELIEF_REPEATS, fixed_var = i, fixed_val = j, logZ = jt_ln_z)
                 bpnn_fg.gt_variable_labels = jt_beliefs
                 fg_models.append(bpnn_fg)
+                if marginals:
+                    fg_models_curr.append(bpnn_fg)
                 if init:       
                     v_b, lbp_ln_z = runLBPLibdai(sbm_fg, sbm_model)
                     jt_Z.append(jt_ln_z)
@@ -71,7 +89,22 @@ def constructFixedDatasetBPNN(sbm_models_lst, init = True, debug = False, model 
                 mse = min(np.sum((jt_Z-bp_Z)**2), np.sum((jt_Z - bp_Z[::-1])**2))
                 print(mse)
                 init_mse += mse
-    return fg_models, init_mse / len(fg_models)
+            if marginals:
+                dl = DataLoader_pytorchGeometric(fg_models_curr, batch_size = C_TEST)
+                for d in dl:
+                    d.state_dimensions = d.state_dimensions[0] #hack for batching,
+                    d.var_cardinality = d.var_cardinality[0] #hack for batching,
+                    d.belief_repeats = d.belief_repeats[0]
+                    with torch.no_grad():
+                        _, preds, _, _ = model(d, torch.device('cpu'), perform_bethe = True)
+                        preds = preds.squeeze(dim = 1)
+                mod_marginals = calculatelogMarginals(preds)
+                true_marginals = calculatelogMarginals(jt_Z)
+                bp_marginals = calculatelogMarginals(bp_Z)
+                mod_marg_mse += np.sum((true_marginals - mod_marginals) ** 2)#min(np.sum((true_marginals - mod_marginals)**2), np.sum((true_marginals - mod_marginals[::-1])**2))
+                bp_marg_mse += min(np.sum((true_marginals - bp_marginals)**2), np.sum((true_marginals - bp_marginals[::-1])**2))
+                print(preds, mod_marg_mse, bp_marg_mse)
+    return fg_models, init_mse / len(fg_models), mod_marg_mse / len(fg_models), bp_marg_mse / len(fg_models)
 
   
 def getDataPartitionGNN(num, p, q, classes, num_examples, prior_prob):
@@ -149,28 +182,44 @@ def testGNN(loader, model, device, loss_func):
     return tot_loss / len(loader)
         
 if __name__ == '__main__':
-    random.seed(8)
-    np.random.seed(12)
-    weights = torch.load(test_model_path)
+    random.seed(10)
+    np.random.seed(15)
+    torch.manual_seed(20) 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     loss_func = torch.nn.MSELoss()
-    if model_type == 'bpnn':
+    if mode == 'partitions':
+        if model_type == 'bpnn' or model_type == 'both':
+            test_sbm_models_list = [StochasticBlockModel(N=N_TEST, P=P_TEST, Q=Q_TEST, C=C_TEST, community_probs = [.9, .1]) for i in range(NUM_EXAMPLES_TEST)]
+            test_sbm_models_fg, libdai_test_mse, _, _ = constructFixedDatasetBPNN(test_sbm_models_list, init = (model_type == 'bpnn')) 
+            test_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(test_sbm_models_fg, batch_size=16)
+            model = lbp_message_passing_network(max_factor_state_dimensions=2, msg_passing_iters=30, device=device, share_weights = SHARE_WEIGHTS, bethe_MLP = BETHE_MLP, var_cardinality = C_TEST, belief_repeats = BELIEF_REPEATS, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP, use_mlp_1 = USE_MLP_1, use_mlp_2 = USE_MLP_2, use_mlp_3 = USE_MLP_3, use_mlp_4 = USE_MLP_4, init_exact_bp = INITIALIZE_EXACT_BP, mlp_damping_FtoV = USE_MLP_DAMPING_FtoV, mlp_damping_VtoF = USE_MLP_DAMPING_VtoF)
+            model.load_state_dict(torch.load(bpnn_model_path))
+            model.to(device) 
+            bpnn_test_loss = testBPNN(model, device, test_data_loader_pytorchGeometric, loss_func)
+        if model_type == 'gnn' or model_type == 'both':
+            test_dataset, libdai_test_mse = getDataPartitionGNN(N_TEST, P_TEST, Q_TEST, C_TEST, NUM_EXAMPLES_TEST, prior_prob = [.9, .1])
+            test_loader = DataLoader(test_dataset, batch_size = 16, shuffle = True)
+            model = GIN_Network_withEdgeFeatures(input_state_size=1, edge_attr_size=2**C_TEST, hidden_size=gnn_featsize, msg_passing_iters=gnn_numLayers)
+            model.load_state_dict(torch.load(gnn_model_path))
+            model.to(device)
+            gnn_test_loss = testGNN(test_loader, model, device, loss_func)
+        print("Libdai Test MSE: " + str(libdai_test_mse))
+        if USE_WANDB:
+            wandb.log({"Libdai Test MSE": libdai_test_mse})
+        if model_type == 'gnn' or model_type == 'both':
+            print("GNN Test MSE: " + str(gnn_test_loss))
+            if USE_WANDB:
+                wandb.log({"GNN Test MSE": gnn_test_loss})
+        if model_type == 'bpnn' or model_type == 'both':
+            print("BPNN Test MSE: " + str(bpnn_test_loss))
+            if USE_WANDB:
+                wandb.log({"BPNN Test MSE": bpnn_test_loss})
+    if mode == 'marginals':
         test_sbm_models_list = [StochasticBlockModel(N=N_TEST, P=P_TEST, Q=Q_TEST, C=C_TEST, community_probs = [.75, .25]) for i in range(NUM_EXAMPLES_TEST)]
-        test_sbm_models_fg, libdai_test_mse = constructFixedDatasetBPNN(test_sbm_models_list) 
-        test_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(test_sbm_models_fg, batch_size=16)
         model = lbp_message_passing_network(max_factor_state_dimensions=2, msg_passing_iters=30, device=device, share_weights = SHARE_WEIGHTS, bethe_MLP = BETHE_MLP, var_cardinality = C_TEST, belief_repeats = BELIEF_REPEATS, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP, use_mlp_1 = USE_MLP_1, use_mlp_2 = USE_MLP_2, use_mlp_3 = USE_MLP_3, use_mlp_4 = USE_MLP_4, init_exact_bp = INITIALIZE_EXACT_BP, mlp_damping_FtoV = USE_MLP_DAMPING_FtoV, mlp_damping_VtoF = USE_MLP_DAMPING_VtoF)
-        model.load_state_dict(weights)
-        model.to(device) 
-        test_loss = testBPNN(model, device, test_data_loader_pytorchGeometric, loss_func)
-    if model_type == 'gnn':
-        test_dataset, libdai_test_mse = getDataPartitionGNN(N_TEST, P_TEST, Q_TEST, C_TEST, NUM_EXAMPLES_TEST, prior_prob = [.75, .25])
-        test_loader = DataLoader(test_dataset, batch_size = 16, shuffle = True)
-        model = GIN_Network_withEdgeFeatures(input_state_size=1, edge_attr_size=2**C_TEST, hidden_size=gnn_featsize, msg_passing_iters=gnn_numLayers)
-        model.load_state_dict(weights)
-        model.to(device)
-        test_loss = testGNN(test_loader, model, device, loss_func)
-    print("Libdai Test Loss: " + str(libdai_test_mse))
-    print("Model Test Loss: " + str(test_loss))
-    if USE_WANDB:
-        wandb.log({"Libdai Test Loss": libdai_test_mse, "Model Test Loss": test_mse})
- 
+        model.load_state_dict(torch.load(bpnn_model_path))
+        _, _, mod_mse, bp_mse = constructFixedDatasetBPNN(test_sbm_models_list, init = True, marginals = True, model = model)
+        print('Model Marginals MSE: ' + str(mod_mse))
+        print("BP Marginals MSE: " + str(bp_mse))
+        if USE_WANDB:
+            wandb.log({"Model Marginals MSE": mod_mse, "BP Marginals MSE": bp_mse})
