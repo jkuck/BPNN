@@ -73,9 +73,15 @@ def launch_1experiment_per_category():
     for problem_category_train in ['blasted_problems', 'or_50_problems','problems_75','problems_90','or_60_problems','or_70_problems',\
                                     'or_100_problems', 's_problems', 'group2']:
         subprocess.run(["sbatch", "launch_bpSAT_sbatch.sh", problem_category_train])
-               
+
+def compare_double_counting():
+    for problem_category_train in ['blasted_problems', 'or_50_problems','problems_75','problems_90', 's_problems']:#, 'group2']:
+        for subtract_prv_messages in ["True", "False"]:
+            subprocess.run(["sbatch", "launch_bpSAT_sbatch.sh", problem_category_train, subtract_prv_messages])
+            
 # launch_batch_size_experiments()        
 # launch_set_of_experiments()
 # launch_experiments_on_blasted()
 
-launch_1experiment_per_category()
+# launch_1experiment_per_category()
+compare_double_counting()

@@ -48,10 +48,11 @@ parser.add_argument('--msg_passing_iters', type=int, default=5)
 #to increasing node feature dimensions in a standard graph neural network
 parser.add_argument('--belief_repeats', type=int, default=1)
 
-parser.add_argument('--batch_size', type=int, default=20)
+parser.add_argument('--batch_size', type=int, default=10)
 
 # 0.0001
 # 0.0005
+# parser.add_argument('--learning_rate', type=float, default=0.0001)
 parser.add_argument('--learning_rate', type=float, default=0.00002)
 # parser.add_argument('--learning_rate', type=float, default=0.000)
 
@@ -103,7 +104,7 @@ parser.add_argument('--problem_category_train', type=str, default='or_50_problem
     choices=['problems_75','problems_90','or_50_problems','or_60_problems','or_70_problems',\
     'or_100_problems', 'blasted_problems','s_problems','group1','group2','group3','group4'])
 
-parser.add_argument('--train_val_split', type=str, default='random_shuffle',\
+parser.add_argument('--train_val_split', type=str, default='easyTrain_hardVal',\
     choices=["random_shuffle", "easyTrain_hardVal", "separate_categories"])
 
 
@@ -259,7 +260,7 @@ LEARNING_RATE = args.learning_rate
 
 # wandb.init(project="learn_BP_sat_12345")
 # wandb.init(project="learn_BP_sat_debug1")
-wandb.init(project="learn_BP_sat_MLP34_DoubleCount_andBethe")
+wandb.init(project="learn_BP_sat_MLP34_CompareDoubleCount_andBethe")
 
 
 # wandb.init(project="test")
