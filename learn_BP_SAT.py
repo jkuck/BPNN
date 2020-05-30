@@ -53,7 +53,10 @@ parser.add_argument('--batch_size', type=int, default=10)
 # 0.0001
 # 0.0005
 # parser.add_argument('--learning_rate', type=float, default=0.0001)
+
 parser.add_argument('--learning_rate', type=float, default=0.00002)
+# parser.add_argument('--learning_rate', type=float, default=0.000002)
+# parser.add_argument('--learning_rate', type=float, default=0.000008)
 # parser.add_argument('--learning_rate', type=float, default=0.000)
 
 #damping parameter
@@ -65,12 +68,12 @@ parser.add_argument('--alpha_damping_VtoF', type=float, default=1.0)
 parser.add_argument('--lne_mlp', type=boolean_string, default=False)
 
 #original MLPs that operate on factor beliefs (problematic because they're not index invariant)
-parser.add_argument('--use_MLP1', type=boolean_string, default=False)
-parser.add_argument('--use_MLP2', type=boolean_string, default=False)
+parser.add_argument('--use_MLP1', type=boolean_string, default=True)
+parser.add_argument('--use_MLP2', type=boolean_string, default=True)
 
 #new MLPs that operate on variable beliefs
-parser.add_argument('--use_MLP3', type=boolean_string, default=True)
-parser.add_argument('--use_MLP4', type=boolean_string, default=True)
+parser.add_argument('--use_MLP3', type=boolean_string, default=False)
+parser.add_argument('--use_MLP4', type=boolean_string, default=False)
 
 #new MLP that hopefully preservers consistency
 parser.add_argument('--use_MLP5', type=boolean_string, default=False)
@@ -100,11 +103,11 @@ parser.add_argument('--use_old_bethe', type=boolean_string, default=False)
 #args.random_seed = 0 and 1 seem to produce very different results for s_problems
 parser.add_argument('--random_seed', type=int, default=1)
 
-parser.add_argument('--problem_category_train', type=str, default='or_50_problems',\
+parser.add_argument('--problem_category_train', type=str, default='blasted_problems',\
     choices=['problems_75','problems_90','or_50_problems','or_60_problems','or_70_problems',\
     'or_100_problems', 'blasted_problems','s_problems','group1','group2','group3','group4'])
 
-parser.add_argument('--train_val_split', type=str, default='easyTrain_hardVal',\
+parser.add_argument('--train_val_split', type=str, default='random_shuffle',\
     choices=["random_shuffle", "easyTrain_hardVal", "separate_categories"])
 
 
@@ -223,7 +226,7 @@ SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/exact_SAT_counts_noIndSets/"
 # SOLUTION_COUNTS_DIR = TRAINING_DATA_DIR + "SAT_problems_solved"
 
 
-EPOCH_COUNT = 1000
+EPOCH_COUNT = 2000
 PRINT_FREQUENCY = 10
 SAVE_FREQUENCY = 1
 VAL_FREQUENCY = 10
@@ -259,8 +262,10 @@ LEARNING_RATE = args.learning_rate
 # wandb.init(project="learn_BP_sat_dampingMLP_70to100iter")
 
 # wandb.init(project="learn_BP_sat_12345")
+
 # wandb.init(project="learn_BP_sat_debug1")
-wandb.init(project="learn_BP_sat_MLP34_CompareDoubleCount_andBethe")
+wandb.init(project="learn_BP_sat_debug12")
+# wandb.init(project="learn_BP_sat_MLP34_CompareDoubleCount_andBethe")
 
 
 # wandb.init(project="test")
@@ -626,7 +631,8 @@ def test():
 
 #     BPNN_trained_model_path = './wandb/run-20200217_223828-1ur43pn3/model.pt' #2 layer on all training data except 's' (faster)
 
-    BPNN_trained_model_path = './wandb/run-20200217_104742-n4d8lxp1/model.pt' #2 layer on random sampling of 'or_50' data
+    # BPNN_trained_model_path = './wandb/run-20200217_104742-n4d8lxp1/model.pt' #2 layer on random sampling of 'or_50' data
+    BPNN_trained_model_path = './wandb/run-20200529_001251-szfxspl1/model.pt' 
 
     
     
@@ -663,15 +669,15 @@ def test():
 #                problems_dir_name=TEST_PROBLEMS_DIR,
 #                dataset_size=TEST_DATA_SIZE, begin_idx=0, epsilon=EPSILON)
 
-#     data_loader = DataLoader(sat_data, batch_size=1)
-    test_SAT_list = get_SATproblems_list(problems_to_load=test_problems,
-               counts_dir_name=SOLUTION_COUNTS_DIR,
-               problems_dir_name=SAT_PROBLEMS_DIR,
-               # dataset_size=50, begin_idx=0, epsilon=EPSILON)
-#                dataset_size=VAL_DATA_SIZE, begin_idx=0, epsilon=EPSILON,
-               dataset_size=10000, begin_idx=0, epsilon=EPSILON,
-               max_factor_dimensions=args.max_factor_state_dimensions, belief_repeats=args.belief_repeats)
-    test_data_loader = DataLoader(test_SAT_list, batch_size=1)
+
+    test_SAT_list = []
+    for cur_train_category in PROBLEM_CATEGORY_TEST:
+        cur_category_problems = SATDataset(root="./data/SAT_pytorchGeom_proccesed/", dataset_type='train',\
+            problem_category=cur_train_category, belief_repeats=args.belief_repeats, epsilon=EPSILON,\
+            max_factor_dimensions=args.max_factor_state_dimensions)
+        test_SAT_list.extend(cur_category_problems)
+
+    test_data_loader = DataLoader(test_SAT_list, batch_size=1, shuffle=False)
     loss_func = torch.nn.MSELoss()
 
     exact_solution_counts = []
@@ -682,47 +688,63 @@ def test():
     problem_names = []
 #     for sat_problem, exact_ln_partition_function in test_data_loader:
     runtimes = []
-    for idx, sat_problem in enumerate(test_data_loader):
-        sat_problem = sat_problem.to(device)
-        problem_names.append(test_problems[idx])
-        runLBP = False
-        if runLBP:
-            print("about to parse dimacs")
-            n_vars, clauses, load_successful = parse_dimacs(filename = SAT_PROBLEMS_DIR + "/" + test_problems[idx] + '.cnf.gz.no_w.cnf')
-            # print("about to run_loopyBP")
-            # lbp_estimate = run_loopyBP(clauses, n_vars, maxiter=10, updates="SEQRND", damping='.5')
-            print("LBP:", lbp_estimate)
-        exact_ln_partition_function = sat_problem.ln_Z
-        # sat_problem.compute_bethe_free_energy()
-        t0 = resource.getrusage(resource.RUSAGE_CHILDREN).ru_utime
-        ta = time.time()
-        print("about to run BPNN")
-        estimated_ln_partition_function = lbp_net(sat_problem)
-        print("done to run BPNN")        
-        t1 = resource.getrusage(resource.RUSAGE_CHILDREN).ru_utime
-        tb = time.time()
-        
-        print("timing good?:", t1-t0)
-        print("timing bad?:", tb-ta)
-        runtimes.append(tb-ta)
+    problem_idx = 0
+    for repeat_idx in range(2): #the first time the network is run seems to be slow, initialization i assume, so discard initial run (or 2) to be safe
+        for sat_problem in test_data_loader:
+            sat_problem = sat_problem.to(device)
+            sat_problem.state_dimensions = sat_problem.state_dimensions[0] #hack for batching,
+            sat_problem.var_cardinality = sat_problem.var_cardinality[0] #hack for batching,
+            sat_problem.belief_repeats = sat_problem.belief_repeats[0] #hack for batching,
 
-        
-        
-        if runLBP:
-            print("sat problem:", test_problems[idx], "exact ln_Z:", exact_ln_partition_function, "estimate:", estimated_ln_partition_function, "LBP:", lbp_estimate)        
-        BPNN_estimated_counts.append(estimated_ln_partition_function.item())
-        exact_solution_counts.append(exact_ln_partition_function.item())
-        loss = loss_func(estimated_ln_partition_function, exact_ln_partition_function.float().squeeze())
-        assert(estimated_ln_partition_function.numel() == exact_ln_partition_function.numel())
-        loss_sum += loss.item()*estimated_ln_partition_function.numel()
-        test_problem_count_check += estimated_ln_partition_function.numel()
-        print("squared error:", (estimated_ln_partition_function.item() - exact_ln_partition_function.float().squeeze().item())**2)
-        print("loss:", (estimated_ln_partition_function.item() - exact_ln_partition_function.float().squeeze().item())**2)
-        squared_errors.append((estimated_ln_partition_function.item() - exact_ln_partition_function.float().squeeze().item())**2)
-        print("estimated_ln_partition_function:", estimated_ln_partition_function)
-        print("exact_ln_partition_function:", exact_ln_partition_function)
-        print()
+            exact_ln_partition_function = sat_problem.ln_Z
+            # sat_problem.compute_bethe_free_energy()
+            t0 = resource.getrusage(resource.RUSAGE_CHILDREN).ru_utime
+            ta = time.time()
+            print("about to run BPNN")
+            if True:
+                estimated_ln_partition_function, prv_prv_varToFactor_messages, prv_prv_factorToVar_messages,\
+                    prv_varToFactor_messages, prv_factorToVar_messages = lbp_net(sat_problem)#, shared_weight_iteration=args.msg_passing_iters)
+            else:
+                estimated_ln_partition_function = lbp_net(sat_problem)
+            print("done to run BPNN")        
+            t1 = resource.getrusage(resource.RUSAGE_CHILDREN).ru_utime
+            tb = time.time()
+            
+            print("timing good?:", t1-t0)
+            print("timing bad?:", tb-ta)
+            # sleep(time_Check)
+            if repeat_idx != 1:
+                continue
+            
+            assert(estimated_ln_partition_function.numel() == exact_ln_partition_function.numel())
+            for batch_idx in range(estimated_ln_partition_function.numel()):
+                runtimes.append((tb-ta)/estimated_ln_partition_function.numel())
 
+                problem_names.append(test_problems[problem_idx])
+                runLBP = False
+                if runLBP:
+                    print("about to parse dimacs")
+                    n_vars, clauses, load_successful = parse_dimacs(filename = SAT_PROBLEMS_DIR + "/" + test_problems[problem_idx] + '.cnf.gz.no_w.cnf')
+                    # print("about to run_loopyBP")
+                    # lbp_estimate = run_loopyBP(clauses, n_vars, maxiter=10, updates="SEQRND", damping='.5')
+                    print("LBP:", lbp_estimate)
+                    print("sat problem:", test_problems[problem_idx], "exact ln_Z:", exact_ln_partition_function[batch_idx], "estimate:", estimated_ln_partition_function[batch_idx], "LBP:", lbp_estimate)        
+
+                BPNN_estimated_counts.append(estimated_ln_partition_function[batch_idx].item())
+                exact_solution_counts.append(exact_ln_partition_function[batch_idx].item())
+                loss = loss_func(estimated_ln_partition_function[batch_idx], exact_ln_partition_function[batch_idx].float().squeeze())
+                # assert(estimated_ln_partition_function.numel() == exact_ln_partition_function.numel())
+                loss_sum += loss.item()#*estimated_ln_partition_function.numel()
+                test_problem_count_check += 1#estimated_ln_partition_function.numel()
+                print("squared error:", (estimated_ln_partition_function[batch_idx].item() - exact_ln_partition_function[batch_idx].float().squeeze().item())**2)
+                print("loss:", (estimated_ln_partition_function[batch_idx].item() - exact_ln_partition_function[batch_idx].float().squeeze().item())**2)
+                squared_errors.append((estimated_ln_partition_function[batch_idx].item() - exact_ln_partition_function[batch_idx].float().squeeze().item())**2)
+                print("estimated_ln_partition_function[batch_idx]:", estimated_ln_partition_function[batch_idx])
+                print("exact_ln_partition_function:", exact_ln_partition_function[batch_idx])
+                print()
+                problem_idx += 1
+
+    print("runtimes:", runtimes)
 #     runtimes_json_string = json.dumps(runtimes)
     results = {'squared_errors': squared_errors, 'runtimes': runtimes, 
                'BPNN_estimated_ln_counts': BPNN_estimated_counts, 
@@ -731,7 +753,7 @@ def test():
 #     with open(runtimes_dir + PROBLEM_CATEGORY_TEST + "_runtimes.json", 'w') as outfile:
 #         json.dump(runtimes, outfile)
 
-    with open(runtimes_dir + "or50_trainSet_runtimesAndErrors_3layer.json", 'w') as outfile:
+    with open(runtimes_dir + "or50_trainSet_runtimesAndErrors_5layer.json", 'w') as outfile:
         json.dump(results, outfile)
         
     assert(len(test_SAT_list) == test_problem_count_check)
@@ -765,4 +787,4 @@ def test():
 
 if __name__ == "__main__":
     train()
-#     test()
+    # test()

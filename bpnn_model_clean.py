@@ -5,7 +5,8 @@ from torch.utils.data import DataLoader
 from torch_geometric.utils import scatter_
 from torch_scatter import scatter_logsumexp
 from sat_helpers.sat_data import parse_dimacs, SatProblems, build_factorgraph_from_SATproblem
-from utils import dotdict, logminusexp, shift_func, logsumexp_multipleDim, reflect_xy, variable_state_equivariant_22 #wrote a helper function that is not used in this file: log_normalize
+from utils import dotdict, logminusexp, shift_func, logsumexp_multipleDim, reflect_xy, variable_state_equivariant_22, var_idx_perm_equivariant_5dfactor #wrote a helper function that is not used in this file: log_normalize
+from permutation_equiv_utils import var_idx_perm_equivariant_5dfactor_sample
 import time
 import matplotlib.pyplot as plt
 import matplotlib
@@ -719,16 +720,24 @@ var_cardinality))))
                 varToFactor_expandedMessages_shape = varToFactor_expandedMessages.shape
                 assert(not torch.isnan(varToFactor_expandedMessages).any()), varToFactor_expandedMessages
                 
-                varIdx_varState_equivariant = False
-                if varIdx_varState_equivariant:
+                
+                equivariance_type = 'varIdx_5d_permutation_equivariant'
+                assert equivariance_type in ['varIdx_5d_permutation_equivariant', 'varIdx_varState_equivariant', 'varIdx_permutation_equivariant', 'none']
+                if equivariance_type == 'varIdx_5d_permutation_equivariant':
+                    combined_out = var_idx_perm_equivariant_5dfactor_sample(mlp=self.mlp1, input_tensor=varToFactor_expandedMessages, functions_to_sample=32)
+                    # combined_out = var_idx_perm_equivariant_5dfactor(mlp=self.mlp1, input_tensor=varToFactor_expandedMessages)
+
+                    # assert(torch.abs(combined_out - varToFactor_expandedMessages) < 1).all(), torch.abs(combined_out - varToFactor_expandedMessages)
+                    varToFactor_expandedMessages = (1-alpha2)*combined_out + alpha2*varToFactor_expandedMessages
+
+                elif equivariance_type == 'varIdx_varState_equivariant':
                     # print("varToFactor_expandedMessages.shape:", varToFactor_expandedMessages.shape)
                     # sleep(shapecheck_asdf)
                     assert(self.var_cardinality == 2)
                     combined_out = variable_state_equivariant_22(mlp=self.mlp1, input_tensor=varToFactor_expandedMessages)       
                     varToFactor_expandedMessages = (1-alpha2)*combined_out + alpha2*varToFactor_expandedMessages             
 
-                varIdx_permutation_equivariant = False
-                if varIdx_permutation_equivariant:
+                elif equivariance_type == 'varIdx_permutation_equivariant':
                     swap_idx_tensor = torch.tensor([1,0], device='cuda')
                     perm1 = torch.index_select(varToFactor_expandedMessages, dim=2, index=swap_idx_tensor)
                     perm2 = torch.index_select(varToFactor_expandedMessages, dim=3, index=swap_idx_tensor)
@@ -758,6 +767,7 @@ var_cardinality))))
                     combined_out = (out0 + out1 + out2 + out3 + out4 + out5)/6
                     varToFactor_expandedMessages = (1-alpha2)*combined_out + alpha2*varToFactor_expandedMessages
                 else:
+                    assert(equivariance_type == 'none')
                     varToFactor_expandedMessages = (1-alpha2)*self.mlp1(varToFactor_expandedMessages.view(varToFactor_expandedMessages_shape[0], -1)).view(varToFactor_expandedMessages_shape) + alpha2*varToFactor_expandedMessages
                 
             
@@ -797,15 +807,20 @@ var_cardinality))))
                 factor_beliefs_shape = factor_beliefs.shape
                 check_factor_beliefs(factor_beliefs) #debugging
 
-                varIdx_varState_equivariant = False
-                if varIdx_varState_equivariant:
+                equivariance_type = 'varIdx_5d_permutation_equivariant'
+                assert equivariance_type in ['varIdx_5d_permutation_equivariant', 'varIdx_varState_equivariant', 'varIdx_permutation_equivariant', 'none']
+                if equivariance_type == 'varIdx_5d_permutation_equivariant':
+                    combined_out = var_idx_perm_equivariant_5dfactor_sample(mlp=self.mlp2, input_tensor=factor_beliefs, functions_to_sample=32)
+                    # combined_out = var_idx_perm_equivariant_5dfactor(mlp=self.mlp2, input_tensor=factor_beliefs)
+                    factor_beliefs = (1-alpha2)*combined_out + alpha2*factor_beliefs
+
+                elif equivariance_type == 'varIdx_varState_equivariant':
                     assert(self.var_cardinality == 2)
                     combined_out = variable_state_equivariant_22(mlp=self.mlp2, input_tensor=factor_beliefs)       
                     factor_beliefs = (1-alpha2)*combined_out + alpha2*factor_beliefs
 
 
-                varIdx_permutation_equivariant = False
-                if varIdx_permutation_equivariant:
+                elif equivariance_type == 'varIdx_permutation_equivariant':
                     swap_idx_tensor = torch.tensor([1,0], device='cuda')
                     perm1 = torch.index_select(factor_beliefs, dim=2, index=swap_idx_tensor)
                     perm2 = torch.index_select(factor_beliefs, dim=3, index=swap_idx_tensor)
@@ -834,7 +849,8 @@ var_cardinality))))
 
                     combined_out = (out0 + out1 + out2 + out3 + out4 + out5)/6
                     factor_beliefs = (1-alpha2)*combined_out + alpha2*factor_beliefs
-                else:                
+                else:      
+                    assert(equivariance_type == 'none')          
                     factor_beliefs = (1-alpha2)*self.mlp2(factor_beliefs.view(factor_beliefs_shape[0], -1)).view(factor_beliefs_shape) + alpha2*factor_beliefs
 
                 # check_factor_beliefs(factor_beliefs) #debugging
