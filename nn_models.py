@@ -13,6 +13,8 @@ import time
 from parameters import LN_ZERO
 import json
 
+from permutation_equiv_utils_finalBethe import permute_dim1112, var_idx_perm_equivariant_5dfactor_all
+
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
 # from bpnn_model_partialRefactorNoBeliefRepeats import FactorGraphMsgPassingLayer_NoDoubleCounting
 USE_OLD_CODE = False
@@ -31,7 +33,8 @@ class lbp_message_passing_network(nn.Module):
                 belief_repeats=None, var_cardinality=None, learn_bethe_residual_weight=False,
                  initialize_to_exact_bethe = True, alpha_damping_FtoV=None, alpha_damping_VtoF=None, use_old_bethe=None,
                  APPLY_BP_POST_BPNN=False, APPLY_BP_EVERY_ITER=False, BPNN_layers_per_shared_weight_layer=1,
-                 USE_MLP_DAMPING_FtoV=False, USE_MLP_DAMPING_VtoF=False, learn_initial_messages=False):
+                 USE_MLP_DAMPING_FtoV=False, USE_MLP_DAMPING_VtoF=False, learn_initial_messages=False,
+                 FACTOR_GRAPH_REPRESENTATION_INVARIANT=False):
         '''
         Inputs:
         - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
@@ -65,6 +68,7 @@ class lbp_message_passing_network(nn.Module):
         - APPLY_BP_EVERY_ITER (bool): if True, apply a standard BP message passing interation (no learned MLPS) after every shared weight BPNN layer
         - BPNN_layers_per_shared_weight_layer (int): apply this many BP layers (with different weights) in every shared weight layer
         - learn_initial_messages (bool): if true, make initial beliefs and messages learnable parameters (currently expects a fixed batch size, hard coded)
+        - FACTOR_GRAPH_REPRESENTATION_INVARIANT (bool): if True, average over permutations of factor beliefs/potentials when computing Bethe approximation
         '''
         super().__init__()        
         self.share_weights = share_weights
@@ -76,6 +80,7 @@ class lbp_message_passing_network(nn.Module):
         self.APPLY_BP_POST_BPNN = APPLY_BP_POST_BPNN
         self.APPLY_BP_EVERY_ITER = APPLY_BP_EVERY_ITER
         self.learn_initial_messages = learn_initial_messages
+        self.FACTOR_GRAPH_REPRESENTATION_INVARIANT = FACTOR_GRAPH_REPRESENTATION_INVARIANT
         if learn_initial_messages:
             self.prv_factor_beliefs = torch.nn.Parameter(torch.log(torch.rand([280, 1, 2, 2])))
             self.prv_factorToVar_messages = torch.nn.Parameter(torch.log(torch.rand([460, 1, 2])))
@@ -203,6 +208,7 @@ class lbp_message_passing_network(nn.Module):
                 # self.final_mlp = Seq(self.linear1, ReLU(), self.linear1a, ReLU(), self.linear1b, ReLU(), self.linear2)  
             elif bethe_MLP == 'linear':
                 self.final_mlp = Seq(self.linear1, self.linear2)  
+                # self.final_mlp = Seq(self.linear2)  
             else:
                 assert(False), "Error: invalid value given for bethe_MLP"
 
@@ -445,7 +451,16 @@ class lbp_message_passing_network(nn.Module):
 #             print("torch.mean(pooled_states):", torch.mean(torch.cat(pooled_states, dim=1)))  
 
             # print("torch.cat(pooled_states, dim=1).shape:", torch.cat(pooled_states, dim=1).shape)
-            learned_estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
+            out_orig = self.final_mlp(torch.cat(pooled_states, dim=1))
+            # FACTOR_GRAPH_REPRESENTATION_INVARIANT = True
+            if self.FACTOR_GRAPH_REPRESENTATION_INVARIANT:
+                learned_estimated_ln_partition_function = var_idx_perm_equivariant_5dfactor_all(mlp=self.final_mlp, input_tensor=torch.stack(pooled_states, dim=1))
+                # print("pooled_states[0].shape:", pooled_states[0].shape)
+                # print("torch.stack(pooled_states, dim=1).shape:", torch.stack(pooled_states, dim=1).shape)
+                # sleep(temp) 
+            else:
+                learned_estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
+
             # print("learned_estimated_ln_partition_function:", learned_estimated_ln_partition_function)
             if self.only_final_beliefs == False:
                 learned_estimated_ln_partition_function = learned_estimated_ln_partition_function/(self.msg_passing_iters-self.exclude_iters_from_finalBetheMLP)

@@ -49,7 +49,7 @@ conda activate /atlas/u/jkuck/learn_BP/venv35
 # echo ${13}
 # python learn_BP_SAT.py --max_factor_state_dimensions $1 --msg_passing_iters $2 --belief_repeats $3 --random_seed $4 --problem_category_train $5 --train_val_split $6 --batch_size $7 --lne_mlp $8 --alpha_damping_FtoV $9 --alpha_damping_VtoF ${10} --use_MLP1 ${11} --use_MLP2 ${11} --use_MLP3 ${12} --use_MLP4 ${12} --bethe_mlp ${13} --SHARE_WEIGHTS ${14}
 
-python learn_BP_SAT.py --problem_category_train $1 --subtract_prv_messages $2 --train_val_split $3
+python learn_BP_SAT.py --problem_category_train $1 --subtract_prv_messages $2 --train_val_split $3 --USE_MLP_DAMPING_FtoV $4 --bethe_mlp $5 --learning_rate $6 --factor_graph_representation_invariant $7
 # python learn_BP_SAT.py
 
 

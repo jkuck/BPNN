@@ -55,6 +55,8 @@ parser.add_argument('--batch_size', type=int, default=10)
 # parser.add_argument('--learning_rate', type=float, default=0.0001)
 
 parser.add_argument('--learning_rate', type=float, default=0.00002)
+# parser.add_argument('--learning_rate', type=float, default=0.0001)
+# parser.add_argument('--learning_rate', type=float, default=0.0001)
 # parser.add_argument('--learning_rate', type=float, default=0.000002)
 # parser.add_argument('--learning_rate', type=float, default=0.000008)
 # parser.add_argument('--learning_rate', type=float, default=0.000)
@@ -68,8 +70,8 @@ parser.add_argument('--alpha_damping_VtoF', type=float, default=1.0)
 parser.add_argument('--lne_mlp', type=boolean_string, default=False)
 
 #original MLPs that operate on factor beliefs (problematic because they're not index invariant)
-parser.add_argument('--use_MLP1', type=boolean_string, default=True)
-parser.add_argument('--use_MLP2', type=boolean_string, default=True)
+parser.add_argument('--use_MLP1', type=boolean_string, default=False)
+parser.add_argument('--use_MLP2', type=boolean_string, default=False)
 
 #new MLPs that operate on variable beliefs
 parser.add_argument('--use_MLP3', type=boolean_string, default=False)
@@ -81,7 +83,7 @@ parser.add_argument('--use_MLP6', type=boolean_string, default=False)
 parser.add_argument('--use_MLP_EQUIVARIANT', type=boolean_string, default=False)
 
 #new MLPs that operate on message differences, e.g. in place of damping
-parser.add_argument('--USE_MLP_DAMPING_FtoV', type=boolean_string, default=False)
+parser.add_argument('--USE_MLP_DAMPING_FtoV', type=boolean_string, default=True)
 parser.add_argument('--USE_MLP_DAMPING_VtoF', type=boolean_string, default=False)
 
 #if true, share the weights between layers in a BPNN
@@ -95,6 +97,11 @@ parser.add_argument('--subtract_prv_messages', type=boolean_string, default=True
 parser.add_argument('--bethe_mlp', type=str, default='linear',\
     choices=['shifted','standard','linear','none'])
 
+#if True, average over permutations of factor beliefs/potentials when computing Bethe approximation
+parser.add_argument('--factor_graph_representation_invariant', type=boolean_string, default=False)
+
+
+
 #if True, use the old Bethe approximation that doesn't work with batches
 #only valid for bethe_mlp='none'
 parser.add_argument('--use_old_bethe', type=boolean_string, default=False)
@@ -103,7 +110,7 @@ parser.add_argument('--use_old_bethe', type=boolean_string, default=False)
 #args.random_seed = 0 and 1 seem to produce very different results for s_problems
 parser.add_argument('--random_seed', type=int, default=1)
 
-parser.add_argument('--problem_category_train', type=str, default='blasted_problems',\
+parser.add_argument('--problem_category_train', type=str, default='group3',\
     choices=['problems_75','problems_90','or_50_problems','or_60_problems','or_70_problems',\
     'or_100_problems', 'blasted_problems','s_problems','group1','group2','group3','group4'])
 
@@ -226,13 +233,13 @@ SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/exact_SAT_counts_noIndSets/"
 # SOLUTION_COUNTS_DIR = TRAINING_DATA_DIR + "SAT_problems_solved"
 
 
-EPOCH_COUNT = 2000
+EPOCH_COUNT = 5000
 PRINT_FREQUENCY = 10
 SAVE_FREQUENCY = 1
 VAL_FREQUENCY = 10
 ##########################
 ##### Optimizer parameters #####
-STEP_SIZE=200
+STEP_SIZE=500
 LR_DECAY=.5 
 LEARNING_RATE = args.learning_rate
 # LEARNING_RATE = 0.0001 #10layer with Bethe_mlp
@@ -264,7 +271,9 @@ LEARNING_RATE = args.learning_rate
 # wandb.init(project="learn_BP_sat_12345")
 
 # wandb.init(project="learn_BP_sat_debug1")
-wandb.init(project="learn_BP_sat_debug12")
+# wandb.init(project="learn_BP_sat_dampingMLPwithMsgInfo")
+# wandb.init(project="learn_BP_sat_dampingMLPwithoutMsgInfo1")
+wandb.init(project="learn_BP_sat_BetheInvariant1")
 # wandb.init(project="learn_BP_sat_MLP34_CompareDoubleCount_andBethe")
 
 
@@ -300,6 +309,7 @@ wandb.config.USE_MLP_DAMPING_FtoV = args.USE_MLP_DAMPING_FtoV
 wandb.config.USE_MLP_DAMPING_VtoF = args.USE_MLP_DAMPING_VtoF
 wandb.config.SHARE_WEIGHTS = args.SHARE_WEIGHTS
 wandb.config.subtract_prv_messages = args.subtract_prv_messages
+wandb.config.factor_graph_representation_invariant = args.factor_graph_representation_invariant
 
 wandb.config.use_old_bethe = args.use_old_bethe
 
@@ -314,7 +324,7 @@ lbp_net = lbp_message_passing_network(max_factor_state_dimensions=args.max_facto
     USE_MLP_DAMPING_FtoV=args.USE_MLP_DAMPING_FtoV, USE_MLP_DAMPING_VtoF=args.USE_MLP_DAMPING_VtoF,\
     subtract_prv_messages=args.subtract_prv_messages, share_weights = args.SHARE_WEIGHTS, bethe_MLP=args.bethe_mlp,\
     belief_repeats=args.belief_repeats, var_cardinality=VAR_CARDINALITY, alpha_damping_FtoV=args.alpha_damping_FtoV,\
-    alpha_damping_VtoF=args.alpha_damping_VtoF, use_old_bethe=args.use_old_bethe)
+    alpha_damping_VtoF=args.alpha_damping_VtoF, use_old_bethe=args.use_old_bethe, FACTOR_GRAPH_REPRESENTATION_INVARIANT=args.factor_graph_representation_invariant)
 # lbp_net.double()
 lbp_net = lbp_net.to(device)
 
