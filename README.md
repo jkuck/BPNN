@@ -43,4 +43,4 @@ Make Fig 1, aggregating BPNN/GNN/BP comparison with data/experiments/make_figure
 ## SAT data info
 - data/sat_problems_noIndSets contains SAT problems stripped of sampling sets and independent sets
 - data/sat_problems_IndSetsRecomputed contains SAT problems stripped of sampling sets and with independent sets recomputed with a timeout of 1000 seconds
-
+- Dsharp/ApproxMC/F2 results obtained by running /atlas/u/jkuck/F2/fireworks/fireworks_compare_bounds.py
