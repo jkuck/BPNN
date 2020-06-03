@@ -13,7 +13,7 @@ import math
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
 from bpnn_model_sbm_dampingmlp import FactorGraphMsgPassingLayer_NoDoubleCounting, logsumexp_multipleDim
 from parameters_sbm_bethe import LN_ZERO, SHARE_WEIGHTS, BETHE_MLP, EXACT_BETHE, alpha2, FINAL_MLP, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP, USE_MLP_1, USE_MLP_2, USE_MLP_3, USE_MLP_4, INITIALIZE_EXACT_BP, USE_MLP_DAMPING_FtoV, USE_MLP_DAMPING_VtoF
-
+from perm_invariant_bethe import var_idx_perm_equivariant_2dfactor_all
 
 class lbp_message_passing_network(nn.Module):
     def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
@@ -174,8 +174,8 @@ class lbp_message_passing_network(nn.Module):
             return var_beliefs
 
         if self.bethe_MLP:
-            learned_estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
-                 
+            #learned_estimated_ln_partition_function = self.final_mlp(torch.cat(pooled_states, dim=1))
+            learned_estimated_ln_partition_function = var_idx_perm_equivariant_2dfactor_all(self.final_mlp, torch.stack(pooled_states, dim = 1))     
             if self.learn_bethe_residual_weight:
                 final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
                 bethe_estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)
@@ -209,6 +209,7 @@ class lbp_message_passing_network(nn.Module):
             final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
             estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)
             ret = estimated_ln_partition_function
+        #print(prv_factor_beliefs)
         return torch.mean(prv_var_beliefs, dim = 1), ret, max_diff_messages_fv, max_diff_messages_vf      
 
 
@@ -433,15 +434,15 @@ class GIN_Network_withEdgeFeatures(nn.Module):
         - feat_all_layers (bool): if True, use concatenation of sum of all node features after every layer as input to final MLP
         '''
         super().__init__()
-        layers = [GINConv_withEdgeFeatures(nn1=Seq(Linear(hidden_size, hidden_size), ReLU(), Linear(hidden_size, hidden_size)),
-                                          nn2=Seq(Linear(input_state_size + edge_attr_size, hidden_size), ReLU(), Linear(hidden_size, hidden_size)))] + \
-                 [GINConv_withEdgeFeatures(nn1=Seq(Linear(hidden_size, hidden_size), ReLU(), Linear(hidden_size, hidden_size)),
-                                          nn2=Seq(Linear(hidden_size + edge_attr_size, hidden_size), ReLU(), Linear(hidden_size, hidden_size)))\
+        layers = [GINConv_withEdgeFeatures(nn1=Seq(Linear(hidden_size, hidden_size), bn(hidden_size), ReLU(), Linear(hidden_size, hidden_size)),
+                                          nn2=Seq(Linear(input_state_size + edge_attr_size, hidden_size), bn(hidden_size), ReLU(), Linear(hidden_size, hidden_size)))] + \
+                 [GINConv_withEdgeFeatures(nn1=Seq(Linear(hidden_size, hidden_size), bn(hidden_size), ReLU(), Linear(hidden_size, hidden_size)),
+                                          nn2=Seq(Linear(hidden_size + edge_attr_size, hidden_size), bn(hidden_size), ReLU(), Linear(hidden_size, hidden_size)))\
                                           for i in range(msg_passing_iters - 1)]
         self.message_passing_layers = nn.ModuleList(layers)
         self.feat_all_layers = feat_all_layers
         if self.feat_all_layers:
-            self.final_mlp = Seq(Linear(msg_passing_iters*hidden_size, msg_passing_iters*hidden_size), ReLU(), Linear(msg_passing_iters*hidden_size, 1))            
+            self.final_mlp = Seq(Linear(msg_passing_iters*hidden_size, msg_passing_iters*hidden_size), bn(msg_passing_iters * hidden_size), ReLU(), Linear(msg_passing_iters*hidden_size, 1))            
         else:
             self.final_mlp = Seq(Linear(hidden_size, hidden_size), ReLU(), Linear(hidden_size, 1))
         
