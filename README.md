@@ -34,6 +34,11 @@ Run learn_BP_spinGlass.py with mode="test"
 - Set BPNN_trained_model_path and GNN_trained_model_path to the appropriate trained model paths
 - create latex table with data/experiments/make_latex_table.py
 
+Ising Model convergence plots:
+- set PLOT_CONVERGENCE=True in nn_models.py (and set whether BP or BPNN data is recorded)
+- run learn_BP_spinGlass.py (loading a trained BPNN model, or pre-training for BP)
+- run plot_convergence/make_plots.py
+
 SAT table/figures
 - Make the SAT tables in latex form from wandb results using data/wandbCSV_to_latexTable.py
 - run data/compare_BPNNvsHashing_runtimes.py (for the figuring comparing approximation of BPNN vs. F2 vs. ApproxMC and for the time ratio comparison)
