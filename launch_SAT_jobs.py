@@ -71,18 +71,20 @@ def launch_experiments_on_blasted():
 
 def launch_1experiment_per_category():
     for problem_category_train in ['blasted_problems', 'or_50_problems','problems_75','problems_90','or_60_problems','or_70_problems',\
-                                    'or_100_problems', 's_problems', 'group2']:
+                                    'or_100_problems', 's_problems', 'group2', 'group3']:
         subprocess.run(["sbatch", "launch_bpSAT_sbatch.sh", problem_category_train])
 
 def compare_double_counting():
-    # for problem_category_train in ['blasted_problems', 'or_50_problems','problems_75','problems_90','s_problems', 'group2', 'group3', 'or_60_problems','or_70_problems',\
-    #                                 'or_100_problems']:
-    for problem_category_train in ['group2', 'group3']:
-        for train_val_split in ["random_shuffle"]:#, "easyTrain_hardVal"]:  
+    for problem_category_train in ['blasted_problems', 'or_50_problems','problems_75','problems_90','s_problems', 'or_60_problems','or_70_problems',\
+                                    'or_100_problems']:
+    # for problem_category_train in ['group2', 'group3']:
+    # for problem_category_train in ['group2']:
+        for train_val_split in ["random_shuffle", "easyTrain_hardVal"]:  
             for subtract_prv_messages in ["True", "False"]:
                 for USE_MLP_DAMPING_FtoV in ["True"]:#, "False"]:
-                    for bethe_mlp in ["linear"]:#, "standard"]:
-                        for learning_rate in ["0.00002", "0.0001"]:
+                    for bethe_mlp in ["standard"]:#, "linear"]:
+                        # for learning_rate in ["0.0002", "0.00005"]:
+                        for learning_rate in ["0.0001"]:
                             for factor_graph_representation_invariant in ["True", "False"]:
                                 subprocess.run(["sbatch", "launch_bpSAT_sbatch.sh", problem_category_train, subtract_prv_messages, train_val_split, USE_MLP_DAMPING_FtoV, bethe_mlp, learning_rate, factor_graph_representation_invariant])
 
@@ -91,5 +93,5 @@ def compare_double_counting():
 # launch_set_of_experiments()
 # launch_experiments_on_blasted()
 
-# launch_1experiment_per_category()
-compare_double_counting()
+launch_1experiment_per_category()
+# compare_double_counting()

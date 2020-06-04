@@ -13,7 +13,7 @@ import time
 from parameters import LN_ZERO
 import json
 
-from permutation_equiv_utils_finalBethe import permute_dim1112, var_idx_perm_equivariant_5dfactor_all
+from permutation_equiv_utils_finalBethe import permute_dim1112, var_idx_perm_equivariant_5dfactor_all, var_idx_perm_equivariant_2dfactor_all, var_idx_perm_equivariant_5dfactor_sample
 
 # from bpnn_model import FactorGraphMsgPassingLayer_NoDoubleCounting
 # from bpnn_model_partialRefactorNoBeliefRepeats import FactorGraphMsgPassingLayer_NoDoubleCounting
@@ -70,7 +70,8 @@ class lbp_message_passing_network(nn.Module):
         - learn_initial_messages (bool): if true, make initial beliefs and messages learnable parameters (currently expects a fixed batch size, hard coded)
         - FACTOR_GRAPH_REPRESENTATION_INVARIANT (bool): if True, average over permutations of factor beliefs/potentials when computing Bethe approximation
         '''
-        super().__init__()        
+        super().__init__()     
+        self.max_factor_state_dimensions = max_factor_state_dimensions   
         self.share_weights = share_weights
         self.msg_passing_iters = msg_passing_iters
         self.bethe_MLP = bethe_MLP
@@ -134,7 +135,84 @@ class lbp_message_passing_network(nn.Module):
                     use_MLP3=False, use_MLP4=False, use_MLP5=True, use_MLP6=True, use_MLP_EQUIVARIANT=False, subtract_prv_messages=True, alpha_damping_FtoV=alpha_damping_FtoV, alpha_damping_VtoF=alpha_damping_VtoF) 
 
 
-        if bethe_MLP != 'none':
+        if bethe_MLP != 'none' and self.FACTOR_GRAPH_REPRESENTATION_INVARIANT:
+            var_cardinality = var_cardinality #2 for binary variables
+            num_ones = belief_repeats*(2*(var_cardinality**max_factor_state_dimensions))
+            mlp_size =  msg_passing_iters*num_ones
+            self.linear1_factors = Linear(mlp_size, mlp_size)
+            self.linear2_factors = Linear(mlp_size, 1)
+
+            self.linear1_vars = Linear(msg_passing_iters*var_cardinality, msg_passing_iters*var_cardinality)
+            self.linear2_vars = Linear(msg_passing_iters*var_cardinality, 1)
+
+            if initialize_to_exact_bethe:  
+                self.linear1_factors.weight = torch.nn.Parameter(torch.eye(mlp_size))
+                self.linear1_factors.bias = torch.nn.Parameter(torch.zeros(self.linear1_factors.bias.shape))
+
+                self.linear1_vars.weight = torch.nn.Parameter(torch.eye(msg_passing_iters*var_cardinality))
+                self.linear1_vars.bias = torch.nn.Parameter(torch.zeros(self.linear1_vars.bias.shape))
+
+                weight_initialization = torch.zeros((1,mlp_size))
+                weight_initialization_vars = torch.zeros((1,msg_passing_iters*var_cardinality))
+                self.only_final_beliefs = True #if true, initialize to compute the bethe approx from only the final iteration beliefs
+
+                # weight_initialization = torch.ones((1,mlp_size))
+                if self.bethe_MLP == 'standard':
+                    assert(belief_repeats == 1), ("Not implemented for belief_repeats > 1!!, need to swap back to returning standard")
+                    if self.only_final_beliefs:
+                        weight_initialization[0, -num_ones:] = -1.0/belief_repeats
+                        weight_initialization[0, -(var_cardinality**max_factor_state_dimensions):] *= -1
+
+                        weight_initialization_vars[0, :] = -1.0/belief_repeats
+
+                    else: #use beliefs from all but exclude_iters_from_finalBetheMLP iterations upon initialization
+                        self.exclude_iters_from_finalBetheMLP = 4
+                        weight_initialization_each_msg_passing_iter = -torch.ones(num_ones)/belief_repeats
+                        weight_initialization_each_msg_passing_iter[-(var_cardinality**max_factor_state_dimensions):] = 1.0/belief_repeats
+
+                        for msg_passing_idx in range(self.exclude_iters_from_finalBetheMLP, self.msg_passing_iters):
+                            weight_initialization[0,msg_passing_idx*var_cardinality:(msg_passing_idx+1)*var_cardinality] = weight_initialization_each_msg_passing_iter
+                            weight_initialization_vars[0,msg_passing_idx*var_cardinality:(msg_passing_idx+1)*var_cardinality] = -1.0/belief_repeats
+
+                else:
+                    weight_initialization[0,-num_ones:] = 1.0/belief_repeats
+                    weight_initialization_vars[0,-var_cardinality:] = 1.0/belief_repeats
+                    # weight_initialization[0, 4*num_ones:] = 1.0/belief_repeats
+
+                self.linear2_factors.weight = torch.nn.Parameter(weight_initialization)
+                self.linear2_factors.bias = torch.nn.Parameter(torch.zeros(self.linear2_factors.bias.shape)) 
+                self.linear2_vars.weight = torch.nn.Parameter(weight_initialization_vars)
+                self.linear2_vars.bias = torch.nn.Parameter(torch.zeros(self.linear2_vars.bias.shape)) 
+    
+            
+            if bethe_MLP == 'shifted':
+                self.shifted_relu = shift_func(ReLU(), shift=-500)
+                self.final_mlp_factors = Seq(self.linear1_factors, self.shifted_relu, self.linear2_factors, self.shifted_relu)  
+                self.final_mlp_vars = Seq(self.linear1_vars, self.shifted_relu, self.linear2_vars, self.shifted_relu)  
+            elif bethe_MLP == 'standard':
+                self.final_mlp_factors = Seq(self.linear1_factors, ReLU(), self.linear2_factors)  
+                self.final_mlp_vars = Seq(self.linear1_vars, ReLU(), self.linear2_vars)  
+                # self.final_mlp_factors = Seq(self.linear1_factors, ReLU(), self.linear1a, ReLU(), self.linear1b, ReLU(), self.linear2_factors)  
+            elif bethe_MLP == 'linear':
+                self.final_mlp_factors = Seq(self.linear1_factors, self.linear2_factors)  
+                self.final_mlp_vars = Seq(self.linear1_vars, self.linear2_vars)  
+                # self.final_mlp_factors = Seq(self.linear2_factors)  
+            else:
+                assert(False), "Error: invalid value given for bethe_MLP"
+
+
+
+
+
+
+
+
+
+
+
+
+
+        elif bethe_MLP != 'none':
             var_cardinality = var_cardinality #2 for binary variables
             num_ones = belief_repeats*(2*(var_cardinality**max_factor_state_dimensions)+var_cardinality)
             mlp_size =  msg_passing_iters*num_ones
@@ -156,48 +234,66 @@ class lbp_message_passing_network(nn.Module):
 #                 print("self.linear1.weight:", self.linear1.weight)
 #                 sleep(alsfdjlksadjflks)
 
-                self.linear1.weight = torch.nn.Parameter(torch.eye(mlp_size))
-                self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+                DEBUG = False
+                if DEBUG:
+                    self.only_final_beliefs = True #if true, initialize to compute the bethe approx from only the final iteration beliefs
+                    # self.exclude_iters_from_finalBetheMLP = 4
 
-                self.linear1a.weight = torch.nn.Parameter(torch.eye(mlp_size))
-                self.linear1a.bias = torch.nn.Parameter(torch.zeros(self.linear1a.bias.shape))
+                    torch.random.manual_seed(0)
+                    self.linear1.weight = torch.nn.Parameter(torch.rand_like(self.linear1.weight))
+                    self.linear1.bias = torch.nn.Parameter(torch.rand_like(self.linear1.bias))
 
-                self.linear1b.weight = torch.nn.Parameter(torch.eye(mlp_size))
-                self.linear1b.bias = torch.nn.Parameter(torch.zeros(self.linear1b.bias.shape))
+                    self.linear1a.weight = torch.nn.Parameter(torch.rand_like(self.linear1a.weight))
+                    self.linear1a.bias = torch.nn.Parameter(torch.rand_like(self.linear1a.bias))
 
-                weight_initialization = torch.zeros((1,mlp_size))
-                self.only_final_beliefs = True
-
-                # weight_initialization = torch.ones((1,mlp_size))
-                if self.bethe_MLP == 'standard':
-                    assert(belief_repeats == 1), ("Not implemented for belief_repeats > 1!!, need to swap back to returning standard")
-
-                    if self.only_final_beliefs:
-                        weight_initialization[0, -num_ones:] = -1.0/belief_repeats
-                        weight_initialization[0, -(var_cardinality**max_factor_state_dimensions)-var_cardinality : -var_cardinality] *= -1
-
-
-                    else: #use beliefs from all but exclude_iters_from_finalBetheMLP iterations upon initialization
-                        self.exclude_iters_from_finalBetheMLP = 4
-                        weight_initialization_each_msg_passing_iter = -torch.ones(num_ones)/belief_repeats
-                        weight_initialization_each_msg_passing_iter[-(var_cardinality**max_factor_state_dimensions)-var_cardinality : -var_cardinality] = 1.0/belief_repeats
-
-                        for msg_passing_idx in range(self.exclude_iters_from_finalBetheMLP, self.msg_passing_iters):
-                            weight_initialization[0,msg_passing_idx*num_ones:(msg_passing_idx+1)*num_ones] = weight_initialization_each_msg_passing_iter
+                    self.linear1b.weight = torch.nn.Parameter(torch.rand_like(self.linear1b.weight))
+                    self.linear1b.bias = torch.nn.Parameter(torch.rand_like(self.linear1b.bias))
+                    self.linear2.weight = torch.nn.Parameter(torch.rand_like(self.linear2.weight))
+                    self.linear2.bias = torch.nn.Parameter(torch.rand_like(self.linear2.bias))
 
                 else:
-                    # weight_initialization[0,-num_ones:] = 1.0/belief_repeats
-                    weight_initialization[0, 4*num_ones:] = 1.0/belief_repeats
+                    self.linear1.weight = torch.nn.Parameter(torch.eye(mlp_size))
+                    self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
 
-                # print("weight_initialization:", weight_initialization)
-                # for w in weight_initialization[0]:
-                #     print(w)
-                # sleep(asdflk)
-#             print("self.linear2.weight:", self.linear2.weight)
-#             print("self.linear2.weight.shape:", self.linear2.weight.shape)
-#             print("weight_initialization:", weight_initialization)
-                self.linear2.weight = torch.nn.Parameter(weight_initialization)
-                self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape)) 
+                    self.linear1a.weight = torch.nn.Parameter(torch.eye(mlp_size))
+                    self.linear1a.bias = torch.nn.Parameter(torch.zeros(self.linear1a.bias.shape))
+
+                    self.linear1b.weight = torch.nn.Parameter(torch.eye(mlp_size))
+                    self.linear1b.bias = torch.nn.Parameter(torch.zeros(self.linear1b.bias.shape))
+
+                    weight_initialization = torch.zeros((1,mlp_size))
+                    self.only_final_beliefs = True #if true, initialize to compute the bethe approx from only the final iteration beliefs
+
+                    # weight_initialization = torch.ones((1,mlp_size))
+                    if self.bethe_MLP == 'standard':
+                        assert(belief_repeats == 1), ("Not implemented for belief_repeats > 1!!, need to swap back to returning standard")
+
+                        if self.only_final_beliefs:
+                            weight_initialization[0, -num_ones:] = -1.0/belief_repeats
+                            weight_initialization[0, -(var_cardinality**max_factor_state_dimensions)-var_cardinality : -var_cardinality] *= -1
+
+
+                        else: #use beliefs from all but exclude_iters_from_finalBetheMLP iterations upon initialization
+                            self.exclude_iters_from_finalBetheMLP = 4
+                            weight_initialization_each_msg_passing_iter = -torch.ones(num_ones)/belief_repeats
+                            weight_initialization_each_msg_passing_iter[-(var_cardinality**max_factor_state_dimensions)-var_cardinality : -var_cardinality] = 1.0/belief_repeats
+
+                            for msg_passing_idx in range(self.exclude_iters_from_finalBetheMLP, self.msg_passing_iters):
+                                weight_initialization[0,msg_passing_idx*num_ones:(msg_passing_idx+1)*num_ones] = weight_initialization_each_msg_passing_iter
+
+                    else:
+                        weight_initialization[0,-num_ones:] = 1.0/belief_repeats
+                        # weight_initialization[0, 4*num_ones:] = 1.0/belief_repeats
+
+                    # print("weight_initialization:", weight_initialization)
+                    # for w in weight_initialization[0]:
+                    #     print(w)
+                    # sleep(asdflk)
+    #             print("self.linear2.weight:", self.linear2.weight)
+    #             print("self.linear2.weight.shape:", self.linear2.weight.shape)
+    #             print("weight_initialization:", weight_initialization)
+                    self.linear2.weight = torch.nn.Parameter(weight_initialization)
+                    self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape)) 
         
             
             if bethe_MLP == 'shifted':
@@ -251,7 +347,9 @@ class lbp_message_passing_network(nn.Module):
 
         
         pooled_states = []
-        
+        not_pooled_fac_beliefs = []
+        not_pooled_var_beliefs = []
+
         if self.share_weights:
             # for iter in range(self.msg_passing_iters):
             if shared_weight_iteration is not None:
@@ -341,8 +439,13 @@ class lbp_message_passing_network(nn.Module):
 
 
                 if self.bethe_MLP != 'none':
-                    cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-                    pooled_states.append(cur_pooled_states)  
+                    if self.FACTOR_GRAPH_REPRESENTATION_INVARIANT:
+                        cur_not_pooled_fac_beliefs, cur_not_pooled_var_beliefs = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                        not_pooled_fac_beliefs.append(cur_not_pooled_fac_beliefs)
+                        not_pooled_var_beliefs.append(cur_not_pooled_var_beliefs)
+                    else:
+                        cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                        pooled_states.append(cur_pooled_states)  
 
 
             if PLOT_CONVERGENCE:
@@ -403,11 +506,25 @@ class lbp_message_passing_network(nn.Module):
     #                 message_passing_layer(factor_graph, prv_varToFactor_messages=factor_graph.prv_varToFactor_messages,
     #                                       prv_factorToVar_messages=factor_graph.prv_factorToVar_messages, prv_factor_beliefs=factor_graph.prv_factor_beliefs) 
                 if self.bethe_MLP != 'none':
-                    cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-#                     print("cur_pooled_states:", cur_pooled_states)
-#                     print(check_pool)
-#                     print("cur_pooled_states.shape:", cur_pooled_states.shape)
-                    pooled_states.append(cur_pooled_states)
+                    # print('current iter info123:')
+                    # print("prv_factor_beliefs:")
+                    # print(prv_factor_beliefs)
+                    # print("prv_var_beliefs:")
+                    # print(prv_var_beliefs)
+
+                    # print("factor_graph.factor_potentials:")
+                    # print(factor_graph.factor_potentials)
+                    # print("factor_graph.batch_factors:")
+                    # print(factor_graph.batch_factors)
+
+
+                    if self.FACTOR_GRAPH_REPRESENTATION_INVARIANT:
+                        cur_not_pooled_fac_beliefs, cur_not_pooled_var_beliefs = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                        not_pooled_fac_beliefs.append(cur_not_pooled_fac_beliefs)
+                        not_pooled_var_beliefs.append(cur_not_pooled_var_beliefs)
+                    else:
+                        cur_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                        pooled_states.append(cur_pooled_states)  
 
 
             if self.APPLY_BP_POST_BPNN:
@@ -451,10 +568,52 @@ class lbp_message_passing_network(nn.Module):
 #             print("torch.mean(pooled_states):", torch.mean(torch.cat(pooled_states, dim=1)))  
 
             # print("torch.cat(pooled_states, dim=1).shape:", torch.cat(pooled_states, dim=1).shape)
-            out_orig = self.final_mlp(torch.cat(pooled_states, dim=1))
             # FACTOR_GRAPH_REPRESENTATION_INVARIANT = True
             if self.FACTOR_GRAPH_REPRESENTATION_INVARIANT:
-                learned_estimated_ln_partition_function = var_idx_perm_equivariant_5dfactor_all(mlp=self.final_mlp, input_tensor=torch.stack(pooled_states, dim=1))
+                USE_OLD_BUGGY = False
+                if USE_OLD_BUGGY:
+                    if self.max_factor_state_dimensions == 5:
+                        print("pooled_states:")
+                        print(pooled_states)
+                        
+                        
+
+                        learned_estimated_ln_partition_function = var_idx_perm_equivariant_5dfactor_all(mlp=self.final_mlp, input_tensor=torch.stack(pooled_states, dim=1))
+                    elif self.max_factor_state_dimensions == 2:
+                        learned_estimated_ln_partition_function = var_idx_perm_equivariant_2dfactor_all(mlp=self.final_mlp, input_tensor=torch.stack(pooled_states, dim=1))
+                    else:
+                        assert(False), "not implemented for max_factor_state_dimensions = %d" % self.max_factor_state_dimensions
+                else:
+                    if self.max_factor_state_dimensions == 5:
+                        fac_mlp_output = var_idx_perm_equivariant_5dfactor_all(mlp=self.final_mlp_factors, input_tensor=torch.stack(not_pooled_fac_beliefs, dim=1))
+                        # fac_mlp_output = var_idx_perm_equivariant_5dfactor_sample(mlp=self.final_mlp_factors, input_tensor=torch.stack(not_pooled_fac_beliefs, dim=1), functions_to_sample=32)
+
+                        var_mlp_output = self.final_mlp_vars(torch.cat(not_pooled_var_beliefs, dim=1))
+
+                        pooled_fac_beleifs = global_add_pool(fac_mlp_output, factor_graph.batch_factors)
+                        pooled_var_beliefs = global_add_pool(var_mlp_output, factor_graph.batch_vars)
+
+                        learned_estimated_ln_partition_function = pooled_fac_beleifs + pooled_var_beliefs
+                        # print("fac_mlp_output.shape:")
+                        # print(fac_mlp_output.shape)
+                        # print("var_mlp_output.shape:")
+                        # print(var_mlp_output.shape)
+
+                        # print("learned_estimated_ln_partition_function.shape:")
+                        # print(learned_estimated_ln_partition_function.shape)
+
+                        # print("exit early 123")
+                        # exit(0)
+                    elif self.max_factor_state_dimensions == 2:
+                        fac_mlp_output = var_idx_perm_equivariant_2dfactor_all(mlp=self.final_mlp_factors, input_tensor=torch.stack(not_pooled_fac_beliefs, dim=1))
+                        var_mlp_output = var_idx_perm_equivariant_2dfactor_all(mlp=self.final_mlp_vars, input_tensor=torch.stack(not_pooled_var_beliefs, dim=1))
+
+                    else:
+                        assert(False), "not implemented for max_factor_state_dimensions = %d" % self.max_factor_state_dimensions
+
+
+
+
                 # print("pooled_states[0].shape:", pooled_states[0].shape)
                 # print("torch.stack(pooled_states, dim=1).shape:", torch.stack(pooled_states, dim=1).shape)
                 # sleep(temp) 
@@ -468,10 +627,13 @@ class lbp_message_passing_network(nn.Module):
             # print()
 
             if self.learn_bethe_residual_weight:
-                final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
-                bethe_estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)
-                final_estimate = (1-self.alpha_betheMLP)*learned_estimated_ln_partition_function.squeeze() +\
-                                 self.alpha_betheMLP*bethe_estimated_ln_partition_function.squeeze()
+                if self.FACTOR_GRAPH_REPRESENTATION_INVARIANT:
+                    assert(False), "HAVEN'T CHECKED THIS FOR INVARIANCE"
+                else:
+                    final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
+                    bethe_estimated_ln_partition_function = torch.sum(final_pooled_states, dim=1)
+                    final_estimate = (1-self.alpha_betheMLP)*learned_estimated_ln_partition_function.squeeze() +\
+                                    self.alpha_betheMLP*bethe_estimated_ln_partition_function.squeeze()
                 
 #                 print("bethe_estimated_ln_partition_function.shape:", bethe_estimated_ln_partition_function.shape)
 #                 print("learned_estimated_ln_partition_function.shape:", learned_estimated_ln_partition_function.shape)
@@ -512,6 +674,7 @@ class lbp_message_passing_network(nn.Module):
   
             #corrected for batch_size > 1
             # print(prv_factor_beliefs.shape)
+
             final_pooled_states = self.compute_bethe_free_energy_pooledStates_MLP(factor_beliefs=prv_factor_beliefs, var_beliefs=prv_var_beliefs, factor_graph=factor_graph)
             # print(final_pooled_states.shape)
             # sleep(asldkfj)
@@ -535,20 +698,25 @@ class lbp_message_passing_network(nn.Module):
             print("torch.exp(factor_beliefs):", torch.exp(factor_beliefs))
             print("neg_inf_to_zero(factor_potentials):", neg_inf_to_zero(factor_potentials))
         
+        if self.FACTOR_GRAPH_REPRESENTATION_INVARIANT:
+            pooled_fac_beleifPotentials = torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)
+            #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and each factor        
+            pooled_fac_beleifPotentials = pooled_fac_beleifPotentials.view(pooled_fac_beleifPotentials.shape[0],  -1)
 
-        pooled_fac_beleifPotentials = global_add_pool(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials), batch_factors)
-        #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and each factor        
-        pooled_fac_beleifPotentials = pooled_fac_beleifPotentials.view(pooled_fac_beleifPotentials.shape[0], -1)
-        if debug:
-            factor_beliefs_shape = factor_beliefs.shape
-            pooled_fac_beleifPotentials_orig = torch.sum((torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)).view(factor_beliefs_shape[0], -1), dim=0)
-            print("original pooled_fac_beleifPotentials_orig:", pooled_fac_beleifPotentials_orig)
-            print("pooled_fac_beleifPotentials:", pooled_fac_beleifPotentials)
-            print("factor_beliefs.shape:", factor_beliefs.shape)
-            print("pooled_fac_beleifPotentials_orig.shape:", pooled_fac_beleifPotentials_orig.shape)
-            print("pooled_fac_beleifPotentials.shape:", pooled_fac_beleifPotentials.shape)
-            print("(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)).view(factor_beliefs_shape[0], -1).shape:", (torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)).view(factor_beliefs_shape[0], -1).shape)
-        # assert((pooled_fac_beleifPotentials <= 0).all())
+        else:
+            pooled_fac_beleifPotentials = global_add_pool(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials), batch_factors)
+            #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and each factor        
+            pooled_fac_beleifPotentials = pooled_fac_beleifPotentials.view(pooled_fac_beleifPotentials.shape[0], -1)
+            if debug:
+                factor_beliefs_shape = factor_beliefs.shape
+                pooled_fac_beleifPotentials_orig = torch.sum((torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)).view(factor_beliefs_shape[0], -1), dim=0)
+                print("original pooled_fac_beleifPotentials_orig:", pooled_fac_beleifPotentials_orig)
+                print("pooled_fac_beleifPotentials:", pooled_fac_beleifPotentials)
+                print("factor_beliefs.shape:", factor_beliefs.shape)
+                print("pooled_fac_beleifPotentials_orig.shape:", pooled_fac_beleifPotentials_orig.shape)
+                print("pooled_fac_beleifPotentials.shape:", pooled_fac_beleifPotentials.shape)
+                print("(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)).view(factor_beliefs_shape[0], -1).shape:", (torch.exp(factor_beliefs)*neg_inf_to_zero(factor_potentials)).view(factor_beliefs_shape[0], -1).shape)
+            # assert((pooled_fac_beleifPotentials <= 0).all())
     
         return pooled_fac_beleifPotentials #negate and sum to get average bethe energy
 
@@ -559,29 +727,45 @@ class lbp_message_passing_network(nn.Module):
         https://www.cs.princeton.edu/courses/archive/spring06/cos598C/papers/YedidaFreemanWeiss2004.pdf        
         '''
 
-        pooled_fac_beliefs = -global_add_pool(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs), batch_factors)
-        #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and each factor        
-        pooled_fac_beliefs = pooled_fac_beliefs.view(pooled_fac_beliefs.shape[0], -1)        
-        if debug:
-            factor_beliefs_shape = factor_beliefs.shape
-            pooled_fac_beliefs_orig = -torch.sum((torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs)).view(factor_beliefs_shape[0], -1), dim=0)
-            print("pooled_fac_beliefs_orig:", pooled_fac_beliefs_orig)
-            print("pooled_fac_beliefs:", pooled_fac_beliefs)
-        
-        
+        # print("factor_beliefs.shape:", factor_beliefs.shape)
+        if self.FACTOR_GRAPH_REPRESENTATION_INVARIANT:
+            pooled_fac_beliefs = -torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs)
+            #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and each factor        
+            pooled_fac_beliefs = pooled_fac_beliefs.view(pooled_fac_beliefs.shape[0], -1) 
 
-        var_beliefs_shape = var_beliefs.shape
-        assert(var_beliefs_shape[0] == var_degrees.shape[0])
-        pooled_var_beliefs = global_add_pool(torch.exp(var_beliefs)*neg_inf_to_zero(var_beliefs)*(var_degrees.float() - 1).view(var_degrees.shape[0], 1, 1), batch_vars)
-        #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and variable states        
-        pooled_var_beliefs = pooled_var_beliefs.view(pooled_var_beliefs.shape[0], -1)
+            var_beliefs_shape = var_beliefs.shape
+            assert(var_beliefs_shape[0] == var_degrees.shape[0])
+            pooled_var_beliefs = torch.exp(var_beliefs)*neg_inf_to_zero(var_beliefs)*(var_degrees.float() - 1).view(var_degrees.shape[0], 1, 1)
+            #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and variable states        
+            pooled_var_beliefs = pooled_var_beliefs.view(pooled_var_beliefs.shape[0], -1)
+
+        else:
+            pooled_fac_beliefs = -global_add_pool(torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs), batch_factors)
+            #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and each factor        
+            pooled_fac_beliefs = pooled_fac_beliefs.view(pooled_fac_beliefs.shape[0], -1)        
+            if debug:
+                factor_beliefs_shape = factor_beliefs.shape
+                pooled_fac_beliefs_orig = -torch.sum((torch.exp(factor_beliefs)*neg_inf_to_zero(factor_beliefs)).view(factor_beliefs_shape[0], -1), dim=0)
+                print("pooled_fac_beliefs_orig:", pooled_fac_beliefs_orig)
+                print("pooled_fac_beliefs:", pooled_fac_beliefs)
+        
+    
+            var_beliefs_shape = var_beliefs.shape
+            assert(var_beliefs_shape[0] == var_degrees.shape[0])
+            pooled_var_beliefs = global_add_pool(torch.exp(var_beliefs)*neg_inf_to_zero(var_beliefs)*(var_degrees.float() - 1).view(var_degrees.shape[0], 1, 1), batch_vars)
+            #keep 1st dimension for # of factors, but flatten remaining dimensions for belief_repeats and variable states        
+            pooled_var_beliefs = pooled_var_beliefs.view(pooled_var_beliefs.shape[0], -1)
     
         
-        if debug:
-            pooled_var_beliefs_orig = torch.sum(torch.exp(var_beliefs)*neg_inf_to_zero(var_beliefs)*(var_degrees.float() - 1).view(var_beliefs_shape[0], -1), dim=0)            
-            print("pooled_var_beliefs_orig:", pooled_var_beliefs_orig)
-            print("pooled_var_beliefs:", pooled_var_beliefs)        
-    #         sleep(SHAPECHECK)
+            if debug:
+                pooled_var_beliefs_orig = torch.sum(torch.exp(var_beliefs)*neg_inf_to_zero(var_beliefs)*(var_degrees.float() - 1).view(var_beliefs_shape[0], -1), dim=0)            
+                print("pooled_var_beliefs_orig:", pooled_var_beliefs_orig)
+                print("pooled_var_beliefs:", pooled_var_beliefs)        
+        #         sleep(SHAPECHECK)
+
+        # print("pooled_fac_beliefs.shape:", pooled_fac_beliefs.shape)
+        # sleep(tempcheck)
+
 
         return pooled_fac_beliefs, pooled_var_beliefs
 
@@ -697,9 +881,21 @@ class lbp_message_passing_network(nn.Module):
             # print(pooled_fac_beleifPotentials.shape)
             # print(pooled_fac_beliefs.shape)
             # print(pooled_var_beliefs.shape)
-            return torch.cat([-pooled_fac_beleifPotentials, pooled_fac_beliefs, -pooled_var_beliefs], dim=cat_dim)
+
+            if self.FACTOR_GRAPH_REPRESENTATION_INVARIANT:
+                # print("pooled_fac_beleifPotentials.shape:", pooled_fac_beleifPotentials.shape)
+                # print("pooled_fac_beliefs.shape:", pooled_fac_beliefs.shape)
+                # print("cat_dim:", cat_dim)
+                # print("torch.cat([-pooled_fac_beleifPotentials, pooled_fac_beliefs], dim=cat_dim).shape:", torch.cat([-pooled_fac_beleifPotentials, pooled_fac_beliefs], dim=cat_dim).shape)
+                # sleep(asldkfj)
+                return torch.cat([-pooled_fac_beleifPotentials, pooled_fac_beliefs], dim=cat_dim), -pooled_var_beliefs
+            else:
+                return torch.cat([-pooled_fac_beleifPotentials, pooled_fac_beliefs, -pooled_var_beliefs], dim=cat_dim)
         else:
-            return torch.cat([pooled_fac_beleifPotentials, pooled_fac_beliefs, pooled_var_beliefs], dim=cat_dim)
+            if self.FACTOR_GRAPH_REPRESENTATION_INVARIANT:
+                return torch.cat([pooled_fac_beleifPotentials, pooled_fac_beliefs], dim=cat_dim), pooled_var_beliefs
+            else:
+                return torch.cat([pooled_fac_beleifPotentials, pooled_fac_beliefs, pooled_var_beliefs], dim=cat_dim)
 
 
 

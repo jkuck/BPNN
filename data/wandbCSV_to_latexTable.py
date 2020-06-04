@@ -36,7 +36,7 @@ def get_dict_of_results(wandb_results_csv):
         
     
     
-def get_approxMC_estAndTime(problem, approxMC_estimates_directory='/atlas/u/jkuck/learn_BP/data/SATestimates_approxMC_origData/'):
+def get_approxMC_estAndTime(problem, approxMC_estimates_directory='/atlas/u/jkuck/learn_BP/data/SATestimates_approxMC/'):
     '''
     Get the estimate of ln(solution count) from approxMC and the time it required.  Time is
     the smaller of (approxMC run on the formula with no MIS) and (approxMC run on the formula
@@ -129,8 +129,8 @@ def get_F2_estAndTime(problem, F2_estimates_noMIS_directory='/atlas/u/jkuck/lear
                     F2_varDeg3_log2_lowerBound = F2_varDeg3_log2_lowerBound_withMIS
                 elif F2_varDeg3_time_withMIS < F2_varDeg3_time:
                     F2_varDeg3_time = F2_varDeg3_time_withMIS
-                    F2_varDeg3_log2_lowerBound = F2_varDeg3_log2_lowerBound_withMIS
-                    assert(np.abs(F2_varDeg3_log2_lowerBound - F2_varDeg3_log2_lowerBound_withMIS) < 16), ("F2 with and without independent sets differs by more than expected:", F2_varDeg3_log2_lowerBound, F2_varDeg3_log2_lowerBound_withMIS)
+                    # F2_varDeg3_log2_lowerBound = F2_varDeg3_log2_lowerBound_withMIS
+                    assert(np.abs(F2_varDeg3_log2_lowerBound - F2_varDeg3_log2_lowerBound_withMIS) < 64), ("F2 with and without independent sets differs by more than expected:", F2_varDeg3_log2_lowerBound, F2_varDeg3_log2_lowerBound_withMIS)
 #                     print("F2 with independed set is faster than without")
                 else:
                     pass

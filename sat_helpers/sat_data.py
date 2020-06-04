@@ -239,7 +239,7 @@ def get_SATproblems_list(problems_to_load, counts_dir_name, problems_dir_name, d
     
 
 class SATDataset(InMemoryDataset):    
-    def __init__(self, root, dataset_type, problem_category, belief_repeats, epsilon=0, max_factor_dimensions=5,\
+    def __init__(self, root, dataset_type, problem_category, belief_repeats, epsilon=0, max_factor_dimensions=5, permuted=False,\
                  transform=None, pre_transform=None, SOLUTION_COUNTS_DIR = "/atlas/u/jkuck/learn_BP/data/exact_SAT_counts_noIndSets/",\
                  SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_noIndSets"):
         '''
@@ -249,6 +249,7 @@ class SATDataset(InMemoryDataset):
         - epsilon (float): set factor states with potential 0 to epsilon for numerical stability
         - max_factor_dimensions (int): do not construct a factor graph if the largest factor (clause) contains
             more than this many variables        
+        - permuted (bool): if True, create factor graphs from SAT problems whose variable indices and the order of variables within clauses were randomly permuted.
         '''      
         self.dataset_type = dataset_type
         self.problem_category = problem_category
@@ -256,7 +257,12 @@ class SATDataset(InMemoryDataset):
         self.epsilon = epsilon
         self.max_factor_dimensions = max_factor_dimensions
         self.SOLUTION_COUNTS_DIR = SOLUTION_COUNTS_DIR
-        self.SAT_PROBLEMS_DIR = SAT_PROBLEMS_DIR
+        self.permuted = permuted
+        if self.permuted:
+            self.SAT_PROBLEMS_DIR = "/atlas/u/jkuck/learn_BP/data/sat_problems_permuted"
+
+        else:
+            self.SAT_PROBLEMS_DIR = SAT_PROBLEMS_DIR
 
         assert(self.dataset_type in ['train', 'test'])
         if self.dataset_type == 'test':
@@ -281,7 +287,12 @@ class SATDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        processed_dataset_file = self.dataset_type + '_%s_%d_%f_%d_pyTorchGeomProccesed_reload.pt' %\
+        if self.permuted:
+            processed_dataset_file = self.dataset_type + '_%s_%d_%f_%d_pyTorchGeomProccesed_permuted_reload.pt' %\
+                                 (self.problem_category, self.belief_repeats, self.epsilon, self.max_factor_dimensions)
+
+        else:
+            processed_dataset_file = self.dataset_type + '_%s_%d_%f_%d_pyTorchGeomProccesed_reload.pt' %\
                                  (self.problem_category, self.belief_repeats, self.epsilon, self.max_factor_dimensions)
         
         return [processed_dataset_file]

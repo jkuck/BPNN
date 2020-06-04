@@ -289,6 +289,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 self.mlpEquivariant = Seq(self.linear13, ReLU(), self.linear14) 
 
 
+            # if True: 
             if USE_MLP_DAMPING_FtoV:
                 self.FC_damping_layer = False
                 if self.FC_damping_layer:
@@ -341,6 +342,7 @@ class FactorGraphMsgPassingLayer_NoDoubleCounting(torch.nn.Module):
                 else:     
                     self.mlp_dampingFtoV = Seq(self.linear9, self.linear10)             
 
+            # if True: 
             if USE_MLP_DAMPING_VtoF:
                 damping_mlp_test = False
                 if damping_mlp_test:
