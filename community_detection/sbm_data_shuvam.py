@@ -6,10 +6,11 @@ from functools import reduce
 import time
 import sys
 sys.path.append('/sailhome/shuvamc/learn_BP')
-from factor_graph import FactorGraphData
-from parameters_sbm import LN_ZERO
+from factor_graph import FactorGraphData, DataLoader_custom as DataLoader_pytorchGeometric 
+from nn_models_sbm_bethe_invariant import lbp_message_passing_network
 from community_detection.sbm_libdai import runLBPLibdai, runJT, build_libdaiFactorGraph_from_SBM
- 
+from parameters_sbm_bethe import LN_ZERO, ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, FINAL_MLP, BETHE_MLP, EXACT_BETHE, NUM_MLPS, N, A_TRAIN, B_TRAIN, A_VAL, B_VAL, C, NUM_SAMPLES_TRAIN, NUM_SAMPLES_VAL, SMOOTHING, BELIEF_REPEATS, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP, USE_MLP_1, USE_MLP_2, USE_MLP_3, USE_MLP_4, INITIALIZE_EXACT_BP, USE_MLP_DAMPING_FtoV, USE_MLP_DAMPING_VtoF
+
 class StochasticBlockModel:
     def __init__(self, N, P, Q, C, community_probs=None):
         '''
@@ -59,6 +60,7 @@ class StochasticBlockModel:
         edges = edges[np.argsort(edges[:,0])]
         edges_full = np.concatenate((edges, np.flip(edges, axis = 1)), axis = 0)
         edge_index = np.flip(edges.T, axis = 0)
+        edge_index = edges.T
         same_noedges = same_inds[same_mask == 0]
         diff_noedges = diff_inds[diff_mask == 0]
         if same_noedges.shape[0] == 0:
@@ -73,6 +75,7 @@ class StochasticBlockModel:
             raise
         noedges = noedges[np.argsort(noedges[:,0])] 
         noedge_index = np.flip(noedges.T, axis = 0)
+        noedge_index = noedges.T
         edge_index_full = np.flip(edges_full.T, axis = 0)
         count = collections.Counter(edge_index_full[1])
         deg_lst = []
@@ -195,15 +198,20 @@ def build_factorgraph_from_sbm(sbm_model, var_cardinality, belief_repeats, fixed
     return factor_graph
 
 if __name__ == "__main__":
-    np.random.seed(4)
-    sbm = StochasticBlockModel(20, .9, .1, 2, community_probs = [.75, .25])
-    sbm_fg = build_libdaiFactorGraph_from_SBM(sbm)#, fixed_var = 1, fixed_val = 1)
+    np.random.seed(8)
+    torch.manual_seed(10)
+    sbm = StochasticBlockModel(15, 14/15, 1/15, 2, community_probs = [.75, .25])
+    sbm_fg = build_libdaiFactorGraph_from_SBM(sbm)#, fixed_var = 1, fixed_val = 0)
     ln_Z, jt_beliefs = runJT(sbm_fg, sbm)
-    print(ln_Z, jt_beliefs)
+    print(ln_Z)#, jt_beliefs)
     for i in range(1):
-        beliefs, ln_Z = runLBPLibdai(sbm_fg, sbm)
-        print(beliefs, ln_Z)
-    loss = torch.nn.KLDivLoss(reduction = 'batchmean')
-    print(loss(beliefs, jt_beliefs))
-    #fg = build_factorgraph_from_sbm(sbm, 2, 16, 97, 0)
+        beliefs, lbp_ln_Z = runLBPLibdai(sbm_fg, sbm)
+        print(lbp_ln_Z)
+    fg = build_factorgraph_from_sbm(sbm, 2, BELIEF_REPEATS, logZ = ln_Z)
+    dl = DataLoader_pytorchGeometric([fg], batch_size = 1)
+    EXACT_BETHE = True
+    bpnn_net = lbp_message_passing_network(max_factor_state_dimensions=2, msg_passing_iters=30, device=torch.device('cpu'), share_weights = SHARE_WEIGHTS, bethe_MLP = BETHE_MLP, var_cardinality = C, belief_repeats = BELIEF_REPEATS, initialize_to_exact_bethe = EXACT_BETHE, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP, use_mlp_1 = USE_MLP_1, use_mlp_2 = USE_MLP_2, use_mlp_3 = USE_MLP_3, use_mlp_4 = USE_MLP_4, init_exact_bp = INITIALIZE_EXACT_BP, mlp_damping_FtoV = USE_MLP_DAMPING_FtoV, mlp_damping_VtoF = USE_MLP_DAMPING_VtoF)
+    for d in dl:
+        _, out, _, _ = bpnn_net(d, device = torch.device('cpu'), perform_bethe = True)
+        print(out) 
     #print(fg)
