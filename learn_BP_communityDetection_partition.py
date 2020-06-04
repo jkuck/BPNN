@@ -22,30 +22,13 @@ import random
 
 INITIAL_TEST = True
 USE_WANDB = False
-# os.environ['WANDB_MODE'] = 'dryrun' #don't save to the cloud with this option
-MODE = "test" #run "test" or "train" mode
-
-##########################
-##### Run me on Atlas
-# $ cd /atlas/u/jkuck/virtual_environments/pytorch_geometric
-# $ source bin/activate
-
-
-
-#####Testing parameters
-TEST_TRAINED_MODEL = False #test a pretrained model if True.  Test untrained model if False (e.g. LBP)
-EXPERIMENT_NAME = 'SBM_BP_2class_snr3.1' #used for saving results when MODE='test'
-BPNN_trained_model_path = '/atlas/u/shuvamc/community_detection/SBM/wandb/run-20200219_090032-11077pcu/model.pt' #location of the trained BPNN model, SET ME!
+MODE = "partitions"
 
 
 ###################################
 ####### Training PARAMETERS #######
 MAX_FACTOR_STATE_DIMENSIONS = 2
-MSG_PASSING_ITERS = 10 #the number of iterations of message passing, we have this many layers with their own learnable parameters
-
-# MODEL_NAME = "debugCUDA_spinGlass_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, parameters.alpha)
-MODEL_NAME = "sbm_%dlayer_alpha=%f.pth" % (MSG_PASSING_ITERS, alpha)
-
+MSG_PASSING_ITERS = 30 #the number of iterations of message passing, we have this many layers with their own learnable parameters
 
 
 ##########################################
@@ -68,25 +51,21 @@ DATA_DIR = "/atlas/u/shuvamc/community_detection/SBM"
 
 TRAINING_DATA_SIZE = NUM_SAMPLES_TRAIN
 VAL_DATA_SIZE = NUM_SAMPLES_VAL
-TEST_DATA_SIZE = 200
 
 
 EPOCH_COUNT = 300
-PRINT_FREQUENCY = 1
-VAL_FREQUENCY = 10
-SAVE_FREQUENCY = 20
-
-TEST_DATSET = 'val' #can test and plot results for 'train', 'val', or 'test' datasets
 
 ##### Optimizer parameters #####
 STEP_SIZE=50
 LR_DECAY=.9
-LEARNING_RATE = 5e-4
+LEARNING_RATE = 2e-4
 SAVE_ITER = 1
-exp_name = "bpnn_partition_bethedamping_moredata_75prior"
+BATCH_SIZE_TRAIN = 16
+BATCH_SIZE_VAL = 24
+exp_name = "bpnn_"+MODE+"_mlp34_bethe_invariant_small_graphs"
 ##########################
 if USE_WANDB:
-    wandb.init(project="learn_partition(correct)_sbm", name=exp_name)
+    wandb.init(project="learn_"+MODE+"_sbm", name=exp_name)
     wandb.config.epochs = EPOCH_COUNT
     wandb.config.N_TRAIN = N_TRAIN
     wandb.config.P_TRAIN = P_TRAIN
@@ -116,7 +95,8 @@ if USE_WANDB:
     wandb.config.LEARNING_RATE = LEARNING_RATE
     wandb.config.STEP_SIZE = STEP_SIZE
     wandb.config.BELIEF_REPEATS = BELIEF_REPEATS
-
+    wandb.config.BATCH_SIZE_TRAIN = BATCH_SIZE_TRAIN
+    wandb.config.BATCH_SIZE_VAL = BATCH_SIZE_VAL
 
 
 def get_dataset(dataset_type):
@@ -189,20 +169,25 @@ class crossEntropySmoothing(torch.nn.Module):
         logsoftmax = torch.nn.LogSoftmax()
         return torch.mean(torch.sum(-new_labs * logsoftmax(pred), dim=1))
     
-def train(model, data, optim, loss, device, bp_data = None):
+def train(model, data, optim, loss, device, data_2 = None):
+    data_size = len(data)
     #if USE_WANDB:        
     #    wandb.watch(bpnn_net)
     model.train()
     tot_loss = 0
     tot_acc = 0
     #optim.zero_grad()
-    data = zip(data, bp_data) if bp_data is not None else data
+    data = zip(data, data_2) if data_2 is not None else data
     train_loss = 0
     for i, sbm_problem in enumerate(data):
         #sbm_problem.to(device)
-        if bp_data is not None:
-            sbm_problem, sbm_problem_bp = sbm_problem
-            sbm_problem_bp.to(device)
+        if data_2 is not None:
+            sbm_problem, sbm_problem_2 = sbm_problem
+            sbm_problem_2.to(device)
+            sbm_problem_2.state_dimensions = sbm_problem_2.state_dimensions[0] #hack for batching,
+            sbm_problem_2.var_cardinality = sbm_problem_2.var_cardinality[0] #hack for batching,
+            sbm_problem_2.belief_repeats = sbm_problem_2.belief_repeats[0]
+
         sbm_problem.to(device)
         sbm_problem.state_dimensions = sbm_problem.state_dimensions[0] #hack for batching,
         sbm_problem.var_cardinality = sbm_problem.var_cardinality[0] #hack for batching,
@@ -216,6 +201,13 @@ def train(model, data, optim, loss, device, bp_data = None):
         #    wandb.log({"Final Train max ftoV diff": fv_diff, "Final Train max vtoF diff": vf_diff})
         if BETHE_MLP:
             estimated_partition = estimated_partition.squeeze(dim = 1)
+
+        if data_2 is not None:
+            _, est_2, _, _ = model(sbm_problem_2, device, perform_bethe = True)
+            if BETHE_MLP:
+                est_2 = est_2.squeeze(dim = 1)
+            estimated_partition = ((estimated_partition - est_2)**2)**.5
+            true_partition = ((true_partition - sbm_problem_2.ln_Z)**2)**.5
         curr_loss = loss(estimated_partition, true_partition.float())
         curr_loss.backward()
         optim.step()
@@ -245,41 +237,44 @@ def train(model, data, optim, loss, device, bp_data = None):
     #optim.step()
     #tot_acc = tot_acc / (TRAINING_DATA_SIZE * N_TRAIN)
     #train_overlap = (tot_acc - 1/C_TRAIN)/(1-1/C_TRAIN)
-    return tot_loss.item() / len(data) #, train_overlap
+    return tot_loss.item() / data_size #, train_overlap
         
 
-def test(model, data, device, loss_func, orig_data = None, bp_data = None, run_fc = True, initial = False):
+def test(model, data, device, loss_func, data_2 = None):
+    data_size = len(data)
     #model.eval()
-    tot_correct = 0
     tot_loss = 0
-    data = zip(data, bp_data) if bp_data is not None else data
+    data = zip(data, data_2) if data_2 is not None else data
     for i, sbm_model in enumerate(data):
-        #sbm_model.to(device)
-        if bp_data is not None:
-            sbm_model, sbm_model_bp = sbm_model
-            sbm_model_bp.to(device)
+        if data_2 is not None:
+            sbm_model, sbm_model_2 = sbm_model
+            sbm_model_2.to(device)
+            sbm_model_2.state_dimensions = sbm_model_2.state_dimensions[0] #hack for batching,
+            sbm_model_2.var_cardinality = sbm_model_2.var_cardinality[0] #hack for batching,
+            sbm_model_2.belief_repeats = sbm_model_2.belief_repeats[0]
         sbm_model.to(device)
         sbm_model.state_dimensions = sbm_model.state_dimensions[0] #hack for batching,
         sbm_model.var_cardinality = sbm_model.var_cardinality[0] #hack for batching,
         sbm_model.belief_repeats = sbm_model.belief_repeats[0]
-        if not initial:
-            with torch.no_grad():
-                #estimated_partition = model(sbm_model, device) if bp_data is None else model(sbm_model, device, sbm_model_bp)
-                _, estimated_partition, fv_diff, vf_diff = model(sbm_model, device, perform_bethe = True)
-                #if USE_WANDB:
-                #    wandb.log({"Final Test max ftoV diff": fv_diff, "Final Test max vtoF diff": vf_diff})
+        with torch.no_grad():
+            #estimated_partition = model(sbm_model, device) if bp_data is None else model(sbm_model, device, sbm_model_bp)
+            _, estimated_partition, fv_diff, vf_diff = model(sbm_model, device, perform_bethe = True)
+            #if USE_WANDB:
+            #    wandb.log({"Final Test max ftoV diff": fv_diff, "Final Test max vtoF diff": vf_diff})
+            if BETHE_MLP:
+                estimated_partition = estimated_partition.squeeze(dim = 1)
+            true_partition = sbm_model.ln_Z
+            if data_2 is not None:
+                _, est_2, _, _ = model(sbm_model_2, device, perform_bethe = True)
                 if BETHE_MLP:
-                    estimated_partition = estimated_partition.squeeze(dim = 1)
-                true_partition = sbm_model.ln_Z
-                tot_loss += loss_func(estimated_partition, true_partition.float())
+                    est_2 = est_2.squeeze(dim = 1)
+                true_partition = ((true_partition - sbm_model_2.ln_Z)**2)**.5
+                estimated_partition = ((estimated_partition - est_2)**2)**.5
+            tot_loss += loss_func(estimated_partition, true_partition.float())
 
-        else:
-            sbm_model_orig = orig_data[i]
-            sbm_fg = build_libdaiFactorGraph_from_SBM(sbm_model)
-            var_beliefs, _ = runLBPLibdai(sbm_fg, sbm_model_orig)
     #acc = tot_correct / (VAL_DATA_SIZE * N_VAL)
     #overlap = (acc - 1/C_VAL) / (1 - 1/C_VAL)
-    return tot_loss.item() / len(data)
+    return tot_loss.item() / data_size
     
 def constructFixedDataset(sbm_models_lst, init = False, debug = False, model = None):
     fg_models = []
@@ -343,7 +338,11 @@ def constructFixedDatasetMarginals(sbm_models_lst):
                 v_b, lbp_ln_z = runLBPLibdai(sbm_fg, sbm_model)
                 jt_Z.append(jt_ln_z)
                 bp_Z.append(lbp_ln_z)
-            init_mse += ((jt_Z[0] - jt_Z[1])**2 - (bp_Z[0] - bp_Z[1])**2)**2
+                print(jt_ln_z, lbp_ln_z)
+            
+            mse = (((jt_Z[0] - jt_Z[1])**2)**.5 - ((bp_Z[0] - bp_Z[1])**2)**.5)**2
+            print(mse)
+            init_mse += mse
     return fg_models_0, fg_models_1, init_mse / len(fg_models_0)
   
                 
@@ -365,29 +364,43 @@ if __name__ == "__main__":
     torch.manual_seed(20)
     sbm_models_list_train = get_dataset(dataset_type='train')
     #sbm_models_fg_train = [build_factorgraph_from_sbm(sbm_model, C_TRAIN, BELIEF_REPEATS) for sbm_model in sbm_models_list_train]
-    sbm_models_fg_train, init_train_mse = constructFixedDataset(sbm_models_list_train, init = True)#, debug = True, model = bpnn_net)
-    #sbm_models_fg_train_0, sbm_models_fg_train_1, init_mse = constructFixedDatasetMarginals(sbm_models_lst_train)
-    train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_train, batch_size=8, shuffle = True)
-    #train_data_loader_pytorchGeometric_1 = DataLoader_pytorchGeometric(sbm_models_fg_train_1, batch_size  = 8, shuffle = False)
+    if MODE == 'partitions':
+        sbm_models_fg_train, init_train_mse = constructFixedDataset(sbm_models_list_train, init = True)#, debug = True, model = bpnn_net)
+        train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_train, batch_size=BATCH_SIZE_TRAIN, shuffle = True)
+    if MODE == 'marginals':
+        sbm_models_fg_train_0, sbm_models_fg_train_1, init_train_mse = constructFixedDatasetMarginals(sbm_models_list_train)
+        train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_train_0, batch_size=BATCH_SIZE_TRAIN, shuffle = False)
+        train_data_loader_pytorchGeometric_1 = DataLoader_pytorchGeometric(sbm_models_fg_train_1, batch_size  = BATCH_SIZE_TRAIN, shuffle = False)
     if LEARN_BP_INIT:
         sbm_models_fg_train_bp = [build_factorgraph_from_sbm(sbm_model, C_TRAIN, 1) for sbm_model in sbm_models_list_train]
         train_data_loader_pytorchGeometric_bp = DataLoader_pytorchGeometric(sbm_models_fg_train_bp, batch_size=1, shuffle = False)
    
     sbm_models_list_val = get_dataset(dataset_type='val')
     #sbm_models_fg_val = [build_factorgraph_from_sbm(sbm_model, C_TRAIN, BELIEF_REPEATS) for sbm_model in sbm_models_list_val]
-    sbm_models_fg_val, init_test_mse = constructFixedDataset(sbm_models_list_val, init = True)
-    val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_val, batch_size=24)
-    val_data_loader_pytorchGeometric_bp = None
+    if MODE == 'partitions':
+        sbm_models_fg_val, init_test_mse = constructFixedDataset(sbm_models_list_val, init = True)
+        val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_val, batch_size=BATCH_SIZE_VAL)
+    if MODE == 'marginals':
+        sbm_models_fg_val_0, sbm_models_fg_val_1, init_test_mse = constructFixedDatasetMarginals(sbm_models_list_val)
+        val_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_val_0, batch_size=BATCH_SIZE_VAL)
+        val_data_loader_pytorchGeometric_1 = DataLoader_pytorchGeometric(sbm_models_fg_val_1, batch_size = BATCH_SIZE_VAL)
     if LEARN_BP_INIT:
         sbm_models_fg_val_bp = [build_factorgraph_from_sbm(sbm_model, C_TRAIN, 1) for sbm_model in sbm_models_list_val]
         val_data_loader_pytorchGeometric_bp = DataLoader_pytorchGeometric(sbm_models_fg_val_bp, batch_size=1, shuffle = False)
-
+    #min_part = min([fg.ln_Z for fg in sbm_models_fg_train + sbm_models_fg_val])
+    #max_part = max([fg.ln_Z for fg in sbm_models_fg_train + sbm_models_fg_val])
+    #print(min_part, max_part)
+    #time.sleep(10000)
     if INITIAL_TEST: 
         print("Initial Libdai Train MSE: " + str(init_train_mse) + "Initial Libdai Test MSE: " + str(init_test_mse))
         if USE_WANDB:
             wandb.log({"Initial Libdai Test MSE": init_test_mse, "Initial Libdai Train MSE": init_train_mse})
-        init_train_loss = test(bpnn_net, train_data_loader_pytorchGeometric, device, loss_func)
-        init_test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, device, loss_func)
+        if MODE == 'partitions':
+            init_train_loss = test(bpnn_net, train_data_loader_pytorchGeometric, device, loss_func)
+            init_test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, device, loss_func)
+        if MODE == 'marginals':
+            init_train_loss = test(bpnn_net, train_data_loader_pytorchGeometric, device, loss_func, train_data_loader_pytorchGeometric_1)
+            init_test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, device, loss_func, val_data_loader_pytorchGeometric_1)
         print('Epoch {:03d}, Train: {:.4f}, Test: {:.4f}'.format(0, init_train_loss, init_test_loss))
         if USE_WANDB:
             wandb.log({"Train Loss": init_train_loss, "Test Loss": init_test_loss})
@@ -399,20 +412,24 @@ if __name__ == "__main__":
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     for i in range(1, EPOCH_COUNT+1):
-        train_loss = train(bpnn_net, train_data_loader_pytorchGeometric, optimizer, loss_func, device)
-        test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, device, loss_func)
+        if MODE == 'partitions':
+            train_loss = train(bpnn_net, train_data_loader_pytorchGeometric, optimizer, loss_func, device)
+            test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, device, loss_func)
+        if MODE == 'marginals':
+            train_loss = train(bpnn_net, train_data_loader_pytorchGeometric, optimizer, loss_func, device, train_data_loader_pytorchGeometric_1)
+            test_loss = test(bpnn_net, val_data_loader_pytorchGeometric, device, loss_func, val_data_loader_pytorchGeometric_1)
         print('Epoch {:03d}, Train: {:.4f}, Test: {:.4f}'.format(i, train_loss, test_loss))
         if USE_WANDB:
             wandb.log({"Train Loss": train_loss, "Test Loss": test_loss})
             if i % 10 == 0:
                 wandb.log({"Train Loss Smooth": train_loss, "Test Loss Smooth": test_loss})
         scheduler.step()
-        #if i % SAVE_ITER == 0:
-        #    torch.save(bpnn_net.state_dict(), os.path.join(save_path, 'epoch_'+str(i)+'.pt'))
-        if LEARN_BP_INIT:
-            perm = np.random.permutation(NUM_SAMPLES_TRAIN)
-            sbm_models_fg_train = [sbm_models_fg_train[j] for j in perm]
-            train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_train, batch_size = 1, shuffle = False)
-            sbm_models_fg_train_bp = [sbm_models_fg_train_bp[j] for j in perm]
-            train_data_loader_pytorchGeometric_bp = DataLoader_pytorchGeometric(sbm_models_fg_train_bp, batch_size = 1, shuffle = False)
+        if i % SAVE_ITER == 0:
+            torch.save(bpnn_net.state_dict(), os.path.join(save_path, 'epoch_'+str(i)+'.pt'))
+        if MODE == 'marginals':
+            perm = np.random.permutation(len(sbm_models_fg_train_0))
+            sbm_models_fg_train_0 = [sbm_models_fg_train_0[j] for j in perm]
+            train_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(sbm_models_fg_train_0, batch_size = BATCH_SIZE_TRAIN, shuffle = False)
+            sbm_models_fg_train_1 = [sbm_models_fg_train_1[j] for j in perm]
+            train_data_loader_pytorchGeometric_1 = DataLoader_pytorchGeometric(sbm_models_fg_train_1, batch_size = BATCH_SIZE_TRAIN, shuffle = False)
 
