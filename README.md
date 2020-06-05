@@ -38,6 +38,7 @@ Ising Model convergence plots:
 - set PLOT_CONVERGENCE=True in nn_models.py (and set whether BP or BPNN data is recorded)
 - run learn_BP_spinGlass.py (loading a trained BPNN model, or pre-training for BP)
 - run plot_convergence/make_plots.py
+- get BPNN estimate improvements on converged BP models by manually entering estimates to plot_convergence/check_errors.py
 
 SAT table/figures
 - Make the SAT tables in latex form from wandb results using data/wandbCSV_to_latexTable.py
