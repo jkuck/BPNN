@@ -9,16 +9,17 @@ from torch_geometric.data import Data, DataLoader, DataListLoader
 import time
 import os
 import random
-from nn_models_sbm import lbp_message_passing_network, GIN_Network_withEdgeFeatures 
+from nn_models_sbm_bethe_invariant import lbp_message_passing_network
+from nn_models_sbm import GIN_Network_withEdgeFeatures 
 from parameters_sbm_bethe import ROOT_DIR, alpha, alpha2, SHARE_WEIGHTS, FINAL_MLP, BETHE_MLP, EXACT_BETHE, NUM_MLPS, BELIEF_REPEATS, LEARN_BP_INIT, NUM_BP_LAYERS, PRE_BP_MLP, USE_MLP_1, USE_MLP_2, USE_MLP_3, USE_MLP_4, INITIALIZE_EXACT_BP, USE_MLP_DAMPING_FtoV, USE_MLP_DAMPING_VtoF
 
-USE_WANDB = False
+USE_WANDB = True
 model_type = 'both'
 gnn_model_path = '/atlas/u/shuvamc/model_weights/ginconv_small_graph/epoch_300.pt'
 #gnn_model_path = '/atlas/u/shuvamc/model_weights/GINConv_moreweights_sbm_partition/epoch_300.pt'
 #bpnn_model_path = '/atlas/u/shuvamc/model_weights/bpnn_partition_mlp34_moredata_75prior/epoch_300.pt' 
 #bpnn_model_path = '/atlas/u/shuvamc/model_weights/bpnn_partition_mlp34_moredata_18_2_.6prior/epoch_300.pt'
-bpnn_model_path = '/atlas/u/shuvamc/model_weights/bpnn_partition_mlp34_bethe_invariant_small_graphs/epoch_300.pt'
+bpnn_model_path = '/atlas/u/shuvamc/model_weights/bpnn_partitions_mlp34_bethe_invariant(fixed)_small_graphs_moredecay/epoch_300.pt'
 N_TEST = 15
 A_TEST = 14
 B_TEST = 1
@@ -30,9 +31,9 @@ gnn_numLayers = 30
 gnn_featsize = 8
 community_probs = [.75, .25]
 mode = 'marginals'
-exp_name = mode + '_estimation_' + str(A_TEST) + '_' + str(B_TEST) + '_small_graph'
+exp_name = mode + '_estimation_' + str(A_TEST) + '_' + str(B_TEST) + '_fixed_invariance'
 if USE_WANDB:
-    wandb.init(project="learn_partition_testing_sbm", name=exp_name)
+    wandb.init(project="learn_" + mode + "_testing_sbm", name=exp_name)
     wandb.config.N_TEST = N_TEST
     wandb.config.P_TEST = P_TEST
     wandb.config.Q_TEST = Q_TEST
@@ -48,7 +49,12 @@ def calculatelogMarginals(partitions):
     ln_marginals = partitions - ln_sum
     return ln_marginals.numpy()
     
- 
+def getPermInvariant(marginals, true_small_marginals):
+    marg = np.array(marginals).T
+    true_marg = np.array(true_small_marginals)
+    min_invariant = min(np.sum((marg[0] - true_marg)**2), np.sum((marg[1] - true_marg)**2))
+    return min_invariant
+
 def constructFixedDatasetBPNN(sbm_models_lst, init = True, debug = False, marginals = False, model = None):
     init = init or marginals
     fg_models = []
@@ -56,6 +62,9 @@ def constructFixedDatasetBPNN(sbm_models_lst, init = True, debug = False, margin
     bp_marg_mse = 0
     mod_marg_mse = 0
     for sbm_model in sbm_models_lst:
+        bp_marg = []
+        mod_marg =  []
+        true_marg_small = []
         for i in range(N_TEST):
             jt_Z = []
             bp_Z = []
@@ -106,9 +115,17 @@ def constructFixedDatasetBPNN(sbm_models_lst, init = True, debug = False, margin
                 mod_marginals = calculatelogMarginals(preds)
                 true_marginals = calculatelogMarginals(jt_Z)
                 bp_marginals = calculatelogMarginals(bp_Z)
-                mod_marg_mse += np.sum((true_marginals - mod_marginals) ** 2)#min(np.sum((true_marginals - mod_marginals)**2), np.sum((true_marginals - mod_marginals[::-1])**2))
-                bp_marg_mse += min(np.sum((true_marginals - bp_marginals)**2), np.sum((true_marginals - bp_marginals[::-1])**2))
-                print(preds, mod_marg_mse, bp_marg_mse)
+                mod_marg.append(list(mod_marginals))
+                bp_marg.append(list(bp_marginals))
+                true_marg_small.append(min(true_marginals))
+                #mod_marg_mse += min(np.sum((true_marginals - mod_marginals)**2), np.sum((true_marginals - mod_marginals[::-1])**2))
+                #bp_marg_mse += min(np.sum((true_marginals - bp_marginals)**2), np.sum((true_marginals - bp_marginals[::-1])**2))
+                #print(preds, mod_marg_mse, bp_marg_mse)
+        if marginals:
+            mod_marg_mse += getPermInvariant(mod_marg, true_marg_small)
+            bp_marg_mse += getPermInvariant(bp_marg, true_marg_small)
+            print(mod_marg_mse, bp_marg_mse)
+
     return fg_models, init_mse / len(fg_models), mod_marg_mse / len(fg_models), bp_marg_mse / len(fg_models)
 
   
@@ -120,14 +137,17 @@ def getDataPartitionGNN(num, p, q, classes, num_examples, prior_prob, marginals 
     var_2_mask = normal_mask
     dataset = []
     init_mse = 0
-    mod_marge_mse = 0
-    bp_marge_mse = 0
+    mod_marg_mse = 0
+    bp_marg_mse = 0
     for i in range(num_examples):
         sbm_model = StochasticBlockModel(num, p, q, classes, community_probs = prior_prob)
         edge_index = sbm_model.edge_index_full.copy()
         noedge_index = np.concatenate((sbm_model.noedge_index, np.flip(sbm_model.noedge_index, axis = 0)), axis = 1)
         edge_attr = np.repeat(normal_edge[np.newaxis, :], edge_index.shape[1], axis = 0)
         noedge_attr = np.repeat(normal_noedge[np.newaxis, :], noedge_index.shape[1], axis = 0)
+        mod_marg = []
+        bp_marg = []
+        true_marg_small = []
         for j in range(num):
             jt_Z_lst = []
             bp_Z_lst = []
@@ -161,19 +181,29 @@ def getDataPartitionGNN(num, p, q, classes, num_examples, prior_prob, marginals 
             init_mse += mse
             if marginals:
                 dl = DataLoader(curr_data, batch_size = C_TEST)
-                for d in dl:
+                for data in dl:
                     x = data.x
-                    edge_attr = data.edge_attr
+                    edge_att = data.edge_attr
+                    edge_ind = data.edge_index
+                    batch = data.batch
                     with torch.no_grad():
-                        preds = model(d)
+                        preds = model(x, edge_ind, edge_att, batch)
+                        preds = preds.squeeze(dim = 1)
                 mod_marginals = calculatelogMarginals(preds)
                 true_marginals = calculatelogMarginals(jt_Z_lst)
                 bp_marginals = calculatelogMarginals(bp_Z_lst)
-                mod_marg_mse += np.sum((true_marginals - mod_marginals) ** 2)#min(np.sum((true_marginals - mod_marginals)**2), np.sum((true_marginals - mod_marginals[::-1])**2))
-                bp_marg_mse += min(np.sum((true_marginals - bp_marginals)**2), np.sum((true_marginals - bp_marginals[::-1])**2))
-                print(preds, mod_marg_mse, bp_marg_mse)
+                mod_marg.append(list(mod_marginals))
+                bp_marg.append(list(bp_marginals))
+                true_marg_small.append(min(true_marginals))
+                #mod_marg_mse += min(np.sum((true_marginals - mod_marginals)**2), np.sum((true_marginals - mod_marginals[::-1])**2))
+                #bp_marg_mse += min(np.sum((true_marginals - bp_marginals)**2), np.sum((true_marginals - bp_marginals[::-1])**2))
+                #print(mod_marg_mse, bp_marg_mse)
+        if marginals:
+            mod_marg_mse += getPermInvariant(mod_marg, true_marg_small)
+            bp_marg_mse += getPermInvariant(bp_marg, true_marg_small)
+            print(mod_marg_mse, bp_marg_mse)
 
-    return dataset, init_mse / len(dataset), mod_marge_mse / len(dataset), bp_marg_mse / len(dataset)
+    return dataset, init_mse / len(dataset), mod_marg_mse / len(dataset), bp_marg_mse / len(dataset)
  
 def testBPNN(model, device, data, loss_func):
     tot_loss = 0
@@ -215,7 +245,7 @@ if __name__ == '__main__':
             test_sbm_models_list = [StochasticBlockModel(N=N_TEST, P=P_TEST, Q=Q_TEST, C=C_TEST, community_probs = community_probs) for i in range(NUM_EXAMPLES_TEST)]
             test_sbm_models_fg, libdai_test_mse, _, _ = constructFixedDatasetBPNN(test_sbm_models_list, init = (model_type == 'bpnn')) 
             test_data_loader_pytorchGeometric = DataLoader_pytorchGeometric(test_sbm_models_fg, batch_size=16)
-            model = lbp_message_passing_network(max_factor_state_dimensions=2, msg_passing_iters=20, device=device, share_weights = SHARE_WEIGHTS, bethe_MLP = BETHE_MLP, var_cardinality = C_TEST, belief_repeats = BELIEF_REPEATS, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP, use_mlp_1 = USE_MLP_1, use_mlp_2 = USE_MLP_2, use_mlp_3 = USE_MLP_3, use_mlp_4 = USE_MLP_4, init_exact_bp = INITIALIZE_EXACT_BP, mlp_damping_FtoV = USE_MLP_DAMPING_FtoV, mlp_damping_VtoF = USE_MLP_DAMPING_VtoF)
+            model = lbp_message_passing_network(max_factor_state_dimensions=2, msg_passing_iters=30, device=device, share_weights = SHARE_WEIGHTS, bethe_MLP = BETHE_MLP, var_cardinality = C_TEST, belief_repeats = BELIEF_REPEATS, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP, use_mlp_1 = USE_MLP_1, use_mlp_2 = USE_MLP_2, use_mlp_3 = USE_MLP_3, use_mlp_4 = USE_MLP_4, init_exact_bp = INITIALIZE_EXACT_BP, mlp_damping_FtoV = USE_MLP_DAMPING_FtoV, mlp_damping_VtoF = USE_MLP_DAMPING_VtoF)
             model.load_state_dict(torch.load(bpnn_model_path))
             model.to(device) 
             bpnn_test_loss = testBPNN(model, device, test_data_loader_pytorchGeometric, loss_func)
@@ -237,25 +267,28 @@ if __name__ == '__main__':
             print("BPNN Test MSE: " + str(bpnn_test_loss))
             if USE_WANDB:
                 wandb.log({"BPNN Test MSE": bpnn_test_loss})
+
     if mode == 'marginals':
         if model_type == 'bpnn' or model_type == 'both':
             test_sbm_models_list = [StochasticBlockModel(N=N_TEST, P=P_TEST, Q=Q_TEST, C=C_TEST, community_probs = community_probs) for i in range(NUM_EXAMPLES_TEST)]
             model = lbp_message_passing_network(max_factor_state_dimensions=2, msg_passing_iters=30, device=device, share_weights = SHARE_WEIGHTS, bethe_MLP = BETHE_MLP, var_cardinality = C_TEST, belief_repeats = BELIEF_REPEATS, final_fc_layers = FINAL_MLP, learn_BP_init = LEARN_BP_INIT, num_BP_layers = NUM_BP_LAYERS, pre_BP_mlp = PRE_BP_MLP, use_mlp_1 = USE_MLP_1, use_mlp_2 = USE_MLP_2, use_mlp_3 = USE_MLP_3, use_mlp_4 = USE_MLP_4, init_exact_bp = INITIALIZE_EXACT_BP, mlp_damping_FtoV = USE_MLP_DAMPING_FtoV, mlp_damping_VtoF = USE_MLP_DAMPING_VtoF)
             model.load_state_dict(torch.load(bpnn_model_path))
-            _, _, mod_mse, bp_mse = constructFixedDatasetBPNN(test_sbm_models_list, init = True, marginals = True, model = model)
-            print('BPNN Model Marginals MSE: ' + str(mod_mse))
-            print("BP Marginals MSE: " + str(bp_mse))
-            if USE_WANDB:
-                wandb.log({"Model Marginals MSE": mod_mse, "BP Marginals MSE": bp_mse})
+            _, _, bpnn_mod_mse, bp_mse = constructFixedDatasetBPNN(test_sbm_models_list, init = True, marginals = True, model = model)
         if model_type == 'gnn' or model_type == 'both':
             model = GIN_Network_withEdgeFeatures(input_state_size=1, edge_attr_size=2**C_TEST, hidden_size=gnn_featsize, msg_passing_iters=gnn_numLayers)
             model.load_state_dict(torch.load(gnn_model_path))
-            _, _, mod_mse, bp_mse = getDataPartitionGNN(N_TEST, P_TEST, Q_TEST, C_TEST, NUM_EXAMPLES_TEST, prior_prov = community_probs, marginals = True, model = model)
-            print('GNN Model Marginals MSE: ' + str(mod_mse))
+            _, _, gnn_mod_mse, bp_mse = getDataPartitionGNN(N_TEST, P_TEST, Q_TEST, C_TEST, NUM_EXAMPLES_TEST, prior_prob = community_probs, marginals = True, model = model)
+        if model_type == 'bpnn' or model_type == 'both':
+            print('BPNN Model Marginals MSE: ' + str(bpnn_mod_mse))
+            print("BP Marginals MSE: " + str(bp_mse))
+            if USE_WANDB:
+                wandb.log({"BPNN Marginals MSE": bpnn_mod_mse, "BP Marginals MSE": bp_mse})
+        if model_type == 'gnn' or model_type == 'both':
+            print('GNN Model Marginals MSE: ' + str(gnn_mod_mse))
             if model_type == 'gnn':
                 print("BP Marginals MSE: " + str(bp_mse))
             if USE_WANDB:
-                wandb.log({"GNN Marginals MSE": mod_se})
+                wandb.log({"GNN Marginals MSE": gnn_mod_mse})
                 if model_type == 'gnn':
                     wandb.log({"BP Marginals MSE": bp_mse})
  
