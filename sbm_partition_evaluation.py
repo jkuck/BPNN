@@ -49,11 +49,12 @@ def calculatelogMarginals(partitions):
     ln_marginals = partitions - ln_sum
     return ln_marginals.numpy()
     
-def getPermInvariant(marginals, true_small_marginals):
-    marg = np.array(marginals).T
-    true_marg = np.array(true_small_marginals)
-    min_invariant = min(np.sum((marg[0] - true_marg)**2), np.sum((marg[1] - true_marg)**2))
-    return min_invariant
+def getPermInvariant(marginals, true_marginals):
+    marg = np.array(marginals)
+    true_marg = np.array(true_marginals)
+    sum_0 = np.sum((marg - true_marg) ** 2)
+    sum_1 = np.sum((np.flip(marg, axis = 1) - true_marg) ** 2)
+    return min(sum_0, sum_1)
 
 def constructFixedDatasetBPNN(sbm_models_lst, init = True, debug = False, marginals = False, model = None):
     init = init or marginals
@@ -64,7 +65,7 @@ def constructFixedDatasetBPNN(sbm_models_lst, init = True, debug = False, margin
     for sbm_model in sbm_models_lst:
         bp_marg = []
         mod_marg =  []
-        true_marg_small = []
+        true_marg = []
         for i in range(N_TEST):
             jt_Z = []
             bp_Z = []
@@ -117,13 +118,13 @@ def constructFixedDatasetBPNN(sbm_models_lst, init = True, debug = False, margin
                 bp_marginals = calculatelogMarginals(bp_Z)
                 mod_marg.append(list(mod_marginals))
                 bp_marg.append(list(bp_marginals))
-                true_marg_small.append(min(true_marginals))
+                true_marg.append(list(true_marginals))
                 #mod_marg_mse += min(np.sum((true_marginals - mod_marginals)**2), np.sum((true_marginals - mod_marginals[::-1])**2))
                 #bp_marg_mse += min(np.sum((true_marginals - bp_marginals)**2), np.sum((true_marginals - bp_marginals[::-1])**2))
                 #print(preds, mod_marg_mse, bp_marg_mse)
         if marginals:
-            mod_marg_mse += getPermInvariant(mod_marg, true_marg_small)
-            bp_marg_mse += getPermInvariant(bp_marg, true_marg_small)
+            mod_marg_mse += getPermInvariant(mod_marg, true_marg)
+            bp_marg_mse += getPermInvariant(bp_marg, true_marg)
             print(mod_marg_mse, bp_marg_mse)
 
     return fg_models, init_mse / len(fg_models), mod_marg_mse / len(fg_models), bp_marg_mse / len(fg_models)
@@ -147,7 +148,7 @@ def getDataPartitionGNN(num, p, q, classes, num_examples, prior_prob, marginals 
         noedge_attr = np.repeat(normal_noedge[np.newaxis, :], noedge_index.shape[1], axis = 0)
         mod_marg = []
         bp_marg = []
-        true_marg_small = []
+        true_marg = []
         for j in range(num):
             jt_Z_lst = []
             bp_Z_lst = []
@@ -194,13 +195,13 @@ def getDataPartitionGNN(num, p, q, classes, num_examples, prior_prob, marginals 
                 bp_marginals = calculatelogMarginals(bp_Z_lst)
                 mod_marg.append(list(mod_marginals))
                 bp_marg.append(list(bp_marginals))
-                true_marg_small.append(min(true_marginals))
+                true_marg.append(list(true_marginals))
                 #mod_marg_mse += min(np.sum((true_marginals - mod_marginals)**2), np.sum((true_marginals - mod_marginals[::-1])**2))
                 #bp_marg_mse += min(np.sum((true_marginals - bp_marginals)**2), np.sum((true_marginals - bp_marginals[::-1])**2))
                 #print(mod_marg_mse, bp_marg_mse)
         if marginals:
-            mod_marg_mse += getPermInvariant(mod_marg, true_marg_small)
-            bp_marg_mse += getPermInvariant(bp_marg, true_marg_small)
+            mod_marg_mse += getPermInvariant(mod_marg, true_marg)
+            bp_marg_mse += getPermInvariant(bp_marg, true_marg)
             print(mod_marg_mse, bp_marg_mse)
 
     return dataset, init_mse / len(dataset), mod_marg_mse / len(dataset), bp_marg_mse / len(dataset)
