@@ -2,6 +2,9 @@
 sg_temp.fg
 data/spin_glass/
 data/spin_glass_map/
+data/SAT_pytorchGeom_proccesed/
+data/exact_SAT_counts_noIndSets/
+data/sat_problems_noIndSets/
 trained_models*
 wandb
 batch/*.out
