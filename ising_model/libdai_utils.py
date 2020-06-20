@@ -244,6 +244,57 @@ def junction_tree(sg_model, verbose=False, map_flag=False):
         print('Exact log partition sum:', ln_Z)
     return(ln_Z)
 
+def map_junction_tree(sg_model, verbose=False, map_flag=False):
+    assert(map_flag)
+    sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
+    # sg_FactorGraph = build_graph_from_clique_ising_model(sg_model, fixed_variables={})
+
+    # Write factorgraph to a file
+    sg_FactorGraph.WriteToFile('sg_temp.fg')
+    if verbose:
+        print( 'spin glass factor graph written to sg_temp.fg')
+
+    # Output some information about the factorgraph
+    if verbose:
+        print( sg_FactorGraph.nrVars(), 'variables')
+        print( sg_FactorGraph.nrFactors(), 'factors')
+
+    # Set some constants
+    maxiter = 10000
+    tol = 1e-9
+    verb = 0
+    # Store the constants in a PropertySet object
+    opts = dai.PropertySet()
+    opts["maxiter"] = str(maxiter)   # Maximum number of iterations
+    opts["tol"] = str(tol)           # Tolerance for convergence
+    opts["verbose"] = str(verb)      # Verbosity (amount of output generated)bpopts["updates"] = "SEQRND"
+
+    ##################### Run Junction Tree Algorithm #####################
+    # Construct a JTree (junction tree) object from the FactorGraph sg_FactorGraph
+    # using the parameters specified by opts and an additional property
+    # that specifies the type of updates the JTree algorithm should perform
+    jtopts = opts
+    jtopts["updates"] = "HUGIN"
+    jt = dai.JTree( sg_FactorGraph, jtopts )
+    # Initialize junction tree algorithm
+    jt.init()
+    # Run junction tree algorithm
+    jt.run()
+
+    # Construct another JTree (junction tree) object that is used to calculate
+    # the joint configuration of variables that has maximum probability (MAP state)
+    jtmapopts = opts
+    jtmapopts["updates"] = "HUGIN"
+    jtmapopts["inference"] = "MAXPROD"
+    jtmap = dai.JTree( sg_FactorGraph, jtmapopts )
+    # Initialize junction tree algorithm
+    jtmap.init()
+    # Run junction tree algorithm
+    jtmap.run()
+    # Calculate joint state of all variables that has maximum probability
+    jtmapstate = jtmap.findMaximum()
+    return jtmapstate
+
 def marginal_junction_tree(sg_model, verbose=False, map_flag=True, classification_flag=True):
     '''
     Calculate the exact marginal function of a spin glass model using the junction tree algorithm
@@ -323,6 +374,13 @@ def marginal_junction_tree(sg_model, verbose=False, map_flag=True, classificatio
         else:
             return normalized_log_marginals[:,0:-1].tolist()
 
+def logScore(sg_model, state):
+    sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
+
+    # Write factorgraph to a file
+    sg_FactorGraph.WriteToFile('sg_temp.fg')
+    return sg_FactorGraph.logScore(state)
+
 def run_marginal_loopyBP(sg_model, maxiter=None, updates="SEQRND", damping=None,
                          map_flag=True, classification_flag=True):
     if maxiter is None:
@@ -363,6 +421,55 @@ def run_marginal_loopyBP(sg_model, maxiter=None, updates="SEQRND", damping=None,
         log_marginals = np.log(marginals)
         normalized_log_marginals = log_marginals[:, 0:-1]-log_marginals[:, -1:]
         return normalized_log_marginals.tolist()
+
+def run_map_loopyBP(sg_model, maxiter, updates="SEQRND", damping=None, map_flag=False):
+    assert(map_flag)
+    if maxiter is None:
+        maxiter=LIBDAI_LBP_ITERS
+
+    sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
+    # sg_FactorGraph = build_graph_from_clique_ising_model(sg_model, fixed_variables={})
+
+    # Write factorgraph to a file
+    sg_FactorGraph.WriteToFile('sg_temp.fg')
+
+    # Set some constants
+    # maxiter = 10000
+    maxiter = maxiter
+    # maxiter = 4
+    tol = 1e-9
+    verb = 1
+    # Store the constants in a PropertySet object
+    opts = dai.PropertySet()
+    opts["maxiter"] = str(maxiter)   # Maximum number of iterations
+    opts["tol"] = str(tol)           # Tolerance for convergence
+    opts["verbose"] = str(verb)      # Verbosity (amount of output generated)bpopts["updates"] = "SEQRND"
+
+
+    ##################### Run Loopy Belief Propagation #####################
+    # Construct a BP (belief propagation) object from the FactorGraph sg_FactorGraph
+    # using the parameters specified by opts and two additional properties,
+    # specifying the type of updates the BP algorithm should perform and
+    # whether they should be done in the real or in the logdomain
+    bpopts = opts
+#     bpopts["updates"] = "SEQRND"
+#     bpopts["updates"] = "PARALL"
+    bpopts["updates"] = updates
+    bpopts["logdomain"] = "1"
+    if damping is not None:
+        bpopts["damping"] = str(damping)
+    if map_flag:
+        bpopts['inference'] = 'MAXPROD'
+    else:
+        bpopts['inference'] = 'SUMPROD'
+
+    bp = dai.BP( sg_FactorGraph, bpopts )
+    # Initialize belief propagation algorithm
+    bp.init()
+    # Run belief propagation algorithm
+    bp.run()
+
+    return bp.findMaximum()
 
 def run_loopyBP(sg_model, maxiter, updates="SEQRND", damping=None, map_flag=False):
     if maxiter is None:

@@ -80,6 +80,10 @@ class SpinGlassModel:
                 self.higher_order_potentials_variables = [np.random.choice(self.N**2, ho_potential_degree, replace=False) for i in rnage(ho_potential_count)]
             else:
                 self.contains_higher_order_potentials = False
+        self.map_state = self.map_junction_tree_libdai(map_flag=True, init_flag=True)
+        self.map_logscore = self.logScore_libdai(self.map_state)
+        self.logZ = self.junction_tree_libdai(map_flag=False, init_flag=True)
+
     def brute_force_z_mrftools(self):
         '''
         Brute force calculate the partition function of this spin glass model using mrftools
@@ -112,7 +116,10 @@ class SpinGlassModel:
                 score += self.cpl_params_h[r,c]*(-1 if state1^state2 else 1)
         return score
 
-    def junction_tree_libdai(self, map_flag=False):
+    def logScore_libdai(self, state):
+        return libdai_utils.logScore(self, state)
+
+    def junction_tree_libdai(self, map_flag=False, init_flag=False):
         '''
         Compute the exact partition function of this spin glass model using the junction tree
         implementation from libdai
@@ -120,8 +127,15 @@ class SpinGlassModel:
         Outputs:
         - ln_Z: natural logarithm of the exact partition function
         '''
+        if not init_flag and not map_flag:
+            return self.logZ
         ln_Z = libdai_utils.junction_tree(self, map_flag=map_flag)
         return ln_Z
+
+    def map_junction_tree_libdai(self, map_flag=False, init_flag=False):
+        if not init_flag and map_flag:
+            return self.map_state
+        return libdai_utils.map_junction_tree(self, map_flag=map_flag)
 
     def marginal_junction_tree_libdai(self, map_flag=True, classification_flag=True):
         '''
@@ -152,6 +166,9 @@ class SpinGlassModel:
         '''
         ln_Z_estimate = libdai_utils.run_loopyBP(self, maxiter, updates, damping, map_flag=map_flag)
         return ln_Z_estimate
+
+    def map_loopyBP_libdai(self, maxiter=None, updates="SEQRND", damping=None, map_flag=False):
+        return libdai_utils.run_map_loopyBP(self, maxiter, updates, damping, map_flag=map_flag)
 
     def marginal_loopyBP_libdai(self, maxiter=None, updates="SEQRND", damping=None,
                                 map_flag=False, classification_flag=True):
