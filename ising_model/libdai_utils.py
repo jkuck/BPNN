@@ -374,6 +374,44 @@ def marginal_junction_tree(sg_model, verbose=False, map_flag=True, classificatio
         else:
             return normalized_log_marginals[:,0:-1].tolist()
 
+def map_marginal_junction_tree(sg_model, verbose=False):
+    # Set some constants
+    maxiter = 10000
+    tol = 1e-9
+    verb = 0
+    # Store the constants in a PropertySet object
+    opts = dai.PropertySet()
+    opts["maxiter"] = str(maxiter)   # Maximum number of iterations
+    opts["tol"] = str(tol)           # Tolerance for convergence
+    opts["verbose"] = str(verb)      # Verbosity (amount of output generated)bpopts["updates"] = "SEQRND"
+    opts["updates"] = "HUGIN"
+
+    N = sg_model.lcl_fld_params.shape[0]
+    max_states =  [[None]*2]*(N*N)
+
+    opts["inference"] = "MAXPROD"
+    sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
+    jt = dai.JTree( sg_FactorGraph, opts )
+    jt.init()
+    jt.run()
+    state = jt.findMaximum()
+    # score = sg_FactorGraph.logScore(state)
+    for i, s in zip(range(N*N), state):
+        max_states[i][s] = state
+
+    for vi, s in enumerate(state):
+        sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={vi:(1 if s==0 else -1)})
+        jt = dai.JTree( sg_FactorGraph, opts )
+        jt.init()
+        jt.run()
+        cur_state = jt.findMaximum()
+        # cur_score = sg_FactorGraph.logScore(cur_state)
+        # log_marginals[vi,1-s] = cur_score
+        max_states[vi][1-s] = cur_state
+
+    return max_states
+
+
 def logScore(sg_model, state):
     sg_FactorGraph = build_libdaiFactorGraph_from_SpinGlassModel(sg_model, fixed_variables={})
 

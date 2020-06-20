@@ -151,6 +151,9 @@ class SpinGlassModel:
         output = libdai_utils.marginal_junction_tree(self, map_flag=map_flag, classification_flag=classification_flag)
         return output
 
+    def map_marginal_junction_tree_libdai(self):
+        return libdai_utils.map_marginal_junction_tree(self,)
+
     def loopyBP_libdai(self, maxiter=None, updates="SEQRND", damping=None, map_flag=False):
         '''
         estimate the partition function of this spin glass model using the
