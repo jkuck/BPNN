@@ -224,13 +224,18 @@ def loss_func(max_states, sp_problem, metric_names):
     graph_map_prob = np.exp(graph_map_logscore-sp_problem.logZ)
 
     # finding second map states
-    tmp_logscores = max_logscores*(1-(max_logscores==graph_map_score))
-    tmp_index = np.unravel_index(np.argmax(tmp_logscores), tmp_logscores.shape)
+    # tmp_logscores = max_logscores*(1-(max_logscores>=graph_map_score))
+    # tmp_index = np.unravel_index(np.argmax(tmp_logscores), tmp_logscores.shape)
+    tmp_logscores = max_logscores[np.arange(max_logscores.shape[0]), 1-np.array(graph_map_state)]
+    tmp_index = np.argmax(tmp_logscores.reshape([-1]))
+    tmp_index = (tmp_index, 1-graph_map_state[tmp_index])
     graph_2nd_map_state = max_states[tmp_index[0]][tmp_index[1]]
     graph_2nd_map_state_ratio0 = np.mean(np.array(graph_2nd_map_state)==0)
     graph_2nd_map_state_ratio_same = np.maximum(graph_2nd_map_state_ratio0, 1-graph_2nd_map_state_ratio0)
     graph_2nd_map_logscore = max_logscores[tmp_index]
-    assert(graph_2nd_map_logscore < graph_map_logscore)
+    assert(graph_2nd_map_logscore < graph_map_logscore), (
+        graph_2nd_map_logscore, graph_map_logscore,
+    )
     graph_2nd_map_score = np.exp(graph_2nd_map_logscore)
     graph_2nd_map_prob = np.exp(graph_2nd_map_logscore-sp_problem.logZ)
 

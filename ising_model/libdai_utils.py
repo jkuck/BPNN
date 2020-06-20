@@ -405,6 +405,10 @@ def map_marginal_junction_tree(sg_model, verbose=False):
         jt.init()
         jt.run()
         cur_state = jt.findMaximum()
+        assert(cur_state[vi] == 0)
+        cur_state = list(cur_state)
+        cur_state[vi] = 1-s
+        cur_state = tuple(cur_state)
         # cur_score = sg_FactorGraph.logScore(cur_state)
         # log_marginals[vi,1-s] = cur_score
         max_states[vi][1-s] = cur_state
