@@ -320,8 +320,8 @@ def train():
         # print("root mean squared validation error =", np.sqrt(np.mean(val_losses)))
         print()
         if USE_WANDB:
-            train_logs = {'mn_train':l for mn, l in zip(metric_names, aggregated_losses)}
-            val_logs = {'mn_val':l for mn, l in zip(metric_names, val_aggregated_losses)}
+            train_logs = {mn+'_train':l for mn, l in zip(metric_names, aggregated_losses)}
+            val_logs = {mn+'_val':l for mn, l in zip(metric_names, val_aggregated_losses)}
             wandb.log({**train_logs, **val_logs})
             # wandb.log({"RMSE_val": np.sqrt(np.mean(val_losses)), "RMSE_training": np.sqrt(np.mean(losses))})
 
