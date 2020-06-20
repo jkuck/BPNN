@@ -2,7 +2,7 @@
 
 import random, subprocess as sp
 
-PROCESS_NUM = 10
+PROCESS_NUM = 7
 
 jobs = [
     'python learn_bp_uai.py --max_factor_state_dimensions 2 --problem_category_train Segment \
