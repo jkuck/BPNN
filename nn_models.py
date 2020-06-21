@@ -317,6 +317,138 @@ class lbp_message_passing_network(nn.Module):
         return torch.cat([pooled_fac_beleifPotentials, pooled_fac_beliefs, pooled_var_beliefs], dim=cat_dim)
 
 
+class max_lbp_message_passing_network(nn.Module):
+    def __init__(self, max_factor_state_dimensions, msg_passing_iters, device=None, share_weights=SHARE_WEIGHTS,
+                bethe_MLP=BETHE_MLP, alpha=None, alpha2=None, perm_invariant_flag=False, append_bp_flag=False):
+        '''
+        Inputs:
+        - max_factor_state_dimensions (int): the number of dimensions (variables) the largest factor have.
+            -> will have states space of size 2*max_factor_state_dimensions
+        - msg_passing_iters (int): the number of iterations of message passing to run (we have this many
+            message passing layers with their own learnable parameters)
+        - share_weights (bool): if true, share the same weights across each message passing iteration
+        - bethe_MLP (bool): if True, use an MLP to learn a modified Bethe approximation (initialized
+                            to the exact Bethe approximation)
+        '''
+        super().__init__()
+        self.append_bp_flag = append_bp_flag
+        self.share_weights = share_weights
+        self.msg_passing_iters = msg_passing_iters
+        self.bethe_MLP = bethe_MLP if not self.append_bp_flag else False
+        self.perm_invariant_flag = perm_invariant_flag
+        if share_weights:
+            self.message_passing_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(
+                learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
+                map_flag=True, alpha=alpha, alpha2=alpha2,
+                perm_invariant_flag=perm_invariant_flag,
+            )
+        else:
+            self.message_passing_layers = nn.ModuleList([
+                FactorGraphMsgPassingLayer_NoDoubleCounting(
+                    learn_BP=True, factor_state_space=2**max_factor_state_dimensions,
+                    map_flag=True, alpha=alpha, alpha2=alpha2,
+                    perm_invariant_flag=perm_invariant_flag,
+                ) for i in range(msg_passing_iters)
+            ])
+        self.bp_layer = FactorGraphMsgPassingLayer_NoDoubleCounting(
+            learn_BP=False, factor_state_space=2**max_factor_state_dimensions,
+            map_flag=True, alpha=alpha, alpha2=alpha2,
+            perm_invariant_flag=perm_invariant_flag,
+        )
+        self.device = device
+
+        if bethe_MLP:
+            var_states = 2 #2 for binary variables
+            mlp_size =  msg_passing_iters*var_states
+
+            self.linear1 = Linear(mlp_size, mlp_size)
+            self.linear2 = Linear(mlp_size, var_states)
+            self.linear1.weight = torch.nn.Parameter(torch.eye(mlp_size))
+            self.linear1.bias = torch.nn.Parameter(torch.zeros(self.linear1.bias.shape))
+            weight_initialization = torch.cat([
+                torch.zeros((var_states,mlp_size-var_states)),
+                torch.eye(var_states),
+            ], dim=-1)
+            self.linear2.weight = torch.nn.Parameter(weight_initialization)
+            self.linear2.bias = torch.nn.Parameter(torch.zeros(self.linear2.bias.shape))
+            self.shifted_relu = shift_func(ReLU(), shift=-500)
+            self.final_mlp = Seq(self.linear1, self.shifted_relu, self.linear2, self.shifted_relu)
+
+    def forward(self, factor_graph):
+#         prv_varToFactor_messages, prv_factorToVar_messages, prv_factor_beliefs, prv_var_beliefs = factor_graph.get_initial_beliefs_and_messages(device=self.device)
+        prv_varToFactor_messages = factor_graph.prv_varToFactor_messages
+        prv_factorToVar_messages = factor_graph.prv_factorToVar_messages
+        prv_factor_beliefs = factor_graph.prv_factor_beliefs
+#         print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
+#         print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
+#         print("factor_graph.facToVar_edge_idx.shape:", factor_graph.facToVar_edge_idx.shape)
+
+
+        pooled_states = []
+        pooled_var_beliefs = []
+
+        if self.share_weights:
+            for iter in range(self.msg_passing_iters):
+                prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
+                    self.message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                                          prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+                if self.bethe_MLP:
+                    pooled_var_beliefs.append(prv_var_beliefs)
+        else:
+            for message_passing_layer in self.message_passing_layers:
+#                 print("prv_varToFactor_messages:", prv_varToFactor_messages)
+#                 print("prv_factorToVar_messages:", prv_factorToVar_messages)
+#                 print("prv_factor_beliefs:", prv_factor_beliefs)
+#                 print("prv_varToFactor_messages.shape:", prv_varToFactor_messages.shape)
+#                 print("prv_factorToVar_messages.shape:", prv_factorToVar_messages.shape)
+#                 print("prv_factor_beliefs.shape:", prv_factor_beliefs.shape)
+#                 prv_factor_beliefs[torch.where(prv_factor_beliefs==-np.inf)] = 0
+
+                prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs =\
+                    message_passing_layer(factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                                          prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs)
+    #                 message_passing_layer(factor_graph, prv_varToFactor_messages=factor_graph.prv_varToFactor_messages,
+    #                                       prv_factorToVar_messages=factor_graph.prv_factorToVar_messages, prv_factor_beliefs=factor_graph.prv_factor_beliefs)
+                if self.bethe_MLP:
+                    pooled_var_beliefs.append(prv_var_beliefs)
+
+        if self.append_bp_flag:
+            max_diff, iter_num = 1., 0
+            # Run classical BP
+            while (max_diff > 1e-5 and iter_num < 500):
+                prv_varToFactor_messages, prv_factorToVar_messages, prv_var_beliefs, prv_factor_beliefs, max_diff = \
+                    self.one_bp_step(
+                        prv_varToFactor_messages, prv_factorToVar_messages,
+                        prv_var_beliefs, prv_factor_beliefs, factor_graph,
+                    )
+                iter_num += 1
+            print(max_diff, iter_num)
+
+        if self.bethe_MLP:
+            pooled_beliefs = torch.cat(pooled_var_beliefs, dim=-1)
+            self.v1 = pooled_beliefs
+            self.v1.retain_grad()
+            logits = self.final_mlp(pooled_beliefs)
+            var_probs = F.softmax(logits, dim=-1)
+        else:
+            var_probs = F.softmax(prv_var_beliefs, dim=-1)
+        return var_probs
+
+    def one_bp_step(self, prv_varToFactor_messages, prv_factorToVar_messages,
+                    prv_var_beliefs, prv_factor_beliefs, factor_graph):
+        cur_varToFactor_messages, cur_factorToVar_messages, cur_var_beliefs, cur_factor_beliefs =\
+            self.bp_layer(
+                factor_graph, prv_varToFactor_messages=prv_varToFactor_messages,
+                prv_factorToVar_messages=prv_factorToVar_messages, prv_factor_beliefs=prv_factor_beliefs,
+                use_MLP1=False, use_MLP2=False, #No MLP, therefore original BP
+            )
+        max_diff = max([
+            torch.max(torch.abs(cur_varToFactor_messages-prv_varToFactor_messages)).item(),
+            torch.max(torch.abs(cur_factorToVar_messages-prv_factorToVar_messages)).item(),
+            torch.max(torch.abs(cur_var_beliefs-prv_var_beliefs)).item(),
+            torch.max(torch.abs(cur_factor_beliefs-prv_factor_beliefs)).item(),
+        ])
+        return cur_varToFactor_messages, cur_factorToVar_messages, cur_var_beliefs, cur_factor_beliefs, max_diff
 
 def compute_bethe_average_energy(factor_beliefs, factor_potentials, debug=False):
     '''

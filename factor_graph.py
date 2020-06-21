@@ -54,7 +54,7 @@ class FactorGraphData(DataFactorGraph_partial):
     '''
     def __init__(self, factor_potentials, factorToVar_edge_index, numVars, numFactors,
                  edge_var_indices, state_dimensions, factor_potential_masks, ln_Z=None,
-                 factorToVar_double_list=None, gt_variable_labels=None, marginals=None):
+                 factorToVar_double_list=None, gt_variable_labels=None, marginals=None, idx=None,):
         '''
         Inputs:
         - factor_potentials (torch tensor): represents all factor potentials (log base e space) and has
@@ -91,6 +91,8 @@ class FactorGraphData(DataFactorGraph_partial):
             self.ln_Z = torch.tensor([ln_Z], dtype=float)
         if marginals is not None:
             self.marginals = torch.tensor(marginals, dtype=torch.float)
+        if idx is not None:
+            self.idx = torch.tensor([idx], dtype=torch.long,)
 
         # (int) the largest node degree
         self.state_dimensions = torch.tensor([state_dimensions])

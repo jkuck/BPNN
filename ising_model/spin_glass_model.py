@@ -116,6 +116,26 @@ class SpinGlassModel:
                 score += self.cpl_params_h[r,c]*(-1 if state1^state2 else 1)
         return score
 
+    def logScore_prob(self, state):
+        N = self.lcl_fld_params.shape[0]
+        assert(N == self.lcl_fld_params.shape[1])
+
+        score = 0
+        for var_idx in range(N**2):
+            r = var_idx//N
+            c = var_idx%N
+            state1 = state[var_idx]
+            score = score+ self.lcl_fld_params[r,c]*(state1-(1-state1))
+            if r < N-1:
+                state2 = state[var_idx+N]
+                score = score+ self.cpl_params_v[r,c]*(state1*state2+(1-state1)*(1-state2)-\
+                                                       state1*(1-state2)-(1-state1)*state2)
+            if c < N-1:
+                state2 = state[var_idx+1]
+                score = score+ self.cpl_params_h[r,c]*(state1*state2+(1-state1)*(1-state2)-\
+                                                       state1*(1-state2)-(1-state1)*state2)
+        return score
+
     def logScore_libdai(self, state):
         return libdai_utils.logScore(self, state)
 
