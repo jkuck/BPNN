@@ -43,6 +43,8 @@ parser.add_argument('--loss_name', type=str, default=None)
 parser.add_argument('--one_hot_ratio', type=float, default=1.)
 parser.add_argument('--data_size', type=int, default=50)
 parser.add_argument('-n', '--map_size', type=int, default=10)
+parser.add_argument('--f_max', type=float, default=.1)
+parser.add_argument('--c_max', type=float, default=5.)
 args = parser.parse_args()
 print(args)
 DATA_MAP_FLAG = args.data_map_flag
@@ -61,6 +63,8 @@ LOSS_NAME = args.loss_name
 ONE_HOT_RATIO = args.one_hot_ratio
 DATA_SIZE = args.data_size
 MAP_SIZE = args.map_size
+F_MAX = args.f_max
+C_MAX = args.c_max
 
 
 MODE = "train" #run "test" or "train" mode
@@ -129,16 +133,20 @@ TRAINED_MODELS_DIR = ROOT_DIR + "trained_models_map/" #trained models are stored
 # C_MAX = 5.0
 N_MIN_TRAIN = MAP_SIZE
 N_MAX_TRAIN = MAP_SIZE
-F_MAX_TRAIN = .1
-C_MAX_TRAIN = 5.0
+F_MAX_TRAIN = F_MAX
+C_MAX_TRAIN = C_MAX
+# F_MAX_TRAIN = .1
+# C_MAX_TRAIN = 5.0
 # F_MAX = 1
 # C_MAX = 10.0
 ATTRACTIVE_FIELD_TRAIN = ATTRACTIVE_FIELD
 
 N_MIN_VAL = 10
 N_MAX_VAL = 10
-F_MAX_VAL = .1
-C_MAX_VAL = 5.0
+# F_MAX_VAL = .1
+# C_MAX_VAL = 5.0
+F_MAX_VAL = F_MAX
+C_MAX_VAL = C_MAX
 ATTRACTIVE_FIELD_VAL = ATTRACTIVE_FIELD
 # ATTRACTIVE_FIELD_TEST = True
 
@@ -178,7 +186,7 @@ else:
 
 ##########################
 if USE_WANDB:
-    wandb.init(project="learnBP_map_marginal_spinGlass")
+    wandb.init(project="learnBP_map_marginal_spinGlass_new")
     wandb.config.epochs = EPOCH_COUNT
     wandb.config.N_MIN_TRAIN = N_MIN_TRAIN
     wandb.config.N_MAX_TRAIN = N_MAX_TRAIN
@@ -325,11 +333,8 @@ def one_hot_cross_entropy_loss(x, y):
     one_hot_y = torch.eye(y.size(-1))[torch.argmax(y, dim=-1)]
     return ONE_HOT_RATIO*cross_entropy_loss(x, one_hot_y) + (1-ONE_HOT_RATIO)*cross_entropy_loss(x, y)
 def test_loss_func(x, y, sg_model):
-    assert(not torch.isnan(x).any()), x
-    assert(not torch.isnan(y).any()), y
-    if CLASSIFICATION_FLAG:
-        x = torch.log(x[:,0:-1]/x[:,-1:])
-        y = torch.log(y[:,0:-1]/y[:,-1:])
+    # assert(not torch.isnan(x).any()), x
+    # assert(not torch.isnan(y).any()), y
     '''
     x, y of shape [N, 1] representing the difference of log marginals
 
@@ -342,18 +347,24 @@ def test_loss_func(x, y, sg_model):
     - mse_logscore_state_loss, l1_logscore_state_loss, (where logscore
     represents the logScore of the maximum state calculated from marginals)
     '''
-    diff_log = torch.abs(x-y).reshape(-1)
+    if CLASSIFICATION_FLAG:
+        prob_x, prob_y = x, y
+        x = torch.log(x[:,0:-1]/x[:,-1:])
+        y = torch.log(y[:,0:-1]/y[:,-1:])
+        diff_log = torch.abs(x-y).reshape(-1)
+    else:
+        diff_log = torch.abs(x-y).reshape(-1)
+        prob_x = torch.exp(x)/(torch.exp(x)+1)
+        prob_x = torch.cat([prob_x, 1-prob_x], dim=-1)
+        prob_y = torch.exp(y)/(torch.exp(y)+1)
+        prob_y = torch.cat([prob_y, 1-prob_y], dim=-1)
+
     mse_diff_log_loss = (diff_log**2).tolist()
     l1_diff_log_loss = diff_log.tolist()
-
-    prob_x = torch.exp(x)/(torch.exp(x)+1)
-    prob_x = torch.cat([prob_x, 1-prob_x], dim=-1)
-    prob_y = torch.exp(y)/(torch.exp(y)+1)
-    prob_y = torch.cat([prob_y, 1-prob_y], dim=-1)
     corrcoef_prob = [np.corrcoef(prob_x[:,0].reshape(-1).cpu().detach().numpy(),
                                  prob_y[:,0].reshape(-1).cpu().detach().numpy(),)[0,1]]
-    assert(not torch.isnan(prob_x).any()), prob_x
-    assert(not torch.isnan(prob_y).any()), prob_y
+    # assert(not torch.isnan(prob_x).any()), prob_x
+    # assert(not torch.isnan(prob_y).any()), prob_y
     pcorr_prob, pvalue_prob = pearsonr(prob_x[:,0].reshape(-1).cpu().detach().numpy(),
                                        prob_y[:,0].reshape(-1).cpu().detach().numpy(),)
     pcorr_prob, pvalue_prob = [pcorr_prob], [pvalue_prob]
