@@ -49,7 +49,7 @@ ALPHA2 = args.alpha2
 MSG_PASSING_ITERS = args.layer_num
 TRAINING_FLAG = not args.no_training_flag
 
-loss_name = 'prob_kl_diverge'
+loss_name = None
 metric_names = [
     'state_node_acc', 'state_graph_acc',
     'score_relative', 'score_mse', 'score_rmse',
@@ -105,9 +105,12 @@ REGENERATE_DATA = False
 DATA_DIR = "./data/spin_glass_map/"
 
 
-TRAINING_DATA_SIZE = 100000
-VAL_DATA_SIZE = 1000#100
-TEST_DATA_SIZE = 1000
+# TRAINING_DATA_SIZE = 100000
+# VAL_DATA_SIZE = 1000#100
+# TEST_DATA_SIZE = 1000
+TRAINING_DATA_SIZE = 1000
+VAL_DATA_SIZE = 100#100
+TEST_DATA_SIZE = 100
 # TRAINING_DATA_SIZE = 51
 # VAL_DATA_SIZE = 51#100
 # TEST_DATA_SIZE = 201
@@ -115,7 +118,7 @@ TEST_DATA_SIZE = 1000
 TRAIN_BATCH_SIZE=32
 VAL_BATCH_SIZE=32
 
-EPOCH_COUNT = 100000 if TRAINING_FLAG else 5
+EPOCH_COUNT = 1000 if TRAINING_FLAG else 5
 PRINT_FREQUENCY = 10 if TRAINING_FLAG else 1
 VAL_FREQUENCY = 10 if TRAINING_FLAG else 1
 SAVE_FREQUENCY = 100 if TRAINING_FLAG else 1
@@ -164,6 +167,7 @@ if USE_WANDB:
     wandb.config.MODEL_MAP_FLAG = MODEL_MAP_FLAG
     wandb.config.PERM_INVARIANT_FLAG = PERM_INVARIANT_FLAG
     wandb.config.TRAINING_FLAG = TRAINING_FLAG
+    wandb.config.LOSS_NAME = loss_name
 
 
 def get_dataset(dataset_type):
@@ -221,45 +225,13 @@ lbp_net = max_lbp_message_passing_network(
 lbp_net = lbp_net.to(device)
 
 def loss_func(pred_state, sp_problem, loss_name=None):
-    if loss_name is None:
-        loss_name = 'prob-kl_diverge'
-    mn = loss_name
+    # if loss_name is None:
+        # loss_name = 'prob-kl_diverge'
+    # mn = loss_name
 
     pred_logscore = sp_problem.logScore_prob(pred_state)
     true_logscore = sp_problem.map_logscore
-    pred_prob = torch.exp(pred_logscore-sp_problem.logZ)
-    if pred_prob <= 1e-20:
-        pred_prob = torch.zeros_like(pred_prob) + 1e-20
-    if pred_prob >= 1-1e-20:
-        pred_prob = torch.zeros_like(pred_prob) + 1-1e-20
-    true_prob = np.exp(true_logscore-sp_problem.logZ)
-    if true_prob <= 1e-20:
-        true_prob = 1e-20
-    if true_prob >= 1-1e-20:
-        true_prob = 1-1e-20
-    assert(true_prob < 1 and true_prob > 0)
-    assert(pred_prob <= 1 and pred_prob >= 0), (pred_prob, pred_logscore, sp_problem.logZ)
-    if 'logscore' in mn:
-        y, p = true_logscore, pred_logscore
-    elif 'prob' in mn:
-        y, p = true_prob, pred_prob
-    else:
-        raise ValueError("Wrong Metric Names: "+mn)
-
-    if 'relative' in mn:
-        return torch.abs((y-p)/y)
-    elif 'mse' in mn:
-        return (y-p)**2
-    elif 'reverse_cross_entropy' in mn:
-        return -p*np.log(y)-(1-p)*np.log(1-y)
-    elif 'cross_entropy' in mn:
-        return -y*torch.log(p)-(1-y)*torch.log(1-p)
-    elif 'reverse_kl_diverge' in mn:
-        return p*torch.log(p)-p*np.log(y)+(1-p)*torch.log(1-p)-(1-p)*np.log(1-y)
-    elif 'kl_diverge' in mn:
-        return y*np.log(y)-y*torch.log(p)+(1-y)*np.log(1-y)-(1-y)*torch.log(1-p)
-    else:
-        raise ValueError("Wrong Metric Names: "+mn)
+    return true_logscore-pred_logscore
 
 def test_loss_func(pred_state, sp_problem, metric_names):
     true_state = sp_problem.map_state
