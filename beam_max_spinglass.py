@@ -144,7 +144,7 @@ else:
 
 ##########################
 if USE_WANDB:
-    wandb.init(project="BP_beam_max_spinGlass_new_new")
+    wandb.init(project="beam_max_spinGlass_new_new")
     wandb.config.epochs = EPOCH_COUNT
     wandb.config.DATA_MAP_FLAG = DATA_MAP_FLAG
     wandb.config.MODEL_MAP_FLAG = MODEL_MAP_FLAG
@@ -214,8 +214,8 @@ def _loss_func(true_state, pred_state, sp_problem, metric_names):
     pred_score = np.exp(pred_logScore)
     true_prob = np.exp(true_logScore-sp_problem.logZ)
     pred_prob = np.exp(pred_logScore-sp_problem.logZ)
-    assert(true_prob < 1 and true_prob > 0)
-    assert(pred_prob < 1 and pred_prob > 0)
+    # assert(true_prob < 1 and true_prob > 0)
+    # assert(pred_prob < 1 and pred_prob > 0)
     loss = []
     for mn in metric_names:
         y, p = None, None
@@ -319,9 +319,10 @@ def train():
         epoch_loss, losses = 0, []
         for spin_glass_problem in spin_glass_models_list_train:
             true_map_states = spin_glass_problem.map_junction_tree_libdai(map_flag=DATA_MAP_FLAG)
-            pred_map_states = spin_glass_problem.map_loopyBP_libdai(
-                map_flag=MODEL_MAP_FLAG, updates=UPDATES, damping=DAMPING,
-            )
+            # pred_map_states = spin_glass_problem.map_loopyBP_libdai(
+                # map_flag=MODEL_MAP_FLAG, updates=UPDATES, damping=DAMPING,
+            # )
+            pred_map_states = tuple(np.random.choice(2, size=[100,]).tolist())
 
             loss = loss_func(
                 true_map_states,
@@ -341,9 +342,10 @@ def train():
         val_losses = []
         for spin_glass_problem in spin_glass_models_list_val:
             true_map_states = spin_glass_problem.map_junction_tree_libdai(map_flag=DATA_MAP_FLAG)
-            pred_map_states = spin_glass_problem.map_loopyBP_libdai(
-                map_flag=MODEL_MAP_FLAG, updates=UPDATES, damping=DAMPING,
-            )
+            # pred_map_states = spin_glass_problem.map_loopyBP_libdai(
+                # map_flag=MODEL_MAP_FLAG, updates=UPDATES, damping=DAMPING,
+            # )
+            pred_map_states = tuple(np.random.choice(2, size=[100,]).tolist())
 
             loss = loss_func(
                 true_map_states,
