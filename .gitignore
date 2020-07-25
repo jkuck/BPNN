@@ -1,5 +1,5 @@
 **__pycache__**
-sg_temp.fg
+**sg_temp.fg**
 data/spin_glass/
 data/spin_glass_map/
 data/SAT_pytorchGeom_proccesed/
@@ -12,3 +12,5 @@ batch/*.out
 batch/bp*.sh
 batch/tmp.sh
 batch
+uai_2012/mpe*
+uai_2012/*_result*
