@@ -1,5 +1,7 @@
 # learn_BP
+This code accompanies the paper [Belief Propagation Neural Networks](https://papers.nips.cc/paper/2020/hash/07217414eb3fbe24d4e5b6cafb91ca18-Abstract.html)
 
+This figure shows the computaion graph of an iterative BPNN-D layer run until convergence:
 ![alt text](BPNN_thumbnail.png)
 
 ## Dependencies
