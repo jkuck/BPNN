@@ -1,5 +1,7 @@
 # learn_BP
 
+![alt text](BPNN_thumbnail.png)
+
 ## Dependencies
 [PyTorch](https://pytorch.org/get-started/locally/)  
 [PyTorch Geometric](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html)  
